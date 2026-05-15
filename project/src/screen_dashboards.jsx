@@ -113,12 +113,10 @@ function UpcomingEventsCard({ setRoute, vendorId, workerId }) {
 
 /* ------- Recent transactions card ------- */
 function RecentTransactionsCard({ vendorScope, workerScope, setRoute }) {
-  const [page, setPage] = useState(1);
-  const pages = 4;
   let allTxs = SD_D.TRANSACTIONS;
   if (vendorScope) allTxs = SD_D.TRANSACTIONS.filter(t => t.payer.includes('Bloom'));
   if (workerScope) allTxs = SD_D.TRANSACTIONS.filter(t => t.payee === 'Naomi Park' || t.payee === 'Multiple');
-  const txs = allTxs.slice(0, 5);
+  const paged = usePaged(allTxs, 5);
   return (
     <div className="card card-flush">
       <div className="card-header">
@@ -135,12 +133,12 @@ function RecentTransactionsCard({ vendorScope, workerScope, setRoute }) {
           </tr>
         </thead>
         <tbody>
-          {txs.length === 0 ? (
+          {paged.slice.length === 0 ? (
             <tr><td colSpan={4}><Empty icon={SD_I.ShoppingCart} title="No recent transactions" /></td></tr>
-          ) : txs.map(t => (
+          ) : paged.slice.map(t => (
             <tr key={t.id} tabIndex={0} role="button" aria-label={`Open transaction ${t.invoice}`}
-                onClick={() => setRoute && setRoute('payments')}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRoute && setRoute('payments'); } }}
+                onClick={() => setRoute && setRoute('payments:' + t.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRoute && setRoute('payments:' + t.id); } }}
                 style={{ cursor: 'pointer' }}>
               <td style={{ fontWeight: 500, color: 'var(--color-ink)' }}>{t.invoice}</td>
               <td><Badge kind={t.status} /></td>
@@ -150,11 +148,7 @@ function RecentTransactionsCard({ vendorScope, workerScope, setRoute }) {
           ))}
         </tbody>
       </table>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--color-hairline)', alignItems: 'center', fontSize: 12.5, color: 'var(--color-muted)' }}>
-        <button className="btn btn-ghost btn-sm" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</button>
-        <span>Page {page} of {pages}</span>
-        <button className="btn btn-ghost btn-sm" disabled={page === pages} onClick={() => setPage(p => Math.min(pages, p + 1))}>Next</button>
-      </div>
+      <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="transactions" />
     </div>
   );
 }
@@ -162,8 +156,26 @@ function RecentTransactionsCard({ vendorScope, workerScope, setRoute }) {
 /* ------- New & recent users card ------- */
 function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute }) {
   const [tab, setTab] = useState('users');
+  const toast = useToast();
   const showWorkers = !tabs || tab === 'users';
-  const list = showWorkers ? SD_D.USERS.filter(u => u.role !== 'admin').slice(0, 6) : SD_D.USERS.filter(u => u.role === 'vendor').slice(0, 6);
+  const seed = showWorkers ? SD_D.USERS.filter(u => u.role !== 'admin').slice(0, 6) : SD_D.USERS.filter(u => u.role === 'vendor').slice(0, 6);
+  const [overrides, setOverrides] = useState({});
+  const [deleted, setDeleted] = useState({});
+  const [confirmId, setConfirmId] = useState(null);
+  const list = seed.filter(u => !deleted[u.id]).map(u => overrides[u.id] ? { ...u, ...overrides[u.id] } : u);
+
+  const toggleActive = (u) => {
+    const next = u.status === 'active' ? 'inactive' : 'active';
+    setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), status: next } }));
+    toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.first} marked ${next}` });
+  };
+  const confirmDelete = () => {
+    const u = list.find(x => x.id === confirmId);
+    setDeleted(d => ({ ...d, [confirmId]: true }));
+    setConfirmId(null);
+    toast.push({ kind: 'warning', title: 'User removed', body: `${u?.name || 'User'} removed from this list.` });
+  };
+
   return (
     <div className="card card-flush" style={{ alignSelf: 'flex-start' }}>
       <div className="card-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
@@ -182,8 +194,8 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute }) {
         {list.length === 0 ? <Empty icon={SD_I.Users} title="No new users yet" /> :
          list.map(u => (
            <div key={u.id} role="button" tabIndex={0} aria-label={`Open ${u.name}`}
-             onClick={() => setRoute && setRoute('users')}
-             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRoute && setRoute('users'); } }}
+             onClick={() => setRoute && setRoute('users:' + u.id)}
+             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRoute && setRoute('users:' + u.id); } }}
              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--color-hairline)', cursor: 'pointer', transition: 'background 120ms ease' }}
              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface-soft)'}
              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
@@ -192,12 +204,19 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute }) {
                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</p>
                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{u.company}</p>
              </div>
-             <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>
-             <button onClick={(e) => e.stopPropagation()} className="row-action-btn danger" aria-label="Delete"><SD_I.Trash2 size={14} /></button>
-             <button onClick={(e) => e.stopPropagation()} className="row-action-btn" aria-label="Edit"><SD_I.Pencil size={14} /></button>
+             <button onClick={(e) => { e.stopPropagation(); toggleActive(u); }}
+               aria-label={u.status === 'active' ? 'Deactivate user' : 'Activate user'}
+               title={u.status === 'active' ? 'Click to deactivate' : 'Click to activate'}
+               style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer' }}>
+               <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>
+             </button>
+             <button onClick={(e) => { e.stopPropagation(); setConfirmId(u.id); }} className="row-action-btn danger" aria-label="Delete user"><SD_I.Trash2 size={14} /></button>
+             <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('users:' + u.id + ':edit'); }} className="row-action-btn" aria-label="Edit user"><SD_I.Pencil size={14} /></button>
            </div>
          ))}
       </div>
+      <ConfirmDialog open={!!confirmId} onClose={() => setConfirmId(null)} title="Remove this user from the list?" message="They'll be hidden from this card. The full user record is unchanged."
+        confirmLabel="Remove" onConfirm={confirmDelete} />
     </div>
   );
 }

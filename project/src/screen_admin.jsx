@@ -5,7 +5,7 @@ const SP_I = window.Icons;
 const { useState: SP_us } = React;
 
 /* ============ Payments (admin/vendor/worker) ============ */
-function PagePayments({ role, currentUser }) {
+function PagePayments({ role, currentUser, setRoute, openId }) {
   const toast = useToast();
   const [dispute, setDispute] = SP_us(null);
   const [openTx, setOpenTx] = SP_us(null);
@@ -22,6 +22,19 @@ function PagePayments({ role, currentUser }) {
       const q = search.toLowerCase();
       return [t.invoice, t.payee, t.payer].some(s => (s || '').toLowerCase().includes(q));
     });
+
+  const paged = usePaged(filtered, 10);
+
+  React.useEffect(() => {
+    if (!openId) return;
+    const t = txs.find(x => x.id === openId);
+    if (t) setOpenTx(t);
+  }, [openId]);
+
+  const closeTx = () => {
+    setOpenTx(null);
+    if (openId) setRoute && setRoute('payments');
+  };
 
   const totalEarned = txs.filter(t => t.status === 'Paid').reduce((s,t) => s + t.amount, 0);
   const totalPending = txs.filter(t => t.status === 'Pending' || t.status === 'Not Due').reduce((s,t) => s + t.amount, 0);
@@ -55,9 +68,12 @@ function PagePayments({ role, currentUser }) {
             <tr><th>Invoice</th><th>Status</th><th>{role==='worker' ? 'From' : 'To / from'}</th><th>Amount</th><th>Date</th><th></th></tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? <tr><td colSpan={6}><Empty icon={SP_I.CreditCard} title="No matching payments" body="Try a different status or search term." /></td></tr> :
-             filtered.map(t => (
-              <tr key={t.id}>
+            {paged.slice.length === 0 ? <tr><td colSpan={6}><Empty icon={SP_I.CreditCard} title="No matching payments" body="Try a different status or search term." /></td></tr> :
+             paged.slice.map(t => (
+              <tr key={t.id} tabIndex={0} role="button" aria-label={`Open invoice ${t.invoice}`}
+                  onClick={(e) => { if (e.target.closest('button')) return; setOpenTx(t); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setOpenTx(t); } }}
+                  style={{ cursor: 'pointer' }}>
                 <td style={{ fontWeight: 500, color: 'var(--color-ink)' }}>{t.invoice}{t.note ? <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-warning)' }}>{t.note}</p> : null}</td>
                 <td><Badge kind={t.status} /></td>
                 <td style={{ fontSize: 13 }}>{role === 'worker' ? t.payer : (role === 'vendor' ? t.payee : `${t.payee} ← ${t.payer}`)}</td>
@@ -76,6 +92,7 @@ function PagePayments({ role, currentUser }) {
             ))}
           </tbody>
         </table>
+        <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="payments" />
       </div>
 
       <Modal open={!!dispute} onClose={() => setDispute(null)} title="File a dispute" size="md"
@@ -99,8 +116,8 @@ function PagePayments({ role, currentUser }) {
       </Modal>
 
       {openTx ? (
-        <Modal open={!!openTx} onClose={() => setOpenTx(null)} title={`Invoice ${openTx.invoice}`} size="md"
-          footer={<><button className="btn btn-ghost" onClick={() => setOpenTx(null)}>Close</button><button className="btn btn-coral" onClick={() => { const t = openTx; setOpenTx(null); toast.push({ kind: 'success', title: 'Receipt sent', body: `Sent to ${t.payee}` }); }}>Send receipt</button></>}>
+        <Modal open={!!openTx} onClose={closeTx} title={`Invoice ${openTx.invoice}`} size="md"
+          footer={<><button className="btn btn-ghost" onClick={closeTx}>Close</button><button className="btn btn-coral" onClick={() => { const t = openTx; closeTx(); toast.push({ kind: 'success', title: 'Receipt sent', body: `Sent to ${t.payee}` }); }}>Send receipt</button></>}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Status</p><Badge kind={openTx.status} /></div>
             <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Amount</p><p className="t-mono-amount" style={{ margin: '4px 0 0', fontSize: 18 }}>{fmtMoney(openTx.amount)}</p></div>
@@ -181,18 +198,24 @@ function PageDisputes() {
 }
 
 /* ============ Users / Workers / Vendors directory ============ */
-function PageDirectory({ filter, title, role, setRoute }) {
+function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
   const [search, setSearch] = SP_us('');
   const [statusFilter, setStatusFilter] = SP_us('all');
   const [sortBy, setSortBy] = SP_us('newest');
   const [filterOpen, setFilterOpen] = SP_us(false);
   const [inviteOpen, setInviteOpen] = SP_us(false);
   const [confirmId, setConfirmId] = SP_us(null);
+  const [bulkConfirm, setBulkConfirm] = SP_us(null);
   const [selected, setSelected] = SP_us(null);
+  const [editing, setEditing] = SP_us(false);
   const [picked, setPicked] = SP_us({});
+  const [overrides, setOverrides] = SP_us({});
+  const [deleted, setDeleted] = SP_us({});
   const toast = useToast();
 
-  const all = SP_D.USERS
+  const merged = SP_D.USERS.map(u => overrides[u.id] ? { ...u, ...overrides[u.id] } : u).filter(u => !deleted[u.id]);
+
+  const all = merged
     .filter(u => filter ? filter(u) : true)
     .filter(u => statusFilter === 'all' || u.status === statusFilter)
     .filter(u => {
@@ -207,6 +230,49 @@ function PageDirectory({ filter, title, role, setRoute }) {
       if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
       return 0;
     });
+
+  const paged = usePaged(all, 10);
+  const visible = paged.slice;
+  const pickedIds = Object.keys(picked).filter(k => picked[k]);
+  const pickedCount = pickedIds.length;
+
+  // Sub-route: pre-open user detail (and optionally in edit mode)
+  React.useEffect(() => {
+    if (!openId) return;
+    const u = merged.find(x => x.id === openId);
+    if (u) { setSelected(u); setEditing(openAction === 'edit'); }
+  }, [openId, openAction]);
+
+  const closeDetail = () => {
+    setSelected(null);
+    setEditing(false);
+    // Clean sub-route from hash so back navigation works
+    if (openId) setRoute && setRoute(title === 'Workers' ? 'workers' : title === 'Vendors' ? 'vendors' : 'users');
+  };
+
+  const applyBulk = (action) => {
+    if (action === 'activate' || action === 'deactivate') {
+      const next = action === 'activate' ? 'active' : 'inactive';
+      setOverrides(o => {
+        const c = { ...o };
+        pickedIds.forEach(id => { c[id] = { ...(c[id] || {}), status: next }; });
+        return c;
+      });
+      toast.push({ kind: action === 'activate' ? 'success' : 'warning', title: `${pickedCount} marked ${next}` });
+      setPicked({});
+    } else if (action === 'delete') {
+      setBulkConfirm({ ids: pickedIds, count: pickedCount });
+    }
+  };
+  const confirmBulkDelete = () => {
+    setDeleted(d => {
+      const c = { ...d };
+      bulkConfirm.ids.forEach(id => { c[id] = true; });
+      return c;
+    });
+    toast.push({ kind: 'warning', title: `${bulkConfirm.count} removed` });
+    setPicked({}); setBulkConfirm(null);
+  };
 
   return (
     <div className="content fade-up">
@@ -228,8 +294,8 @@ function PageDirectory({ filter, title, role, setRoute }) {
             <tr>
               <th style={{ width: 36 }}>
                 <CheckBox
-                  checked={all.length > 0 && all.every(u => picked[u.id])}
-                  onChange={(on) => { const n = {}; if (on) all.forEach(u => { n[u.id] = true; }); setPicked(n); }} />
+                  checked={visible.length > 0 && visible.every(u => picked[u.id])}
+                  onChange={(on) => { setPicked(p => { const n = { ...p }; visible.forEach(u => { if (on) n[u.id] = true; else delete n[u.id]; }); return n; }); }} />
               </th>
               <th>Name</th>
               <th>Role / Company</th>
@@ -242,11 +308,11 @@ function PageDirectory({ filter, title, role, setRoute }) {
             </tr>
           </thead>
           <tbody>
-            {all.length === 0 ? <tr><td colSpan={9}><Empty icon={SP_I.Users} title="No matches" body="Try a broader search." /></td></tr> :
-             all.map(u => (
+            {visible.length === 0 ? <tr><td colSpan={9}><Empty icon={SP_I.Users} title="No matches" body="Try a broader search." /></td></tr> :
+             visible.map(u => (
               <tr key={u.id} tabIndex={0} role="button" aria-label={`Open ${u.name}`}
-                  onClick={() => setSelected(u)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(u); } }}
+                  onClick={() => { setSelected(u); setEditing(false); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(u); setEditing(false); } }}
                   style={{ cursor: 'pointer' }}>
                 <td onClick={(e) => e.stopPropagation()}>
                   <CheckBox checked={!!picked[u.id]} onChange={(on) => setPicked(p => ({ ...p, [u.id]: on }))} />
@@ -268,21 +334,35 @@ function PageDirectory({ filter, title, role, setRoute }) {
                 <td style={{ fontSize: 12, color: 'var(--color-muted)' }}>{fmtDate(u.joined, 'mdy-dots')}</td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <div className="row-actions">
-                    <button className="row-action-btn" onClick={() => setSelected(u)}><SP_I.Eye size={14} /></button>
-                    <button className="row-action-btn" onClick={() => setSelected(u)} title="Edit profile"><SP_I.Pencil size={14} /></button>
-                    <button className="row-action-btn danger" onClick={() => setConfirmId(u.id)}><SP_I.Trash2 size={14} /></button>
+                    <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(false); }} title="View profile"><SP_I.Eye size={14} /></button>
+                    <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(true); }} title="Edit profile"><SP_I.Pencil size={14} /></button>
+                    <button className="row-action-btn danger" onClick={() => setConfirmId(u.id)} title="Delete"><SP_I.Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="users" />
       </div>
 
-      <ConfirmDialog open={!!confirmId} onClose={() => setConfirmId(null)} title="Suspend this user?" message="They'll lose access to current gigs and conversations. You can reinstate later." confirmLabel="Suspend"
-        onConfirm={() => toast.push({ kind: 'warning', title: 'User suspended' })} />
+      <BulkActionBar count={pickedCount} onClear={() => setPicked({})}
+        actions={[
+          { label: 'Activate',   icon: SP_I.CheckCircle2, onClick: () => applyBulk('activate') },
+          { label: 'Deactivate', icon: SP_I.UserX,        onClick: () => applyBulk('deactivate') },
+          { label: 'Delete',     icon: SP_I.Trash2, danger: true, onClick: () => applyBulk('delete') },
+        ]} />
 
-      <UserDetailModal user={selected} onClose={() => setSelected(null)} setRoute={setRoute} />
+      <ConfirmDialog open={!!confirmId} onClose={() => setConfirmId(null)} title="Delete this user?" message="They'll be removed from the directory. The full record stays archived." confirmLabel="Delete"
+        onConfirm={() => { setDeleted(d => ({ ...d, [confirmId]: true })); toast.push({ kind: 'warning', title: 'User deleted' }); }} />
+
+      <ConfirmDialog open={!!bulkConfirm} onClose={() => setBulkConfirm(null)}
+        title={`Delete ${bulkConfirm?.count} users?`} message="They'll be removed from the directory."
+        confirmLabel="Delete" onConfirm={confirmBulkDelete} />
+
+      <UserDetailModal user={selected} onClose={closeDetail} setRoute={setRoute}
+        initialEdit={editing}
+        onSave={(draft) => { setOverrides(o => ({ ...o, [selected.id]: { ...(o[selected.id] || {}), ...draft } })); }} />
 
       <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter" size="sm"
         footer={<><button className="btn btn-ghost" onClick={() => { setStatusFilter('all'); }}>Reset</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>
@@ -308,19 +388,24 @@ function PageDirectory({ filter, title, role, setRoute }) {
   );
 }
 
-function UserDetailModal({ user, onClose, setRoute }) {
+function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave }) {
   const toast = useToast();
-  const [editing, setEditing] = SP_us(false);
+  const [editing, setEditing] = SP_us(initialEdit);
   const [draft, setDraft] = SP_us({ name: user?.name || '', email: user?.email || '', company: user?.company || '', city: user?.city || '' });
   React.useEffect(() => {
     if (user) setDraft({ name: user.name, email: user.email, company: user.company, city: user.city });
-    setEditing(false);
-  }, [user?.id]);
+    setEditing(initialEdit);
+  }, [user?.id, initialEdit]);
   if (!user) return null;
+  const handleSave = () => {
+    onSave && onSave(draft);
+    setEditing(false);
+    toast.push({ kind: 'success', title: 'Profile updated' });
+  };
   return (
     <Modal open={!!user} onClose={onClose} title={user.name} size="lg"
       footer={editing
-        ? <><button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button><button className="btn btn-coral" onClick={() => { setEditing(false); toast.push({ kind: 'success', title: 'Profile updated' }); }}>Save changes</button></>
+        ? <><button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button><button className="btn btn-coral" onClick={handleSave}>Save changes</button></>
         : <><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { onClose(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${user.first}` }); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => setEditing(true)}><SP_I.Pencil size={14} />Edit profile</button></>}>
       <div style={{ display: 'flex', gap: 24, marginBottom: 20, alignItems: 'flex-start' }}>
         <Avatar name={user.name} size="xl" />

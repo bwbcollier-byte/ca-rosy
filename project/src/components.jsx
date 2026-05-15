@@ -303,11 +303,14 @@ function RoseLogo({ size = 28 }) {
 }
 
 /* ---------- App header ---------- */
-function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRoute }) {
+function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRoute, breadcrumbs }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header className="app-header">
-      <h1>{title}</h1>
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <h1 style={{ margin: 0 }}>{title}</h1>
+        <Breadcrumbs items={breadcrumbs} />
+      </div>
       <div className="header-spacer" />
       <RoleSwitch role={role} setRole={setRole} />
       <button className="icon-btn" aria-label="Notifications" onClick={onBell}>
@@ -412,6 +415,106 @@ function NotificationPanel({ open, onClose, setRoute }) {
   );
 }
 
+/* ---------- Pagination ---------- */
+function Pagination({ page, setPage, total, perPage = 10, label = 'rows' }) {
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  const safePage = Math.min(page, pages);
+  const from = total === 0 ? 0 : (safePage - 1) * perPage + 1;
+  const to = Math.min(safePage * perPage, total);
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--color-hairline)', alignItems: 'center', fontSize: 12.5, color: 'var(--color-muted)' }}>
+      <span>{total === 0 ? `No ${label}` : `Showing ${from}–${to} of ${total} ${label}`}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button className="btn btn-ghost btn-sm" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}><Ic.ChevronLeft size={14} />Previous</button>
+        <span>Page {safePage} of {pages}</span>
+        <button className="btn btn-ghost btn-sm" disabled={safePage >= pages} onClick={() => setPage(p => Math.min(pages, p + 1))}>Next<Ic.ChevronRight size={14} /></button>
+      </div>
+    </div>
+  );
+}
+
+function usePaged(items, perPage = 10) {
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(items.length / perPage));
+  useEffect(() => { if (page > pages) setPage(1); }, [items.length, pages, page]);
+  const slice = items.slice((page - 1) * perPage, page * perPage);
+  return { page, setPage, pages, slice, total: items.length, perPage };
+}
+
+/* ---------- Bulk action bar ---------- */
+function BulkActionBar({ count, actions = [], onClear }) {
+  if (!count) return null;
+  return (
+    <div role="region" aria-label="Bulk actions"
+      style={{ position: 'sticky', bottom: 16, zIndex: 50, margin: '16px auto 0', maxWidth: 720,
+        background: 'var(--color-ink)', color: '#fff', borderRadius: 14, boxShadow: 'var(--shadow-modal)',
+        padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 14, fontSize: 13.5 }}>
+      <span style={{ fontWeight: 600 }}>{count} selected</span>
+      <span style={{ flex: 1 }} />
+      {actions.map((a, i) => (
+        <button key={i} onClick={a.onClick}
+          className={a.danger ? 'btn btn-danger btn-sm' : 'btn btn-coral btn-sm'}
+          style={a.danger ? undefined : { background: 'var(--rosy-coral)', color: '#fff' }}>
+          {a.icon ? <a.icon size={14} /> : null}{a.label}
+        </button>
+      ))}
+      <button onClick={onClear} aria-label="Clear selection"
+        style={{ border: 0, background: 'transparent', color: '#fff', cursor: 'pointer', padding: 6, display: 'flex' }}>
+        <Ic.X size={16} />
+      </button>
+    </div>
+  );
+}
+
+/* ---------- Breadcrumbs ---------- */
+function Breadcrumbs({ items = [] }) {
+  if (!items.length) return null;
+  return (
+    <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--color-muted)', marginTop: 4 }}>
+      {items.map((it, i) => {
+        const isLast = i === items.length - 1;
+        return (
+          <React.Fragment key={i}>
+            {it.onClick && !isLast ? (
+              <button onClick={it.onClick} style={{ background: 'none', border: 0, padding: 0, color: 'var(--color-muted)', cursor: 'pointer', fontSize: 'inherit' }}>{it.label}</button>
+            ) : (
+              <span style={{ color: isLast ? 'var(--color-ink)' : 'var(--color-muted)', fontWeight: isLast ? 500 : 400 }}>{it.label}</span>
+            )}
+            {!isLast ? <Ic.ChevronRight size={11} style={{ color: 'var(--color-muted-soft)' }} /> : null}
+          </React.Fragment>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ---------- Event/entity image with placeholder fallback ---------- */
+function EventImage({ src, name = '', size = 44, radius = 10, className = '', style = {} }) {
+  const [failed, setFailed] = useState(false);
+  const hasSrc = !!src && !failed;
+  const seed = (name || '').charCodeAt(0) || 0;
+  const palettes = [
+    ['#FDBA9C', '#F47C5D'], ['#F8C9B0', '#E59E72'], ['#FBD6C2', '#D88A6A'],
+    ['#F0BDA5', '#C97554'], ['#FAD0BC', '#E48761'], ['#F4C2A3', '#CC7349'],
+  ];
+  const [a, b] = palettes[seed % palettes.length];
+  const initial = (name || '?').trim().charAt(0).toUpperCase();
+  const baseStyle = { width: size, height: size, borderRadius: radius, flex: 'none', ...style };
+  if (hasSrc) {
+    return <img src={src} alt={name} onError={() => setFailed(true)}
+      className={className} style={{ ...baseStyle, objectFit: 'cover', display: 'block' }} />;
+  }
+  return (
+    <div className={className} aria-label={name || 'No image'} role="img"
+      style={{ ...baseStyle, background: `linear-gradient(135deg, ${a}, ${b})`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 500,
+        fontSize: Math.max(12, size * 0.42), letterSpacing: '-0.02em' }}>
+      {initial}
+    </div>
+  );
+}
+
 /* ---------- Sort menu ---------- */
 function SortMenu({ value, onChange, options }) {
   const [open, setOpen] = useState(false);
@@ -459,5 +562,6 @@ function getGreeting(name) {
 Object.assign(window, {
   ToastHost, useToast, Avatar, Badge, GigChip, StatCard, Modal, Slideover, ConfirmDialog, Empty,
   Sidebar, AppHeader, NotificationPanel, RoseLogo, RoleSwitch, SortMenu,
+  Pagination, usePaged, BulkActionBar, Breadcrumbs, EventImage,
   fmtDate, fmtMoney, getGreeting,
 });

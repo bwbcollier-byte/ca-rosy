@@ -11,7 +11,9 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
   const [filter, setFilter] = SE_us({ open: true, draft: true, completed: true });
   const [filterOpen, setFilterOpen] = SE_us(false);
   const [addOpen, setAddOpen] = SE_us(false);
+  const [editEvent, setEditEvent] = SE_us(null);
   const [confirmId, setConfirmId] = SE_us(null);
+  const [bulkConfirm, setBulkConfirm] = SE_us(null);
   const [events, setEvents] = SE_us(SE_D.EVENTS);
   const [selected, setSelected] = SE_us({});
   const [newEvent, setNewEvent] = SE_us({ name: 'Carter Garden Brunch', desc: 'Saturday morning brunch with garden installations and intimate tablescapes for 80 guests.', date: '2026-07-04' });
@@ -34,6 +36,26 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
       if (sortBy === 'fill')      return (b.filledCount / b.gigCount) - (a.filledCount / a.gigCount);
       return 0;
     });
+
+  const paged = usePaged(filtered, 10);
+  const tableRows = view === 'table' ? paged.slice : filtered;
+  const pickedIds = Object.keys(selected).filter(k => selected[k]);
+  const pickedCount = pickedIds.length;
+
+  const applyBulk = (action) => {
+    if (action === 'open' || action === 'draft' || action === 'completed') {
+      setEvents(es => es.map(e => pickedIds.includes(e.id) ? { ...e, status: action } : e));
+      toast.push({ kind: 'success', title: `${pickedCount} marked ${action}` });
+      setSelected({});
+    } else if (action === 'delete') {
+      setBulkConfirm({ ids: pickedIds, count: pickedCount });
+    }
+  };
+  const confirmBulkDelete = () => {
+    setEvents(es => es.filter(e => !bulkConfirm.ids.includes(e.id)));
+    toast.push({ kind: 'warning', title: `${bulkConfirm.count} events deleted` });
+    setSelected({}); setBulkConfirm(null);
+  };
 
   return (
     <div className="content fade-up">
@@ -72,12 +94,8 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
               <tr>
                 <th style={{ width: 36 }}>
                   <CheckBox
-                    checked={filtered.length > 0 && filtered.every(e => selected[e.id])}
-                    onChange={(on) => {
-                      const next = {};
-                      if (on) filtered.forEach(e => { next[e.id] = true; });
-                      setSelected(next);
-                    }} />
+                    checked={tableRows.length > 0 && tableRows.every(e => selected[e.id])}
+                    onChange={(on) => { setSelected(s => { const n = { ...s }; tableRows.forEach(e => { if (on) n[e.id] = true; else delete n[e.id]; }); return n; }); }} />
                 </th>
                 <th>Event</th>
                 <th>Date</th>
@@ -88,18 +106,21 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {tableRows.length === 0 ? (
                 <tr><td colSpan={7}>
                   <Empty icon={SE_I.Calendar} title="No events yet" body="Create your first event to start posting gigs." cta={<button className="btn btn-coral" onClick={() => setAddOpen(true)}><SE_I.Plus size={14} />New Event</button>} />
                 </td></tr>
-              ) : filtered.map(e => {
+              ) : tableRows.map(e => {
                 const v = SE_D.VENUES.find(v => v.id === e.venueId);
                 return (
-                  <tr key={e.id}>
-                    <td><CheckBox checked={!!selected[e.id]} onChange={(on) => setSelected(s => ({ ...s, [e.id]: on }))} /></td>
+                  <tr key={e.id} tabIndex={0} role="button" aria-label={`Open ${e.name}`}
+                      onClick={(ev) => { if (ev.target.closest('button')) return; setRoute('events:' + e.id); }}
+                      onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); setRoute('events:' + e.id); } }}
+                      style={{ cursor: 'pointer' }}>
+                    <td onClick={(ev) => ev.stopPropagation()}><CheckBox checked={!!selected[e.id]} onChange={(on) => setSelected(s => ({ ...s, [e.id]: on }))} /></td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 44, height: 44, borderRadius: 10, backgroundImage: `url(${e.image})`, backgroundSize: 'cover', backgroundPosition: 'center', flex: 'none' }} />
+                        <EventImage src={e.image} name={e.name} size={44} radius={10} />
                         <div>
                           <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-ink)', fontSize: 14 }}>{e.name}</p>
                           <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.desc}</p>
@@ -110,11 +131,11 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
                     <td style={{ fontSize: 13 }}>{v?.name}<br/><span className="t-muted" style={{ fontSize: 12 }}>{v?.city}</span></td>
                     <td>{e.filledCount}/{e.gigCount}</td>
                     <td><Badge kind={e.status === 'open' ? 'Open' : e.status === 'draft' ? 'Draft' : 'Completed'} /></td>
-                    <td>
+                    <td onClick={(ev) => ev.stopPropagation()}>
                       <div className="row-actions">
-                        <button className="row-action-btn" onClick={() => setRoute('events:' + e.id)}><SE_I.Eye size={14} /></button>
-                        <button className="row-action-btn" onClick={() => setRoute('events:' + e.id)} title="Edit"><SE_I.Pencil size={14} /></button>
-                        <button className="row-action-btn danger" onClick={() => setConfirmId(e.id)}><SE_I.Trash2 size={14} /></button>
+                        <button className="row-action-btn" onClick={() => setRoute('events:' + e.id)} title="View"><SE_I.Eye size={14} /></button>
+                        <button className="row-action-btn" onClick={() => setEditEvent(e)} title="Edit"><SE_I.Pencil size={14} /></button>
+                        <button className="row-action-btn danger" onClick={() => setConfirmId(e.id)} title="Delete"><SE_I.Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -122,8 +143,36 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
               })}
             </tbody>
           </table>
+          <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="events" />
         </div>
       )}
+
+      <BulkActionBar count={pickedCount} onClear={() => setSelected({})}
+        actions={[
+          { label: 'Mark Open',     icon: SE_I.CheckCircle2, onClick: () => applyBulk('open') },
+          { label: 'Mark Draft',    icon: SE_I.ClipboardList, onClick: () => applyBulk('draft') },
+          { label: 'Mark Completed', icon: SE_I.CheckCircle, onClick: () => applyBulk('completed') },
+          { label: 'Delete', icon: SE_I.Trash2, danger: true, onClick: () => applyBulk('delete') },
+        ]} />
+
+      <Slideover open={!!editEvent} onClose={() => setEditEvent(null)} title={editEvent ? `Edit · ${editEvent.name}` : 'Edit event'}
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => setEditEvent(null)}>Cancel</button>
+            <button className="btn btn-coral" onClick={() => {
+              const id = editEvent.id;
+              setEvents(es => es.map(x => x.id === id ? { ...x, ...editEvent } : x));
+              toast.push({ kind: 'success', title: 'Event updated', body: `${editEvent.name} saved.` });
+              setEditEvent(null);
+            }}>Save changes</button>
+          </>
+        }>
+        {editEvent ? <NewEventForm value={editEvent} onChange={setEditEvent} /> : null}
+      </Slideover>
+
+      <ConfirmDialog open={!!bulkConfirm} onClose={() => setBulkConfirm(null)}
+        title={`Delete ${bulkConfirm?.count} events?`} message="This will also remove their gigs, applications, and pending payments."
+        confirmLabel="Delete" onConfirm={confirmBulkDelete} />
 
       <Slideover open={addOpen} onClose={() => setAddOpen(false)} title="New Event"
         footer={
@@ -171,7 +220,8 @@ function EventCard({ event, onClick }) {
   const v = SE_D.VENUES.find(v => v.id === event.venueId);
   return (
     <div className="event-card" onClick={onClick} role="button" tabIndex={0}>
-      <div className="ec-image" style={{ backgroundImage: `url(${event.image || SE_D.IMAGES.events[0]})` }}>
+      <div className="ec-image" style={event.image ? { backgroundImage: `url(${event.image})` } : { background: `linear-gradient(135deg, #FDBA9C, #F47C5D)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 42 }}>
+        {!event.image ? <span aria-hidden>{(event.name || '?').charAt(0).toUpperCase()}</span> : null}
         <Badge kind={event.status === 'open' ? 'Open' : event.status === 'draft' ? 'Draft' : 'Completed'} />
       </div>
       <div className="ec-body">

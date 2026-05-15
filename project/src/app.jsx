@@ -101,7 +101,27 @@ function App() {
     'admin-team': 'Admin team', broadcast: 'Send broadcast', 'notif-rules': 'Notification rules',
   };
   const baseRoute = route.split(':')[0];
+  const subId = route.split(':')[1];
   const title = titleMap[baseRoute] || 'Rosy Recruits';
+
+  const breadcrumbs = (() => {
+    if (baseRoute === 'dashboard') return [];
+    const root = { label: 'Dashboard', onClick: () => setRoute('dashboard') };
+    const section = { label: title, onClick: subId ? () => setRoute(baseRoute) : undefined };
+    if (!subId) return [root, section];
+    let leaf = subId;
+    if (baseRoute === 'events') {
+      const ev = AD.EVENTS.find(e => e.id === subId);
+      if (ev) leaf = ev.name;
+    } else if (baseRoute === 'users' || baseRoute === 'workers' || baseRoute === 'vendors') {
+      const u = AD.USERS.find(x => x.id === subId);
+      if (u) leaf = u.name;
+    } else if (baseRoute === 'payments') {
+      const t = AD.TRANSACTIONS.find(x => x.id === subId);
+      if (t) leaf = t.invoice;
+    }
+    return [root, section, { label: leaf }];
+  })();
 
   const handleSignOut = () => { setMode('marketing'); };
 
@@ -112,7 +132,8 @@ function App() {
           sidebarStyle={tweaks.sidebarStyle} dark={tweaks.sidebarDark} />
         <div className="main">
           <AppHeader title={title} role={role} setRole={(r) => { setRole(r); setRoute('dashboard'); }}
-            onSignOut={handleSignOut} onBell={() => setRoute('notifications')} currentUser={currentUser} setRoute={setRoute} />
+            onSignOut={handleSignOut} onBell={() => setRoute('notifications')} currentUser={currentUser} setRoute={setRoute}
+            breadcrumbs={breadcrumbs} />
           <ScreenRouter role={role} route={route} baseRoute={baseRoute} setRoute={setRoute}
             currentUser={currentUser} tweaks={tweaks} />
         </div>
@@ -150,12 +171,15 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
   if (baseRoute === 'my-gigs')   return <PageMyGigsWorker currentUser={currentUser} />;
 
   // directories
-  if (baseRoute === 'users')   return <PageDirectory title="Users"   filter={u => u.role !== 'admin'} role={role} setRoute={setRoute} />;
-  if (baseRoute === 'workers') return <PageDirectory title="Workers" filter={u => u.role === 'worker'} role={role} setRoute={setRoute} />;
-  if (baseRoute === 'vendors') return <PageDirectory title="Vendors" filter={u => u.role === 'vendor'} role={role} setRoute={setRoute} />;
+  const parts = route.split(':');
+  const subId = parts[1];
+  const subAction = parts[2];
+  if (baseRoute === 'users')   return <PageDirectory title="Users"   filter={u => u.role !== 'admin'} role={role} setRoute={setRoute} openId={subId} openAction={subAction} />;
+  if (baseRoute === 'workers') return <PageDirectory title="Workers" filter={u => u.role === 'worker'} role={role} setRoute={setRoute} openId={subId} openAction={subAction} />;
+  if (baseRoute === 'vendors') return <PageDirectory title="Vendors" filter={u => u.role === 'vendor'} role={role} setRoute={setRoute} openId={subId} openAction={subAction} />;
   if (baseRoute === 'venues')  return <PageVenues />;
 
-  if (baseRoute === 'payments') return <PagePayments role={role} currentUser={currentUser} />;
+  if (baseRoute === 'payments') return <PagePayments role={role} currentUser={currentUser} setRoute={setRoute} openId={subId} />;
   if (baseRoute === 'disputes') return <PageDisputes />;
   if (baseRoute === 'inbox')    return <PageInbox />;
   if (baseRoute === 'notifications') return <PageNotificationCenter setRoute={setRoute} role={role} />;
