@@ -207,7 +207,10 @@ function PageDirectory({ filter, title, role }) {
           <tbody>
             {all.length === 0 ? <tr><td colSpan={9}><Empty icon={SP_I.Users} title="No matches" body="Try a broader search." /></td></tr> :
              all.map(u => (
-              <tr key={u.id} onClick={() => setSelected(u)} style={{ cursor: 'pointer' }}>
+              <tr key={u.id} tabIndex={0} role="button" aria-label={`Open ${u.name}`}
+                  onClick={() => setSelected(u)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(u); } }}
+                  style={{ cursor: 'pointer' }}>
                 <td onClick={(e) => e.stopPropagation()}>
                   <CheckBox checked={!!picked[u.id]} onChange={(on) => setPicked(p => ({ ...p, [u.id]: on }))} />
                 </td>

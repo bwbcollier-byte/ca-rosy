@@ -127,16 +127,16 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
             <div className="mk-strip" style={{ marginBottom: 20 }}>
               <SX_I.Sparkles size={14} />New: Stripe instant payouts in 5 cities
             </div>
-            <h1>Where floral excellence meets efficiency.</h1>
+            <h1>Where floral <em>excellence</em> meets efficiency.</h1>
             <p>A skilled crew on every event — booked in minutes, paid in days. Built by florists who got tired of texting from a spreadsheet.</p>
             <div style={{ display: 'flex', gap: 12 }}>
               <button className="btn btn-coral btn-lg" onClick={() => goToAuth('signup')}>Hire a team</button>
               <button className="btn btn-ghost btn-lg" onClick={() => goToAuth('signup')}>Find work</button>
             </div>
-            <div style={{ display: 'flex', gap: 28, marginTop: 36, fontSize: 13.5, color: 'var(--color-muted)' }}>
-              <span><strong style={{ fontSize: 18, color: 'var(--color-ink)', fontFamily: 'var(--font-display)' }}>1,284</strong>&nbsp; active workers</span>
-              <span><strong style={{ fontSize: 18, color: 'var(--color-ink)', fontFamily: 'var(--font-display)' }}>412</strong>&nbsp; vendor studios</span>
-              <span><strong style={{ fontSize: 18, color: 'var(--color-ink)', fontFamily: 'var(--font-display)' }}>$284k</strong>&nbsp; paid this month</span>
+            <div className="mk-hero-stats">
+              <div className="mk-hero-stat"><span className="num">1,284</span><span className="lbl">active workers</span></div>
+              <div className="mk-hero-stat"><span className="num">412</span><span className="lbl">vendor studios</span></div>
+              <div className="mk-hero-stat"><span className="num">$284k</span><span className="lbl">paid this month</span></div>
             </div>
           </div>
           <div className="mk-hero-art">

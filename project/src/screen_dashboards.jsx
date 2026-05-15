@@ -88,7 +88,10 @@ function UpcomingEventsCard({ setRoute, vendorId, workerId }) {
          events.map(e => {
            const { day, month } = fmtDate(e.date, 'day-month');
            return (
-             <div key={e.id} onClick={() => setRoute('events:' + e.id)} style={{ display: 'flex', gap: 16, padding: '16px 20px', borderBottom: '1px solid var(--color-hairline)', cursor: 'pointer', transition: 'background 120ms ease' }}
+             <div key={e.id} role="button" tabIndex={0} aria-label={`Open ${e.name}`}
+               onClick={() => setRoute('events:' + e.id)}
+               onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setRoute('events:' + e.id); } }}
+               style={{ display: 'flex', gap: 16, padding: '16px 20px', borderBottom: '1px solid var(--color-hairline)', cursor: 'pointer', transition: 'background 120ms ease' }}
                onMouseEnter={(ev) => ev.currentTarget.style.background = 'var(--color-surface-soft)'}
                onMouseLeave={(ev) => ev.currentTarget.style.background = 'transparent'}>
                <div className="date-badge"><div className="day">{day}</div><div className="mon">{month}</div></div>
@@ -135,7 +138,10 @@ function RecentTransactionsCard({ vendorScope, workerScope, setRoute }) {
           {txs.length === 0 ? (
             <tr><td colSpan={4}><Empty icon={SD_I.ShoppingCart} title="No recent transactions" /></td></tr>
           ) : txs.map(t => (
-            <tr key={t.id} onClick={() => setRoute && setRoute('payments')} style={{ cursor: 'pointer' }}>
+            <tr key={t.id} tabIndex={0} role="button" aria-label={`Open transaction ${t.invoice}`}
+                onClick={() => setRoute && setRoute('payments')}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRoute && setRoute('payments'); } }}
+                style={{ cursor: 'pointer' }}>
               <td style={{ fontWeight: 500, color: 'var(--color-ink)' }}>{t.invoice}</td>
               <td><Badge kind={t.status} /></td>
               <td className="t-mono-amount">{fmtMoney(t.amount)}</td>
@@ -175,7 +181,10 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute }) {
       <div>
         {list.length === 0 ? <Empty icon={SD_I.Users} title="No new users yet" /> :
          list.map(u => (
-           <div key={u.id} onClick={() => setRoute && setRoute('users')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--color-hairline)', cursor: 'pointer', transition: 'background 120ms ease' }}
+           <div key={u.id} role="button" tabIndex={0} aria-label={`Open ${u.name}`}
+             onClick={() => setRoute && setRoute('users')}
+             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRoute && setRoute('users'); } }}
+             style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--color-hairline)', cursor: 'pointer', transition: 'background 120ms ease' }}
              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface-soft)'}
              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
              <Avatar name={u.name} size="md" />
@@ -206,7 +215,10 @@ function FeaturedGigPostsCard({ setRoute }) {
         {open.map(g => {
           const ev = SD_D.EVENTS.find(e => e.id === g.eventId);
           return (
-            <div key={g.id} onClick={() => setRoute('events:' + ev.id)} style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-hairline)', display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer', transition: 'background 120ms ease' }}
+            <div key={g.id} role="button" tabIndex={0} aria-label={`Open ${ev.name}`}
+              onClick={() => setRoute('events:' + ev.id)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRoute('events:' + ev.id); } }}
+              style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-hairline)', display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer', transition: 'background 120ms ease' }}
               onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface-soft)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
