@@ -278,6 +278,9 @@ function PageEventDetail({ eventId, role, setRoute }) {
   const [tab, setTab] = SE_us('overview');
   const toast = useToast();
   const [applyGig, setApplyGig] = SE_us(null);
+  const [editOpen, setEditOpen] = SE_us(false);
+  const [editForm, setEditForm] = SE_us({ name: e.name, desc: e.desc, date: e.date });
+  const [decided, setDecided] = SE_us({});
 
   return (
     <div className="content fade-up">
@@ -298,7 +301,7 @@ function PageEventDetail({ eventId, role, setRoute }) {
         </div>
         {role === 'vendor' ? (
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-ghost" onClick={() => toast.push({ kind: 'info', title: 'Edit event', body: 'Inline editing opens here.' })}><SE_I.Pencil size={14} />Edit event</button>
+            <button className="btn btn-ghost" onClick={() => { setEditForm({ name: e.name, desc: e.desc, date: e.date }); setEditOpen(true); }}><SE_I.Pencil size={14} />Edit event</button>
             <button className="btn btn-coral" onClick={() => toast.push({ kind: 'success', title: 'Add gig', body: 'Use the Gigs page to post a new gig.' })}><SE_I.Plus size={14} />Add gig</button>
           </div>
         ) : null}
@@ -329,7 +332,7 @@ function PageEventDetail({ eventId, role, setRoute }) {
                   <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-muted)' }}>{vendor?.name} · {vendor?.city}</p>
                 </div>
               </div>
-              <button className="btn btn-ghost-teal btn-sm" style={{ marginTop: 14 }} onClick={() => toast.push({ kind: 'info', title: `Message ${vendor?.first}`, body: 'Opening conversation in Inbox…' })}><SE_I.MessageSquare size={14} />Message</button>
+              <button className="btn btn-ghost-teal btn-sm" style={{ marginTop: 14 }} onClick={() => { setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${vendor?.first}` }); }}><SE_I.MessageSquare size={14} />Message</button>
             </div>
             <div className="card">
               <h3 className="card-title" style={{ marginBottom: 10 }}>Gig types</h3>
@@ -365,7 +368,7 @@ function PageEventDetail({ eventId, role, setRoute }) {
 
       {tab === 'applications' ? (
         <div className="card card-flush">
-          {SE_D.USERS.filter(u => u.role === 'worker').slice(0, 4).map(w => (
+          {SE_D.USERS.filter(u => u.role === 'worker').slice(0, 4).filter(w => !decided[w.id]).map(w => (
             <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderBottom: '1px solid var(--color-hairline)' }}>
               <Avatar name={w.name} size="lg" />
               <div style={{ flex: 1 }}>
@@ -373,11 +376,12 @@ function PageEventDetail({ eventId, role, setRoute }) {
                 <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--color-muted)' }}>{w.company} · {w.gigs || 0} gigs · ★ {w.rating || '—'}</p>
               </div>
               <span className="pill"><SE_I.Briefcase size={12} style={{ marginRight: 4 }} />Assist</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => toast.push({ kind: 'info', title: `Message ${w.first}`, body: 'Opening conversation…' })}>Message</button>
-              <button className="btn btn-ghost-coral btn-sm" onClick={() => toast.push({ kind: 'warning', title: `${w.first} rejected` })}>Reject</button>
-              <button className="btn btn-coral btn-sm" onClick={() => toast.push({ kind: 'success', title: `${w.first} approved`, body: 'They\'ll get an email + push notification.' })}>Approve</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${w.first}` }); }}>Message</button>
+              <button className="btn btn-ghost-coral btn-sm" onClick={() => { setDecided(d => ({ ...d, [w.id]: 'rejected' })); toast.push({ kind: 'warning', title: `${w.first} rejected` }); }}>Reject</button>
+              <button className="btn btn-coral btn-sm" onClick={() => { setDecided(d => ({ ...d, [w.id]: 'approved' })); toast.push({ kind: 'success', title: `${w.first} approved`, body: 'They\'ll get an email + push notification.' }); }}>Approve</button>
             </div>
           ))}
+          {SE_D.USERS.filter(u => u.role === 'worker').slice(0, 4).every(w => decided[w.id]) ? <div style={{ padding: 28 }}><Empty icon={SE_I.ClipboardList} title="All applications reviewed" body="Decisions sent to applicants." /></div> : null}
         </div>
       ) : null}
 
@@ -411,6 +415,15 @@ function PageEventDetail({ eventId, role, setRoute }) {
             <p style={{ marginTop: 16, fontSize: 14, color: 'var(--color-body)' }}>{applyGig.description}</p>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" size="md"
+        footer={<><button className="btn btn-ghost" onClick={() => setEditOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={() => { setEditOpen(false); toast.push({ kind: 'success', title: 'Event updated', body: `${editForm.name} saved.` }); }}>Save changes</button></>}>
+        <div className="col" style={{ gap: 14 }}>
+          <div className="field"><label className="field-label">Event name</label><input className="input" value={editForm.name} onChange={(ev) => setEditForm(f => ({ ...f, name: ev.target.value }))} /></div>
+          <div className="field"><label className="field-label">Description</label><textarea className="textarea" value={editForm.desc} onChange={(ev) => setEditForm(f => ({ ...f, desc: ev.target.value }))} /></div>
+          <div className="field"><label className="field-label">Date</label><input className="input" type="date" value={editForm.date} onChange={(ev) => setEditForm(f => ({ ...f, date: ev.target.value }))} /></div>
+        </div>
       </Modal>
     </div>
   );

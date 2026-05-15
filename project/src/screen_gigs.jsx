@@ -13,6 +13,7 @@ function PageGigsVendor({ setRoute }) {
   const [sortBy, setSortBy] = SG_us('date');
   const [filterOpen, setFilterOpen] = SG_us(false);
   const [selected, setSelected] = SG_us({});
+  const [editGig, setEditGig] = SG_us(null);
   const toast = useToast();
   const events = SG_D.EVENTS.filter(e => e.status !== 'draft');
 
@@ -23,6 +24,9 @@ function PageGigsVendor({ setRoute }) {
     const ev = SG_D.EVENTS.find(e => e.id === g.eventId);
     return [g.type, g.description, ev?.name].some(s => (s || '').toLowerCase().includes(q));
   };
+
+  const visibleGigs = SG_D.GIGS.filter(g => events.some(e => e.id === g.eventId)).filter(matchGig);
+  const allVisibleSelected = visibleGigs.length > 0 && visibleGigs.every(g => selected[g.id]);
 
   return (
     <div className="content fade-up">
@@ -50,7 +54,7 @@ function PageGigsVendor({ setRoute }) {
         <table className="rosy-table">
           <thead>
             <tr>
-              <th style={{ width: 36 }}><CheckBox checked={false} onChange={() => {}} /></th>
+              <th style={{ width: 36 }}><CheckBox checked={allVisibleSelected} onChange={(on) => { const next = {}; if (on) visibleGigs.forEach(g => { next[g.id] = true; }); setSelected(next); }} /></th>
               <th>Gig type & information</th>
               <th>Date</th>
               <th>Available</th>
@@ -104,7 +108,7 @@ function PageGigsVendor({ setRoute }) {
                       </td>
                       <td>
                         <div className="row-actions">
-                          <button className="row-action-btn" onClick={() => toast.push({ kind: 'info', title: 'Edit gig', body: 'Opening editor…' })}><SG_I.Pencil size={14} /></button>
+                          <button className="row-action-btn" aria-label="Edit gig" onClick={() => setEditGig(g)}><SG_I.Pencil size={14} /></button>
                           <button className="row-action-btn danger" onClick={() => toast.push({ kind: 'warning', title: 'Gig removed' })}><SG_I.Trash2 size={14} /></button>
                         </div>
                       </td>
@@ -151,6 +155,24 @@ function PageGigsVendor({ setRoute }) {
           ))}
         </div>
       </Modal>
+
+      {editGig ? (
+        <Modal open={!!editGig} onClose={() => setEditGig(null)} title="Edit gig" size="md"
+          footer={<><button className="btn btn-ghost" onClick={() => setEditGig(null)}>Cancel</button><button className="btn btn-coral" onClick={() => { setEditGig(null); toast.push({ kind: 'success', title: 'Gig updated' }); }}>Save changes</button></>}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Type</label><input className="input" defaultValue={editGig.type} /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Date</label><input className="input" defaultValue={editGig.date} /></div>
+              <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Rate ($/hr)</label><input className="input" type="number" defaultValue={editGig.rate} /></div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Start</label><input className="input" defaultValue={editGig.start} /></div>
+              <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>End</label><input className="input" defaultValue={editGig.end} /></div>
+            </div>
+            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Spots</label><input className="input" type="number" defaultValue={editGig.spots} /></div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -215,6 +237,9 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
   const [search, setSearch] = SG_us('');
   const [typeFilter, setTypeFilter] = SG_us({ Lead: true, Design: true, Assist: true, Strike: true });
   const [typeOpen, setTypeOpen] = SG_us(false);
+  const [locOpen, setLocOpen] = SG_us(false);
+  const [city, setCity] = SG_us('Brooklyn');
+  const [radius, setRadius] = SG_us(25);
   const events = SG_D.EVENTS.filter(e => e.status === 'open');
   const [open, setOpen] = SG_us(events.reduce((acc, e) => ({ ...acc, [e.id]: true }), {}));
 
@@ -236,7 +261,7 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
             <input className="input" placeholder="Search gigs..." style={{ paddingLeft: 36, width: 240 }} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <button className="btn btn-ghost btn-sm" onClick={() => setTypeOpen(true)}><SG_I.Filter size={14} />Filter by type ({Object.values(typeFilter).filter(Boolean).length}/4)</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => toast.push({ kind: 'info', title: 'Location filter', body: 'Set in Settings → Notifications → Service area.' })}><SG_I.MapPin size={14} />Brooklyn, 25 mi</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setLocOpen(true)}><SG_I.MapPin size={14} />{city}, {radius} mi</button>
         </div>
       </div>
 
@@ -338,6 +363,16 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
           ))}
         </div>
       </Modal>
+
+      {locOpen ? (
+        <Modal open={locOpen} onClose={() => setLocOpen(false)} title="Service area" size="sm"
+          footer={<><button className="btn btn-ghost" onClick={() => setLocOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={() => { setLocOpen(false); toast.push({ kind: 'success', title: 'Filter updated', body: `Showing gigs within ${radius} mi of ${city}` }); }}>Apply</button></>}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>City or postcode</label><input className="input" value={city} onChange={(e) => setCity(e.target.value)} /></div>
+            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Radius: {radius} miles</label><input type="range" min={5} max={100} step={5} value={radius} onChange={(e) => setRadius(parseInt(e.target.value))} style={{ width: '100%' }} /></div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

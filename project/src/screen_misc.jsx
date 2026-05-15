@@ -8,6 +8,7 @@ const { useState: SX_us } = React;
 function PageInbox() {
   const [active, setActive] = SX_us(SX_D.MESSAGES[0].id);
   const [draft, setDraft] = SX_us('');
+  const [composeOpen, setComposeOpen] = SX_us(false);
   const toast = useToast();
   const conv = SX_D.MESSAGES.find(c => c.id === active);
   const [localMessages, setLocalMessages] = SX_us(conv?.messages || []);
@@ -30,7 +31,7 @@ function PageInbox() {
             <SX_I.Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
             <input className="input" placeholder="Search" style={{ paddingLeft: 32, height: 38 }} />
           </div>
-          <button className="icon-btn" style={{ width: 38, height: 38 }} onClick={() => toast.push({ kind: 'info', title: 'Compose', body: 'Pick a user to message.' })}><SX_I.Pencil size={16} /></button>
+          <button className="icon-btn" style={{ width: 38, height: 38 }} onClick={() => setComposeOpen(true)} aria-label="Compose"><SX_I.Pencil size={16} /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {SX_D.MESSAGES.map(c => {
@@ -96,6 +97,24 @@ function PageInbox() {
           <Empty icon={SX_I.MessageSquare} title="Select a conversation" body="Pick a thread to start messaging." />
         )}
       </div>
+
+      {composeOpen ? (
+        <Modal open={composeOpen} onClose={() => setComposeOpen(false)} title="New conversation" size="md"
+          footer={<button className="btn btn-ghost" onClick={() => setComposeOpen(false)}>Cancel</button>}>
+          <p style={{ margin: '0 0 14px', fontSize: 13.5, color: 'var(--color-muted)' }}>Pick someone to message:</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 360, overflowY: 'auto' }}>
+            {SX_D.USERS.filter(u => u.role !== 'admin').slice(0, 8).map(u => (
+              <button key={u.id} className="btn btn-ghost" style={{ justifyContent: 'flex-start', padding: 10, height: 'auto' }} onClick={() => { setComposeOpen(false); toast.push({ kind: 'success', title: `Conversation started with ${u.first}` }); }}>
+                <Avatar name={u.name} size="md" />
+                <div style={{ textAlign: 'left', marginLeft: 4 }}>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{u.name}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{u.company}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

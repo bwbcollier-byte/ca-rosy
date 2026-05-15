@@ -8,6 +8,7 @@ const { useState: SP_us } = React;
 function PagePayments({ role, currentUser }) {
   const toast = useToast();
   const [dispute, setDispute] = SP_us(null);
+  const [openTx, setOpenTx] = SP_us(null);
   const [statusTab, setStatusTab] = SP_us('all');
   const [search, setSearch] = SP_us('');
   let txs = SP_D.TRANSACTIONS;
@@ -68,7 +69,7 @@ function PagePayments({ role, currentUser }) {
                       <button className="btn btn-coral btn-sm" onClick={() => toast.push({ kind: 'success', title: 'Payment released', body: `${fmtMoney(t.amount)} sent to ${t.payee}` })}>Approve</button> : null}
                     {t.status !== 'Paid' && t.status !== 'Disputed' ?
                       <button className="btn btn-ghost btn-sm" onClick={() => setDispute(t)}><SP_I.AlertTriangle size={14} />Dispute</button> : null}
-                    <button className="row-action-btn"><SP_I.ExternalLink size={14} /></button>
+                    <button className="row-action-btn" aria-label="Open invoice" onClick={() => setOpenTx(t)}><SP_I.ExternalLink size={14} /></button>
                   </div>
                 </td>
               </tr>
@@ -96,6 +97,21 @@ function PagePayments({ role, currentUser }) {
           </div>
         ) : null}
       </Modal>
+
+      {openTx ? (
+        <Modal open={!!openTx} onClose={() => setOpenTx(null)} title={`Invoice ${openTx.invoice}`} size="md"
+          footer={<><button className="btn btn-ghost" onClick={() => setOpenTx(null)}>Close</button><button className="btn btn-coral" onClick={() => { const t = openTx; setOpenTx(null); toast.push({ kind: 'success', title: 'Receipt sent', body: `Sent to ${t.payee}` }); }}>Send receipt</button></>}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Status</p><Badge kind={openTx.status} /></div>
+            <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Amount</p><p className="t-mono-amount" style={{ margin: '4px 0 0', fontSize: 18 }}>{fmtMoney(openTx.amount)}</p></div>
+            <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Payer</p><p style={{ margin: '4px 0 0', fontSize: 14, fontWeight: 500 }}>{openTx.payer}</p></div>
+            <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Payee</p><p style={{ margin: '4px 0 0', fontSize: 14, fontWeight: 500 }}>{openTx.payee}</p></div>
+            <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Date</p><p style={{ margin: '4px 0 0', fontSize: 14 }}>{fmtDate(openTx.date, 'mdy-dots')}</p></div>
+            <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Method</p><p style={{ margin: '4px 0 0', fontSize: 14 }}>Stripe Connect</p></div>
+          </div>
+          {openTx.note ? <p style={{ marginTop: 16, padding: 10, background: 'var(--color-warning-bg)', color: 'var(--color-warning)', borderRadius: 8, fontSize: 13 }}>{openTx.note}</p> : null}
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -104,6 +120,7 @@ function PagePayments({ role, currentUser }) {
 function PageDisputes() {
   const toast = useToast();
   const [mediate, setMediate] = SP_us(null);
+  const [thread, setThread] = SP_us(null);
   const disputed = SP_D.TRANSACTIONS.filter(t => t.status === 'Disputed' || t.status === 'Late');
   return (
     <div className="content fade-up">
@@ -120,7 +137,7 @@ function PageDisputes() {
             <p className="t-mono-amount" style={{ fontSize: 22, margin: '8px 0 0', color: 'var(--color-ink)' }}>{fmtMoney(t.amount)}</p>
             {t.note ? <p style={{ margin: '12px 0 0', padding: 10, background: 'var(--color-warning-bg)', color: 'var(--color-warning)', borderRadius: 8, fontSize: 12.5 }}>{t.note}</p> : null}
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => toast.push({ kind: 'info', title: 'Thread loaded', body: '5 messages between Henry & Priya.' })}>View thread</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setThread(t)}>View thread</button>
               <button className="btn btn-coral btn-sm" style={{ flex: 1 }} onClick={() => setMediate(t)}>Mediate</button>
             </div>
           </div>
@@ -139,12 +156,32 @@ function PageDisputes() {
           </div>
         ) : null}
       </Modal>
+
+      {thread ? (
+        <Modal open={!!thread} onClose={() => setThread(null)} title={`Thread · ${thread.invoice}`} size="md"
+          footer={<button className="btn btn-ghost" onClick={() => setThread(null)}>Close</button>}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {[
+              { who: thread.payer, side: 'in', text: 'Hi — when can I expect payment for the May 12 event?', time: '2 days ago' },
+              { who: thread.payee, side: 'out', text: 'Sorry for the delay, end of month is hectic. Releasing today.', time: '2 days ago' },
+              { who: thread.payer, side: 'in', text: "Still don't see it. Stripe says nothing pending.", time: '1 day ago' },
+              { who: thread.payee, side: 'out', text: "Let me check with our bookkeeper, I'll get back today.", time: '1 day ago' },
+              { who: thread.payer, side: 'in', text: 'Filing a dispute — this has gone past 5 business days.', time: '2 hours ago' },
+            ].map((m, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.side === 'out' ? 'flex-end' : 'flex-start' }}>
+                <span style={{ fontSize: 11.5, color: 'var(--color-muted)', marginBottom: 4 }}>{m.who} · {m.time}</span>
+                <div className={`msg-bubble ${m.side}`}>{m.text}</div>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }
 
 /* ============ Users / Workers / Vendors directory ============ */
-function PageDirectory({ filter, title, role }) {
+function PageDirectory({ filter, title, role, setRoute }) {
   const [search, setSearch] = SP_us('');
   const [statusFilter, setStatusFilter] = SP_us('all');
   const [sortBy, setSortBy] = SP_us('newest');
@@ -245,7 +282,7 @@ function PageDirectory({ filter, title, role }) {
       <ConfirmDialog open={!!confirmId} onClose={() => setConfirmId(null)} title="Suspend this user?" message="They'll lose access to current gigs and conversations. You can reinstate later." confirmLabel="Suspend"
         onConfirm={() => toast.push({ kind: 'warning', title: 'User suspended' })} />
 
-      <UserDetailModal user={selected} onClose={() => setSelected(null)} />
+      <UserDetailModal user={selected} onClose={() => setSelected(null)} setRoute={setRoute} />
 
       <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter" size="sm"
         footer={<><button className="btn btn-ghost" onClick={() => { setStatusFilter('all'); }}>Reset</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>
@@ -271,12 +308,12 @@ function PageDirectory({ filter, title, role }) {
   );
 }
 
-function UserDetailModal({ user, onClose }) {
+function UserDetailModal({ user, onClose, setRoute }) {
   const toast = useToast();
   if (!user) return null;
   return (
     <Modal open={!!user} onClose={onClose} title={user.name} size="lg"
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { onClose(); toast.push({ kind: 'info', title: `Message to ${user.first}`, body: 'Opening conversation…' }); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => toast.push({ kind: 'info', title: 'Edit profile', body: 'Inline editor opens here.' })}><SP_I.Pencil size={14} />Edit profile</button></>}>
+      footer={<><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { onClose(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${user.first}` }); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => toast.push({ kind: 'info', title: 'Edit profile', body: 'Inline editor opens here.' })}><SP_I.Pencil size={14} />Edit profile</button></>}>
       <div style={{ display: 'flex', gap: 24, marginBottom: 20, alignItems: 'flex-start' }}>
         <Avatar name={user.name} size="xl" />
         <div style={{ flex: 1 }}>
@@ -480,6 +517,8 @@ function PageSettings({ role, currentUser }) {
 
 function SettingsPrivacy({ role }) {
   const toast = useToast();
+  const [hideOldRatings, setHideOldRatings] = SP_us(false);
+  const [noindex, setNoindex] = SP_us(false);
   const matrix = {
     admin:  ['Full visibility across all users, events, gigs, and payments.','Audit log access.','Can mediate disputes and release escrow.','Cannot read private message bodies.'],
     vendor: ['Only your own events, gigs, payments, and team are visible.','Worker profiles show public info only — ratings, gigs, location.','You see worker contact info only after confirming them on a gig.','Disputes you file are visible to admins and the named worker.'],
@@ -501,8 +540,12 @@ function SettingsPrivacy({ role }) {
       <h4 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600 }}>Your data</h4>
       <div className="col" style={{ gap: 8 }}>
         <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => toast.push({ kind: 'success', title: 'Export started', body: 'We\'ll email the ZIP within 5 minutes.' })}><SP_I.UploadCloud size={14} />Export all my data</button>
-        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => toast.push({ kind: 'info', title: 'Visibility updated', body: 'Older ratings hidden.' })}><SP_I.Eye size={14} />Hide ratings older than 12 months</button>
-        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => toast.push({ kind: 'info', title: 'Search engines blocked', body: 'Your public profile is now noindex.' })}><SP_I.ShieldCheck size={14} />Hide profile from search engines</button>
+        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setHideOldRatings(v => !v); toast.push({ kind: 'info', title: hideOldRatings ? 'Older ratings visible' : 'Older ratings hidden', body: hideOldRatings ? 'Ratings older than 12 months now show.' : 'Ratings older than 12 months are now hidden from your profile.' }); }}>
+          <SP_I.Eye size={14} />{hideOldRatings ? '✓ ' : ''}Hide ratings older than 12 months
+        </button>
+        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setNoindex(v => !v); toast.push({ kind: 'info', title: noindex ? 'Search engines allowed' : 'Search engines blocked', body: noindex ? 'Your public profile is indexable again.' : 'Your public profile is now noindex.' }); }}>
+          <SP_I.ShieldCheck size={14} />{noindex ? '✓ ' : ''}Hide profile from search engines
+        </button>
       </div>
     </div>
   );
