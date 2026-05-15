@@ -5,13 +5,14 @@ const AI = window.Icons;
 const AD = window.RosyData;
 
 function App() {
-  // Top-level mode: marketing | auth | onboarding | app
+  // Default first view: marketing (unless URL hash explicitly targets another mode)
   const initial = (() => {
     const h = window.location.hash.replace(/^#/, '');
     if (h.startsWith('marketing')) return 'marketing';
     if (h.startsWith('auth') || h.startsWith('login') || h.startsWith('signup')) return 'auth';
     if (h.startsWith('onboarding')) return 'onboarding';
-    return 'app';
+    if (h.startsWith('app')) return 'app';
+    return 'marketing';
   })();
   const initialMarketingSub = (() => {
     const h = window.location.hash.replace(/^#/, '');
@@ -26,9 +27,8 @@ function App() {
   const [role, setRole] = A_us('admin');
   const [route, setRoute] = A_us('dashboard');
   const [notifOpen, setNotifOpen] = A_us(false);
-  const [tweaksOpen, setTweaksOpen] = A_us(true);
   const [tourOpen, setTourOpen] = A_us(false);
-  const [tweaks, setTweak] = useTweaks();
+  const [tweaks] = useTweaks();
 
   // Hash router for app routes
   A_ue(() => {
@@ -50,17 +50,6 @@ function App() {
     else if (mode === 'marketing') window.location.hash = marketingSub === 'home' ? 'marketing' : `marketing/${marketingSub}`;
     else window.location.hash = mode;
   }, [mode, route, marketingSub]);
-
-  // Tweaks edit mode bridge
-  A_ue(() => {
-    const onMsg = (e) => {
-      if (e.data && e.data.type === '__activate_edit_mode') setTweaksOpen(true);
-      if (e.data && e.data.type === '__deactivate_edit_mode') setTweaksOpen(false);
-    };
-    window.addEventListener('message', onMsg);
-    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
-    return () => window.removeEventListener('message', onMsg);
-  }, []);
 
   // Walkthrough trigger via custom event (header dropdown "Take the tour")
   A_ue(() => {
@@ -129,12 +118,6 @@ function App() {
         </div>
         <NotificationPanel open={notifOpen} onClose={() => setNotifOpen(false)} setRoute={setRoute} />
         {tourOpen ? <Walkthrough role={role} onClose={() => setTourOpen(false)} setRoute={setRoute} /> : null}
-        {tweaksOpen ? <TweaksPanel tweaks={tweaks} set={setTweak} onClose={() => { setTweaksOpen(false); window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*'); }} /> : null}
-        <div style={{ position: 'fixed', bottom: 20, left: 20, zIndex: 350, display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setMode('marketing')} style={{ background: 'var(--color-canvas)' }}><AI.Sparkles size={13} />Marketing site</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setAuthMode('login'); setMode('auth'); }} style={{ background: 'var(--color-canvas)' }}>Auth pages</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setMode('onboarding')} style={{ background: 'var(--color-canvas)' }}>Onboarding</button>
-        </div>
       </div>
     </ToastHost>
   );

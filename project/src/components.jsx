@@ -297,7 +297,7 @@ function Sidebar({ role, route, setRoute, sidebarStyle = 'pill', dark = false, b
 /* ---------- Logo ---------- */
 function RoseLogo({ size = 28 }) {
   return (
-    <img src="assets/logo.avif" alt="Rosy Recruits" width={size} height={size}
+    <img src="project/assets/logo.avif" alt="Rosy Recruits" width={size} height={size}
       style={{ flex: 'none', objectFit: 'contain', display: 'block' }} />
   );
 }
