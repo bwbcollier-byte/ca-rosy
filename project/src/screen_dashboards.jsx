@@ -30,8 +30,8 @@ function DashboardVendor({ user, setRoute, statStrip, statAnim }) {
   return (
     <div className="content fade-up">
       <h1 className="greeting">{getGreeting(user.first)}</h1>
-      <div className="grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={SD_I.UserPlus}   label="New Worker Applications" value={18} delta={28}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+      <div className="grid-spotlight" style={{ marginBottom: 24 }}>
+        <StatCard icon={SD_I.UserPlus}   label="New Worker Applications" value={18} delta={28}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} primary />
         <StatCard icon={SD_I.CalendarCheck} label="Open Events"          value={6}  delta={20}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
         <StatCard icon={SD_I.Briefcase}  label="All Gigs"                value={32} delta={9}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
         <StatCard icon={SD_I.ClipboardList} label="Open Gigs"            value={7}  delta={-3}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
@@ -52,10 +52,10 @@ function DashboardWorker({ user, setRoute, statStrip, statAnim }) {
   return (
     <div className="content fade-up">
       <h1 className="greeting">{getGreeting(user.first)}</h1>
-      <div className="grid-4" style={{ marginBottom: 24 }}>
+      <div className="grid-spotlight" style={{ marginBottom: 24 }}>
+        <StatCard icon={SD_I.DollarSign}  label="Earnings"        value={3420} delta={14} prefix="$" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} primary />
         <StatCard icon={SD_I.Briefcase}   label="Gigs This Month" value={9}    delta={20} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
         <StatCard icon={SD_I.Clock}       label="Hours Worked"    value={84}   delta={11} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.DollarSign}  label="Earnings"        value={3420} delta={14} prefix="$" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
         <StatCard icon={SD_I.Star}        label="Avg Rating"      value="4.95" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
       </div>
       <div className="grid-dash">

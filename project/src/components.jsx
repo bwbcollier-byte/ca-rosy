@@ -80,7 +80,7 @@ function GigChip({ type }) {
 }
 
 /* ---------- Stat card ---------- */
-function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', showStrip = true, animate = true }) {
+function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', showStrip = true, animate = true, primary = false }) {
   const [display, setDisplay] = useState(animate ? 0 : value);
   useEffect(() => {
     if (!animate) { setDisplay(value); return; }
@@ -100,7 +100,7 @@ function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', sho
 
   const formatted = typeof value === 'number' ? `${prefix}${display.toLocaleString()}` : value;
   return (
-    <div className={`stat-card ${showStrip ? '' : 'no-strip'}`}>
+    <div className={`stat-card ${showStrip ? '' : 'no-strip'} ${primary ? 'primary' : ''}`}>
       <div className="stat-top">
         <div className="stat-label">
           <span className="stat-label-text">
