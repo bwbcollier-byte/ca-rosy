@@ -16,7 +16,7 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
   const [bulkConfirm, setBulkConfirm] = SE_us(null);
   const [events, setEvents] = SE_us(SE_D.EVENTS);
   const [selected, setSelected] = SE_us({});
-  const [newEvent, setNewEvent] = SE_us({ name: 'Carter Garden Brunch', desc: 'Saturday morning brunch with garden installations and intimate tablescapes for 80 guests.', date: '2026-07-04' });
+  const [newEvent, setNewEvent] = SE_us({ name: 'Carter Garden Brunch', desc: 'Saturday morning brunch with garden installations and intimate tablescapes for 80 guests.', date: '2026-07-04', start: '10:00', end: '15:00', venueId: SE_D.VENUES[0]?.id, image: '', address: '' });
   const toast = useToast();
 
   React.useEffect(() => setView(viewMode || 'table'), [viewMode]);
@@ -37,7 +37,7 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
       return 0;
     });
 
-  const paged = usePaged(filtered, 10);
+  const paged = usePaged(filtered, 10, `${search}|${sortBy}|${filter.open ? 1 : 0}${filter.draft ? 1 : 0}${filter.completed ? 1 : 0}|${filtered.length}`);
   const tableRows = view === 'table' ? paged.slice : filtered;
   const pickedIds = Object.keys(selected).filter(k => selected[k]);
   const pickedCount = pickedIds.length;
@@ -171,7 +171,7 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
       </Slideover>
 
       <ConfirmDialog open={!!bulkConfirm} onClose={() => setBulkConfirm(null)}
-        title={`Delete ${bulkConfirm?.count} events?`} message="This will also remove their gigs, applications, and pending payments."
+        title={bulkConfirm ? `Delete ${bulkConfirm.count} events?` : ''} message="This will also remove their gigs, applications, and pending payments."
         confirmLabel="Delete" onConfirm={confirmBulkDelete} />
 
       <Slideover open={addOpen} onClose={() => setAddOpen(false)} title="New Event"
@@ -220,8 +220,9 @@ function EventCard({ event, onClick }) {
   const v = SE_D.VENUES.find(v => v.id === event.venueId);
   return (
     <div className="event-card" onClick={onClick} role="button" tabIndex={0}>
-      <div className="ec-image" style={event.image ? { backgroundImage: `url(${event.image})` } : { background: `linear-gradient(135deg, #FDBA9C, #F47C5D)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 42 }}>
-        {!event.image ? <span aria-hidden>{(event.name || '?').charAt(0).toUpperCase()}</span> : null}
+      <div className="ec-image" style={{ position: 'relative', overflow: 'hidden' }}>
+        <EventImage src={event.image} name={event.name} size="100%" radius={0}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
         <Badge kind={event.status === 'open' ? 'Open' : event.status === 'draft' ? 'Draft' : 'Completed'} />
       </div>
       <div className="ec-body">
@@ -249,26 +250,26 @@ function NewEventForm({ value = {}, onChange = () => {} }) {
       <div className="field"><label className="field-label">Event name *</label><input className="input" value={value.name || ''} onChange={e => upd('name', e.target.value)} placeholder="e.g. Carter Garden Brunch" /></div>
       <div className="field"><label className="field-label">Description *</label><textarea className="textarea" value={value.desc || ''} onChange={e => upd('desc', e.target.value)} placeholder="Paint the room. What's the palette, scope, vibe?" /></div>
       <div className="grid-2">
-        <div className="field"><label className="field-label">Event date</label><input className="input" type="date" value={value.date || '2026-07-04'} onChange={e => upd('date', e.target.value)} /></div>
-        <div className="field"><label className="field-label">Start time</label><input className="input" type="time" defaultValue="10:00" /></div>
+        <div className="field"><label className="field-label">Event date</label><input className="input" type="date" value={value.date || ''} onChange={e => upd('date', e.target.value)} /></div>
+        <div className="field"><label className="field-label">Start time</label><input className="input" type="time" value={value.start || ''} onChange={e => upd('start', e.target.value)} /></div>
       </div>
       <div className="grid-2">
-        <div className="field"><label className="field-label">End time</label><input className="input" type="time" defaultValue="15:00" /></div>
+        <div className="field"><label className="field-label">End time</label><input className="input" type="time" value={value.end || ''} onChange={e => upd('end', e.target.value)} /></div>
         <div className="field"><label className="field-label">Venue</label>
-          <select className="select" defaultValue="v5">
+          <select className="select" value={value.venueId || ''} onChange={e => upd('venueId', e.target.value)}>
             {SE_D.VENUES.map(v => <option key={v.id} value={v.id}>{v.name} — {v.city}</option>)}
           </select>
         </div>
       </div>
       <div className="field"><label className="field-label">Venue address</label>
-        <AddressInput placeholder="Confirm or override the venue address" />
+        <AddressInput value={value.address || ''} onChange={(v) => upd('address', v)} placeholder="Confirm or override the venue address" />
       </div>
       <div className="field"><label className="field-label">Cover image</label>
-        <ImageUpload label="Upload cover image" size={120} round={false} />
+        <ImageUpload value={value.image || ''} onChange={(v) => upd('image', v)} label="Upload cover image" size={120} round={false} />
       </div>
       <div className="field"><label className="field-label">Gig types needed</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {['Lead','Design','Assist','Strike'].map(t => <GigChip key={t} type={t} />)}
+          {(value.types || ['Lead','Design','Assist','Strike']).map(t => <GigChip key={t} type={t} />)}
         </div>
       </div>
     </div>
@@ -335,7 +336,10 @@ function PageEventDetail({ eventId, role, setRoute }) {
   return (
     <div className="content fade-up">
       <button className="btn-link" style={{ marginBottom: 12 }} onClick={() => setRoute('events')}><SE_I.ChevronLeft size={14} />Back to events</button>
-      <div style={{ borderRadius: 24, overflow: 'hidden', position: 'relative', height: 280, marginBottom: 24, backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.6) 100%), url(${e.image})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+      <div style={{ borderRadius: 24, overflow: 'hidden', position: 'relative', height: 280, marginBottom: 24, background: 'linear-gradient(135deg, #FDBA9C, #F47C5D)' }}>
+        <EventImage src={e.image} name={e.name} size="100%" radius={0}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.6) 100%)' }} />
         <div style={{ position: 'absolute', top: 20, right: 20 }}><Badge kind={e.status === 'open' ? 'Open' : e.status === 'draft' ? 'Draft' : 'Completed'} /></div>
         <div style={{ position: 'absolute', bottom: 24, left: 24, right: 24, color: '#fff' }}>
           <p style={{ margin: 0, fontSize: 13, opacity: 0.9, fontWeight: 500 }}>{fmtDate(e.date, 'mdy-dots')} · {e.start}–{e.end} · {v?.name}, {v?.city}</p>

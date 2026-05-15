@@ -433,12 +433,16 @@ function Pagination({ page, setPage, total, perPage = 10, label = 'rows' }) {
   );
 }
 
-function usePaged(items, perPage = 10) {
+function usePaged(items, perPage = 10, resetKey) {
   const [page, setPage] = useState(1);
-  const pages = Math.max(1, Math.ceil(items.length / perPage));
-  useEffect(() => { if (page > pages) setPage(1); }, [items.length, pages, page]);
-  const slice = items.slice((page - 1) * perPage, page * perPage);
-  return { page, setPage, pages, slice, total: items.length, perPage };
+  const total = items.length;
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  // Reset to page 1 when the filter/search signature changes
+  useEffect(() => { setPage(1); }, [resetKey]);
+  // Also clamp when the current page falls outside the new range
+  useEffect(() => { if (page > pages) setPage(pages); }, [pages, page]);
+  const slice = useMemo(() => items.slice((page - 1) * perPage, page * perPage), [items, page, perPage]);
+  return { page, setPage, pages, slice, total, perPage };
 }
 
 /* ---------- Bulk action bar ---------- */
@@ -469,18 +473,26 @@ function BulkActionBar({ count, actions = [], onClear }) {
 /* ---------- Breadcrumbs ---------- */
 function Breadcrumbs({ items = [] }) {
   if (!items.length) return null;
+  const truncate = { maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
   return (
-    <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--color-muted)', marginTop: 4 }}>
+    <nav aria-label="Breadcrumb" className="breadcrumbs" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--color-muted)', marginTop: 4, minWidth: 0 }}>
       {items.map((it, i) => {
         const isLast = i === items.length - 1;
         return (
           <React.Fragment key={i}>
             {it.onClick && !isLast ? (
-              <button onClick={it.onClick} style={{ background: 'none', border: 0, padding: 0, color: 'var(--color-muted)', cursor: 'pointer', fontSize: 'inherit' }}>{it.label}</button>
+              <button onClick={it.onClick} className="breadcrumb-link"
+                style={{ background: 'none', border: 0, padding: 0, color: 'var(--color-muted)', cursor: 'pointer', fontSize: 'inherit', ...truncate }}
+                title={typeof it.label === 'string' ? it.label : undefined}>
+                {it.label}
+              </button>
             ) : (
-              <span style={{ color: isLast ? 'var(--color-ink)' : 'var(--color-muted)', fontWeight: isLast ? 500 : 400 }}>{it.label}</span>
+              <span style={{ color: isLast ? 'var(--color-ink)' : 'var(--color-muted)', fontWeight: isLast ? 500 : 400, ...truncate }}
+                title={typeof it.label === 'string' ? it.label : undefined}>
+                {it.label}
+              </span>
             )}
-            {!isLast ? <Ic.ChevronRight size={11} style={{ color: 'var(--color-muted-soft)' }} /> : null}
+            {!isLast ? <Ic.ChevronRight size={11} style={{ color: 'var(--color-muted-soft)', flex: 'none' }} /> : null}
           </React.Fragment>
         );
       })}
@@ -504,12 +516,13 @@ function EventImage({ src, name = '', size = 44, radius = 10, className = '', st
     return <img src={src} alt={name} onError={() => setFailed(true)}
       className={className} style={{ ...baseStyle, objectFit: 'cover', display: 'block' }} />;
   }
+  const fontSize = typeof size === 'number' ? Math.max(12, size * 0.42) : 56;
   return (
     <div className={className} aria-label={name || 'No image'} role="img"
       style={{ ...baseStyle, background: `linear-gradient(135deg, ${a}, ${b})`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 500,
-        fontSize: Math.max(12, size * 0.42), letterSpacing: '-0.02em' }}>
+        fontSize, letterSpacing: '-0.02em' }}>
       {initial}
     </div>
   );

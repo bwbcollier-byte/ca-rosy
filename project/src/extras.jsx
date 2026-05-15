@@ -82,6 +82,7 @@ function SignaturePad({ value, onChange, height = 160 }) {
 function ImageUpload({ value, onChange, label = 'Upload photo', size = 96, round = true }) {
   const inputRef = X_ur(null);
   const [preview, setPreview] = X_us(value || null);
+  React.useEffect(() => { setPreview(value || null); }, [value]);
   const onFile = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;

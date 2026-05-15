@@ -65,6 +65,7 @@ const ADDRESS_BANK = [
 function AddressInput({ value, onChange, placeholder = 'Search address', hint = 'Powered by Google Maps' }) {
   const [q, setQ] = F_us(value || '');
   const [open, setOpen] = F_us(false);
+  React.useEffect(() => { setQ(value || ''); }, [value]);
   const wrapRef = F_ur(null);
   F_ue(() => {
     if (!open) return;

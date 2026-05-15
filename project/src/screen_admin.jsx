@@ -23,7 +23,7 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
       return [t.invoice, t.payee, t.payer].some(s => (s || '').toLowerCase().includes(q));
     });
 
-  const paged = usePaged(filtered, 10);
+  const paged = usePaged(filtered, 10, `${search}|${statusTab}|${filtered.length}`);
 
   React.useEffect(() => {
     if (!openId) return;
@@ -144,7 +144,10 @@ function PageDisputes() {
       <div className="section-heading"><h2>Disputes & overdue</h2></div>
       <div className="grid-3">
         {disputed.map(t => (
-          <div key={t.id} className="card" style={{ borderColor: t.status === 'Disputed' ? 'var(--color-warning)' : 'var(--rosy-coral)' }}>
+          <div key={t.id} className="card" tabIndex={0} role="button" aria-label={`Open dispute ${t.invoice}`}
+            onClick={(e) => { if (e.target.closest('button')) return; setThread(t); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setThread(t); } }}
+            style={{ borderColor: t.status === 'Disputed' ? 'var(--color-warning)' : 'var(--rosy-coral)', cursor: 'pointer' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Badge kind={t.status} />
               <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>{fmtDate(t.date, 'mdy-dots')}</span>
@@ -231,7 +234,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
       return 0;
     });
 
-  const paged = usePaged(all, 10);
+  const paged = usePaged(all, 10, `${search}|${statusFilter}|${sortBy}|${all.length}`);
   const visible = paged.slice;
   const pickedIds = Object.keys(picked).filter(k => picked[k]);
   const pickedCount = pickedIds.length;
@@ -357,7 +360,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
         onConfirm={() => { setDeleted(d => ({ ...d, [confirmId]: true })); toast.push({ kind: 'warning', title: 'User deleted' }); }} />
 
       <ConfirmDialog open={!!bulkConfirm} onClose={() => setBulkConfirm(null)}
-        title={`Delete ${bulkConfirm?.count} users?`} message="They'll be removed from the directory."
+        title={bulkConfirm ? `Delete ${bulkConfirm.count} users?` : ''} message="They'll be removed from the directory."
         confirmLabel="Delete" onConfirm={confirmBulkDelete} />
 
       <UserDetailModal user={selected} onClose={closeDetail} setRoute={setRoute}
@@ -484,7 +487,10 @@ function PageVenues() {
       <div className="grid-3">
         {filtered.length === 0 ? <div style={{ gridColumn: '1 / -1' }}><Empty icon={SP_I.MapPin} title="No matching venues" /></div> :
          filtered.map(v => (
-          <div key={v.id} className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div key={v.id} className="card" tabIndex={0} role="button" aria-label={`Open ${v.name}`}
+            onClick={(e) => { if (e.target.closest('button')) return; setViewOpen(v); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setViewOpen(v); } }}
+            style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
             <div style={{ height: 160, position: 'relative', overflow: 'hidden' }}>
               <SafeImage src={v.image} placeholderIcon={SP_I.MapPin} placeholderTone={['mint','peach','lavender','ochre'][parseInt(v.id.slice(1)) % 4]} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               <span style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(255,255,255,0.92)', padding: '4px 10px', borderRadius: 9999, fontSize: 11.5, fontWeight: 600 }}>{v.type}</span>
@@ -1033,7 +1039,8 @@ function PageGallery() {
             return (
               <div key={item.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{ position: 'relative', aspectRatio: '4/5' }}>
-                  <img src={item.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <EventImage src={item.src} name={section?.label || 'Photo'} size="100%" radius={0}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
                   <button className="row-action-btn danger" style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)' }} onClick={() => removeItem(item.id)}><SP_I.Trash2 size={14} /></button>
                 </div>
                 <div style={{ padding: 12 }}>

@@ -91,8 +91,11 @@ function PageGigsVendor({ setRoute }) {
                     </td>
                   </tr>
                   {open[ev.id] && gigs.map(g => (
-                    <tr key={g.id}>
-                      <td><CheckBox checked={!!selected[g.id]} onChange={(on) => setSelected(s => ({ ...s, [g.id]: on }))} /></td>
+                    <tr key={g.id} tabIndex={0} role="button" aria-label={`Edit gig ${g.type}`}
+                      onClick={(e) => { if (e.target.closest('button') || e.target.closest('[role="checkbox"]')) return; setEditGig(g); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setEditGig(g); } }}
+                      style={{ cursor: 'pointer' }}>
+                      <td onClick={(e) => e.stopPropagation()}><CheckBox checked={!!selected[g.id]} onChange={(on) => setSelected(s => ({ ...s, [g.id]: on }))} /></td>
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 360 }}>
                           <GigChip type={g.type} />
@@ -106,7 +109,7 @@ function PageGigsVendor({ setRoute }) {
                       <td>
                         <AssignedStack ids={g.assignedTo} />
                       </td>
-                      <td>
+                      <td onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
                           <button className="row-action-btn" aria-label="Edit gig" onClick={() => setEditGig(g)}><SG_I.Pencil size={14} /></button>
                           <button className="row-action-btn danger" onClick={() => toast.push({ kind: 'warning', title: 'Gig removed' })}><SG_I.Trash2 size={14} /></button>
