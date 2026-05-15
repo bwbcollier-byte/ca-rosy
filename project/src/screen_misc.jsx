@@ -9,6 +9,9 @@ function PageInbox() {
   const [active, setActive] = SX_us(SX_D.MESSAGES[0].id);
   const [draft, setDraft] = SX_us('');
   const [composeOpen, setComposeOpen] = SX_us(false);
+  const [callOpen, setCallOpen] = SX_us(null); // 'voice' | 'video' | null
+  const [threadMenuOpen, setThreadMenuOpen] = SX_us(false);
+  const fileInputRef = React.useRef(null);
   const toast = useToast();
   const conv = SX_D.MESSAGES.find(c => c.id === active);
   const [localMessages, setLocalMessages] = SX_us(conv?.messages || []);
@@ -67,9 +70,9 @@ function PageInbox() {
                 <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>{conv.name}</p>
                 <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{conv.online ? 'Online now' : 'Active 3 hours ago'}</p>
               </div>
-              <button className="icon-btn" onClick={() => toast.push({ kind: 'info', title: 'Voice call', body: 'Calling via Twilio…' })}><SX_I.Phone size={16} /></button>
-              <button className="icon-btn" onClick={() => toast.push({ kind: 'info', title: 'Video call', body: 'Starting Zoom room…' })}><SX_I.Video size={16} /></button>
-              <button className="icon-btn" onClick={() => toast.push({ kind: 'info', title: 'Thread options', body: 'Mute / archive / report.' })}><SX_I.MoreHorizontal size={16} /></button>
+              <button className="icon-btn" onClick={() => setCallOpen('voice')} aria-label="Voice call"><SX_I.Phone size={16} /></button>
+              <button className="icon-btn" onClick={() => setCallOpen('video')} aria-label="Video call"><SX_I.Video size={16} /></button>
+              <button className="icon-btn" onClick={() => setThreadMenuOpen(true)} aria-label="Thread options"><SX_I.MoreHorizontal size={16} /></button>
             </div>
             <div className="conv-stream">
               {(() => {
@@ -88,7 +91,18 @@ function PageInbox() {
               })()}
             </div>
             <div className="conv-compose">
-              <button className="icon-btn" onClick={() => toast.push({ kind: 'info', title: 'Attach file' })}><SX_I.Paperclip size={16} /></button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  toast.push({ kind: 'success', title: 'File attached', body: `${f.name} (${Math.round(f.size / 1024)} KB)` });
+                  e.target.value = '';
+                }}
+              />
+              <button className="icon-btn" onClick={() => fileInputRef.current?.click()} aria-label="Attach file"><SX_I.Paperclip size={16} /></button>
               <input className="input" placeholder="Message…" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
               <button className="btn btn-teal btn-sm" onClick={send} disabled={!draft.trim()} style={{ width: 38, height: 38, padding: 0, borderRadius: 9999 }}><SX_I.Send size={15} /></button>
             </div>
@@ -112,6 +126,30 @@ function PageInbox() {
                 </div>
               </button>
             ))}
+          </div>
+        </Modal>
+      ) : null}
+
+      {callOpen ? (
+        <Modal open={!!callOpen} onClose={() => setCallOpen(null)} title={callOpen === 'voice' ? 'Voice call' : 'Video call'} size="sm"
+          footer={<><button className="btn btn-ghost" onClick={() => setCallOpen(null)}>Close</button><button className="btn btn-coral" onClick={() => { setCallOpen(null); toast.push({ kind: 'success', title: "We'll email you when it ships" }); }}>Notify me</button></>}>
+          <div style={{ textAlign: 'center', padding: '12px 0' }}>
+            <div style={{ width: 64, height: 64, borderRadius: 9999, background: 'var(--color-surface-soft)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              {callOpen === 'voice' ? <SX_I.Phone size={28} /> : <SX_I.Video size={28} />}
+            </div>
+            <h4 style={{ margin: '0 0 8px', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.01em' }}>Coming this summer</h4>
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--color-muted)' }}>{callOpen === 'voice' ? 'Voice calling is in beta with a few studios. Want early access?' : 'Integrated video rooms launch in Q3. Want to be first?'}</p>
+          </div>
+        </Modal>
+      ) : null}
+
+      {threadMenuOpen ? (
+        <Modal open={threadMenuOpen} onClose={() => setThreadMenuOpen(false)} title="Conversation options" size="sm"
+          footer={<button className="btn btn-ghost" onClick={() => setThreadMenuOpen(false)}>Close</button>}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setThreadMenuOpen(false); toast.push({ kind: 'info', title: 'Conversation muted', body: "You won't get notifications from this thread." }); }}><SX_I.Bell size={14} />Mute notifications</button>
+            <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setThreadMenuOpen(false); toast.push({ kind: 'success', title: 'Conversation archived' }); }}><SX_I.Trash2 size={14} />Archive</button>
+            <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', color: 'var(--color-error)' }} onClick={() => { setThreadMenuOpen(false); toast.push({ kind: 'warning', title: 'Report submitted', body: 'Rosy Trust & Safety will review within 24h.' }); }}><SX_I.AlertTriangle size={14} />Report</button>
           </div>
         </Modal>
       ) : null}

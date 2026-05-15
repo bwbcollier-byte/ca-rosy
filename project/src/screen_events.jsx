@@ -302,7 +302,7 @@ function PageEventDetail({ eventId, role, setRoute }) {
         {role === 'vendor' ? (
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-ghost" onClick={() => { setEditForm({ name: e.name, desc: e.desc, date: e.date }); setEditOpen(true); }}><SE_I.Pencil size={14} />Edit event</button>
-            <button className="btn btn-coral" onClick={() => toast.push({ kind: 'success', title: 'Add gig', body: 'Use the Gigs page to post a new gig.' })}><SE_I.Plus size={14} />Add gig</button>
+            <button className="btn btn-coral" onClick={() => setRoute && setRoute('gigs')}><SE_I.Plus size={14} />Add gig</button>
           </div>
         ) : null}
       </div>

@@ -423,7 +423,10 @@ function PageMyGigsWorker({ currentUser }) {
                    <td>
                      {g.status === 'completed' ? <button className="btn btn-ghost btn-sm" onClick={() => setRate(g)}><SG_I.Star size={14} />Rate vendor</button>
                        : past ? <button className="btn btn-coral btn-sm" onClick={() => setMark(g)}>Mark complete</button>
-                       : <button className="btn btn-ghost btn-sm" onClick={() => toast.push({ kind: 'info', title: `Directions to ${v?.name}`, body: 'Opening in Maps…' })}><SG_I.MapPin size={14} />Directions</button>}
+                       : <button className="btn btn-ghost btn-sm" onClick={() => {
+                           const q = encodeURIComponent(`${v?.name || ''} ${v?.address || ''}`.trim());
+                           window.open(`https://www.google.com/maps/search/?api=1&query=${q}`, '_blank', 'noopener');
+                         }}><SG_I.MapPin size={14} />Directions</button>}
                    </td>
                  </tr>
                );

@@ -133,7 +133,7 @@ function Modal({ open, onClose, title, size = 'md', children, footer }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  return ReactDOM.createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className={`modal ${size}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         {title ? (
@@ -145,7 +145,8 @@ function Modal({ open, onClose, title, size = 'md', children, footer }) {
         <div className="modal-body">{children}</div>
         {footer ? <div className="modal-footer">{footer}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -158,7 +159,7 @@ function Slideover({ open, onClose, title, children, footer }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  return ReactDOM.createPortal(
     <div className="slideover-backdrop" onClick={onClose}>
       <div className="slideover" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -168,7 +169,8 @@ function Slideover({ open, onClose, title, children, footer }) {
         <div className="modal-body" style={{ flex: 1 }}>{children}</div>
         {footer ? <div className="modal-footer">{footer}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -372,7 +374,7 @@ function NotificationPanel({ open, onClose, setRoute }) {
     const map = { 'e1': 'events:e1', 'disputes': 'disputes', 'my-gigs': 'my-gigs', 'inbox': 'inbox', 'profile': 'settings', 'payments': 'payments' };
     setRoute && setRoute(map[target] || 'notifications');
   };
-  return (
+  return ReactDOM.createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 400 }}>
       <div onClick={(e) => e.stopPropagation()}
         style={{ position: 'absolute', top: 72, right: 32, width: 400, background: 'var(--color-canvas)', border: '1px solid var(--color-hairline)', borderRadius: 16, boxShadow: 'var(--shadow-modal)', overflow: 'hidden' }}>
@@ -405,7 +407,8 @@ function NotificationPanel({ open, onClose, setRoute }) {
            })}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -1179,6 +1179,10 @@ table.rosy-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .mk-section { padding: 64px 20px; }
   .modal.lg, .modal.xl { max-width: calc(100vw - 24px); }
   .msg-bubble { max-width: 80%; }
+  .inbox-shell { grid-template-columns: 1fr; }
+  .inbox-list { display: none; }
+  .inbox-conv .conv-head .icon-btn:nth-of-type(-n+2) { display: none; }
+  /* show a back button to return to list (we'll add it via a class hook) */
   /* Ensure touch targets meet 44px minimum */
   .btn:not(.btn-sm):not(.btn-link) { min-height: 44px; }
   .nav-item { min-height: 44px; }

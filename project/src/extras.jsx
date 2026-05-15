@@ -362,6 +362,7 @@ function CheckBox({ checked, onChange, onClick }) {
 /* ============ Build my team — page wrapper that opens the wizard ============ */
 function PageBuildTeam({ currentUser }) {
   const [open, setOpen] = X_us(false);
+  const [demoOpen, setDemoOpen] = X_us(false);
   const toast = useToast();
   const recent = [
     { event: 'Wheeler Wedding', date: '2026-06-23', team: 7, status: 'Confirmed', cost: 4900 },
@@ -378,7 +379,7 @@ function PageBuildTeam({ currentUser }) {
             <p style={{ margin: '0 0 20px', fontSize: 16, maxWidth: 560 }}>Tell us about the event. We'll auto-pick a vetted team from your favorites and top-rated workers nearby — ready to invite with one click.</p>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-primary btn-lg" onClick={() => setOpen(true)}><X_I.Sparkles size={16} />Build my team</button>
-              <button className="btn btn-ghost btn-lg" onClick={() => toast.push({ kind: 'info', title: 'Watch demo', body: 'Opening 90-second walkthrough.' })}>Watch demo</button>
+              <button className="btn btn-ghost btn-lg" onClick={() => setDemoOpen(true)}>Watch demo</button>
             </div>
           </div>
           <div style={{ width: 220, flex: 'none' }}>
@@ -435,6 +436,18 @@ function PageBuildTeam({ currentUser }) {
       </div>
 
       <BuildMyTeamWizard open={open} onClose={() => setOpen(false)} />
+
+      {demoOpen ? (
+        <Modal open={demoOpen} onClose={() => setDemoOpen(false)} title="Product demo" size="lg"
+          footer={<><button className="btn btn-ghost" onClick={() => setDemoOpen(false)}>Close</button><button className="btn btn-coral" onClick={() => { setDemoOpen(false); toast.push({ kind: 'success', title: "We'll email you the link" }); }}>Email me</button></>}>
+          <div style={{ aspectRatio: '16/9', background: 'var(--color-surface-card)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
+            <div style={{ width: 80, height: 80, borderRadius: 9999, background: 'var(--rosy-coral)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ width: 0, height: 0, borderTop: '18px solid transparent', borderBottom: '18px solid transparent', borderLeft: '28px solid #fff', marginLeft: 6 }} />
+            </div>
+            <p style={{ margin: 0, fontSize: 15, color: 'var(--color-muted)' }}>90-second walkthrough lands in your inbox</p>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

@@ -310,15 +310,23 @@ function PageDirectory({ filter, title, role, setRoute }) {
 
 function UserDetailModal({ user, onClose, setRoute }) {
   const toast = useToast();
+  const [editing, setEditing] = SP_us(false);
+  const [draft, setDraft] = SP_us({ name: user?.name || '', email: user?.email || '', company: user?.company || '', city: user?.city || '' });
+  React.useEffect(() => {
+    if (user) setDraft({ name: user.name, email: user.email, company: user.company, city: user.city });
+    setEditing(false);
+  }, [user?.id]);
   if (!user) return null;
   return (
     <Modal open={!!user} onClose={onClose} title={user.name} size="lg"
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { onClose(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${user.first}` }); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => toast.push({ kind: 'info', title: 'Edit profile', body: 'Inline editor opens here.' })}><SP_I.Pencil size={14} />Edit profile</button></>}>
+      footer={editing
+        ? <><button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button><button className="btn btn-coral" onClick={() => { setEditing(false); toast.push({ kind: 'success', title: 'Profile updated' }); }}>Save changes</button></>
+        : <><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { onClose(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${user.first}` }); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => setEditing(true)}><SP_I.Pencil size={14} />Edit profile</button></>}>
       <div style={{ display: 'flex', gap: 24, marginBottom: 20, alignItems: 'flex-start' }}>
         <Avatar name={user.name} size="xl" />
         <div style={{ flex: 1 }}>
-          <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, letterSpacing: '-0.02em' }}>{user.name}</h3>
-          <p style={{ margin: '4px 0 12px', color: 'var(--color-muted)', fontSize: 14 }}>{user.company} · {user.city}</p>
+          <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, letterSpacing: '-0.02em' }}>{editing ? draft.name : user.name}</h3>
+          <p style={{ margin: '4px 0 12px', color: 'var(--color-muted)', fontSize: 14 }}>{(editing ? draft.company : user.company)} · {(editing ? draft.city : user.city)}</p>
           <div style={{ display: 'flex', gap: 10 }}>
             <Badge kind={user.status === 'active' ? 'Active' : 'Inactive'}>{user.status === 'active' ? 'Active' : 'Inactive'}</Badge>
             <span style={{ textTransform: 'capitalize', color: 'var(--color-muted)', fontSize: 13 }}>{user.role}</span>
@@ -326,18 +334,31 @@ function UserDetailModal({ user, onClose, setRoute }) {
           </div>
         </div>
       </div>
-      <div className="grid-2" style={{ gap: 12 }}>
-        <KV label="Email" value={user.email} />
-        <KV label="Joined" value={fmtDate(user.joined, 'mdy-dots')} />
-        <KV label="Location" value={user.city} />
-        <KV label="Role" value={<span style={{ textTransform: 'capitalize' }}>{user.role}</span>} />
-      </div>
-      <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Bio</h4>
-      <p style={{ margin: 0, color: 'var(--color-body)', fontSize: 14, lineHeight: 1.55 }}>
-        {user.role === 'worker'
-          ? `${user.first} brings ${user.gigs ?? 0} gigs of experience to ${user.role === 'worker' ? 'high-end floral events' : 'the platform'} — specializing in installations, tablescapes, and on-day execution. Reliable, calm under pressure, takes direction well.`
-          : `${user.company} is a ${user.city}-based floral studio serving the tri-state area. Specialties: weddings, brand activations, editorial work.`}
-      </p>
+      {editing ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Name</label><input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></div>
+          <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Email</label><input className="input" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Company</label><input className="input" value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} /></div>
+            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>City</label><input className="input" value={draft.city} onChange={(e) => setDraft({ ...draft, city: e.target.value })} /></div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="grid-2" style={{ gap: 12 }}>
+            <KV label="Email" value={user.email} />
+            <KV label="Joined" value={fmtDate(user.joined, 'mdy-dots')} />
+            <KV label="Location" value={user.city} />
+            <KV label="Role" value={<span style={{ textTransform: 'capitalize' }}>{user.role}</span>} />
+          </div>
+          <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Bio</h4>
+          <p style={{ margin: 0, color: 'var(--color-body)', fontSize: 14, lineHeight: 1.55 }}>
+            {user.role === 'worker'
+              ? `${user.first} brings ${user.gigs ?? 0} gigs of experience to ${user.role === 'worker' ? 'high-end floral events' : 'the platform'} — specializing in installations, tablescapes, and on-day execution. Reliable, calm under pressure, takes direction well.`
+              : `${user.company} is a ${user.city}-based floral studio serving the tri-state area. Specialties: weddings, brand activations, editorial work.`}
+          </p>
+        </>
+      )}
     </Modal>
   );
 }
@@ -749,12 +770,21 @@ function PageSiteContent() {
     ['About title',   'A community of florists, not a job board.'],
     ['CTA headline',  'Run your next event with the right team.'],
   ]);
+  const [sections, setSections] = SP_us([
+    { id: 's1', title: 'Hero', desc: 'Headline + sub + CTA + image' },
+    { id: 's2', title: 'How it works', desc: '3-step explainer with icons' },
+    { id: 's3', title: 'Testimonials', desc: 'Carousel of 6 vendor quotes' },
+    { id: 's4', title: 'Pricing', desc: 'Plan cards with feature checklist' },
+    { id: 's5', title: 'FAQ', desc: 'Accordion of 8 common questions' },
+  ]);
+  const [addSectionOpen, setAddSectionOpen] = SP_us(false);
+  const [newSection, setNewSection] = SP_us({ title: '', desc: '' });
   const updateAt = (i, v) => setItems(its => its.map((it, idx) => idx === i ? [it[0], v] : it));
   return (
     <div className="content fade-up">
       <div className="section-heading"><h2>Site content</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => toast.push({ kind: 'info', title: 'Section added', body: 'Drag the new section into its position.' })}><SP_I.Plus size={14} />Add section</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setAddSectionOpen(true)}><SP_I.Plus size={14} />Add section</button>
           <button className="btn btn-coral btn-sm" onClick={() => toast.push({ kind: 'success', title: 'Saved', body: 'Live on rosyrecruits.com within 60 seconds.' })}>Save changes</button>
         </div>
       </div>
@@ -766,6 +796,27 @@ function PageSiteContent() {
           </div>
         ))}
       </div>
+      <h3 style={{ margin: '28px 0 12px', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.015em' }}>Page sections</h3>
+      <div className="grid-2">
+        {sections.map(sec => (
+          <div key={sec.id} className="card" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{sec.title}</p>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-muted)' }}>{sec.desc}</p>
+            </div>
+            <button className="icon-btn" aria-label="Delete section" onClick={() => { setSections(s => s.filter(x => x.id !== sec.id)); toast.push({ kind: 'info', title: 'Section removed' }); }}><SP_I.Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+      {addSectionOpen ? (
+        <Modal open={addSectionOpen} onClose={() => setAddSectionOpen(false)} title="Add section" size="sm"
+          footer={<><button className="btn btn-ghost" onClick={() => setAddSectionOpen(false)}>Cancel</button><button className="btn btn-coral" disabled={!newSection.title.trim()} onClick={() => { setSections(s => [...s, { id: 's' + Date.now(), ...newSection }]); setNewSection({ title: '', desc: '' }); setAddSectionOpen(false); toast.push({ kind: 'success', title: 'Section added' }); }}>Add</button></>}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Title</label><input className="input" value={newSection.title} onChange={(e) => setNewSection({ ...newSection, title: e.target.value })} placeholder="e.g. Case studies" /></div>
+            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Description</label><input className="input" value={newSection.desc} onChange={(e) => setNewSection({ ...newSection, desc: e.target.value })} placeholder="What this section contains" /></div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -775,6 +826,8 @@ function PageEmails() {
   const [templates, setTemplates] = SP_us(window.RosyStores.emailTemplates);
   const [editId, setEditId] = SP_us(null);
   const [draft, setDraft] = SP_us({ subject: '', body: '', live: true });
+  const [testModalOpen, setTestModalOpen] = SP_us(false);
+  const [testEmail, setTestEmail] = SP_us('');
 
   const openTemplate = (id) => {
     setEditId(id);
@@ -812,7 +865,7 @@ function PageEmails() {
         </table>
       </div>
       <Modal open={!!editId} onClose={() => setEditId(null)} title={editId ? templates[editId].name : ''} size="lg"
-        footer={<><button className="btn btn-ghost" onClick={() => setEditId(null)}>Cancel</button><button className="btn btn-ghost" onClick={() => toast.push({ kind: 'info', title: 'Test email sent', body: 'Check ben@rosyrecruits.com.' })}>Send test</button><button className="btn btn-coral" onClick={saveTemplate}>Save changes</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => setEditId(null)}>Cancel</button><button className="btn btn-ghost" onClick={() => setTestModalOpen(true)}>Send test</button><button className="btn btn-coral" onClick={saveTemplate}>Save changes</button></>}>
         <div className="col" style={{ gap: 14 }}>
           <div className="field"><label className="field-label">Subject line</label><input className="input" value={draft.subject} onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))} /></div>
           <div className="field"><label className="field-label">Body</label>
@@ -825,6 +878,13 @@ function PageEmails() {
           <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Variables: <code>{`{{worker_first}}`}</code>, <code>{`{{event_name}}`}</code>, <code>{`{{event_date}}`}</code>, <code>{`{{call_time}}`}</code>, <code>{`{{venue_name}}`}</code>, <code>{`{{hourly_rate}}`}</code></p>
         </div>
       </Modal>
+      {testModalOpen ? (
+        <Modal open={testModalOpen} onClose={() => setTestModalOpen(false)} title="Send test email" size="sm"
+          footer={<><button className="btn btn-ghost" onClick={() => setTestModalOpen(false)}>Cancel</button><button className="btn btn-coral" disabled={!testEmail.includes('@')} onClick={() => { setTestModalOpen(false); toast.push({ kind: 'success', title: 'Test email sent', body: `Sent to ${testEmail}` }); setTestEmail(''); }}>Send</button></>}>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Send to</label>
+          <input className="input" placeholder="you@studio.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
+        </Modal>
+      ) : null}
     </div>
   );
 }
