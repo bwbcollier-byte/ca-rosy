@@ -530,6 +530,8 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
 
 /* ============ Onboarding ============ */
 function OnboardingPage({ onComplete }) {
+  // Step 1 picks role(s). When done we surface the picked role through onComplete so app.jsx
+  // can pin the demo role (signed-in role is already pinned via the session).
   const [step, setStep] = SX_us(1);
   const [role, setRole] = SX_us({ vendor: false, worker: false });
   const [tc, setTc] = SX_us(false);
@@ -607,7 +609,7 @@ function OnboardingPage({ onComplete }) {
       <TCModal open={tcOpen} onClose={() => setTcOpen(false)} onAgree={() => { setTc(true); setTcOpen(false); toast.push({ kind: 'success', title: 'Terms accepted' }); }} role={role.vendor ? 'vendor' : 'worker'} />
 
       <Modal open={stripeOpen} onClose={() => setStripeOpen(false)} title="" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => { setStripeOpen(false); onComplete(); }}>Skip for now</button><button className="btn btn-coral" onClick={() => { setStripeOpen(false); toast.push({ kind: 'success', title: 'Connected to Stripe' }); onComplete(); }}>Continue to Stripe</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => { setStripeOpen(false); onComplete(role.vendor ? 'vendor' : 'worker'); }}>Skip for now</button><button className="btn btn-coral" onClick={() => { setStripeOpen(false); toast.push({ kind: 'success', title: 'Connected to Stripe' }); onComplete(role.vendor ? 'vendor' : 'worker'); }}>Continue to Stripe</button></>}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
             <RoseLogo size={36} />
@@ -665,19 +667,25 @@ function TCModal({ open, onClose, onAgree, role }) {
 function ProfileForm({ role }) {
   const [hours, setHours] = SX_us(false);
   const [photo, setPhoto] = SX_us(null);
-  const [services, setServices] = SX_us(role === 'vendor' ? ['Install & Breakdown', 'Onsite Design', 'Event Consultations'] : ['Onsite Design', 'Install & Breakdown']);
+  const [first, setFirst] = SX_us('');
+  const [last, setLast] = SX_us('');
+  const [phone, setPhone] = SX_us('');
+  const [title, setTitle] = SX_us('');
+  const [company, setCompany] = SX_us('');
+  const [bio, setBio] = SX_us('');
+  const [services, setServices] = SX_us([]);
   const allServices = ['Install & Breakdown','Onsite Design','D.I.Y. Couples','Studio Clean-Up','Event Consultations'];
   const toggleService = (s) => setServices(arr => arr.includes(s) ? arr.filter(x => x !== s) : [...arr, s]);
   return (
     <div className="col" style={{ gap: 14 }}>
-      <ImageUpload value={photo} onChange={setPhoto} label={role === 'vendor' ? 'Upload logo' : 'Upload profile photo'} size={96} round={role !== 'vendor' ? true : false} />
+      <ImageUpload value={photo} onChange={setPhoto} label={role === 'vendor' ? 'Upload your studio logo' : 'Upload a profile photo'} size={96} round={role !== 'vendor' ? true : false} />
       <div className="grid-2">
-        <div className="field"><label className="field-label">First name</label><input className="input" defaultValue={role === 'vendor' ? 'Mariana' : 'Naomi'} /></div>
-        <div className="field"><label className="field-label">Last name</label><input className="input" defaultValue={role === 'vendor' ? 'Cruz' : 'Park'} /></div>
+        <div className="field"><label className="field-label">First name</label><input className="input" value={first} onChange={e => setFirst(e.target.value)} placeholder="Jane" /></div>
+        <div className="field"><label className="field-label">Last name</label><input className="input" value={last} onChange={e => setLast(e.target.value)} placeholder="Doe" /></div>
       </div>
-      <div className="field"><label className="field-label">Your phone number</label><input className="input" defaultValue="+1 (917) 555-0188" /></div>
-      <div className="field"><label className="field-label">{role === 'vendor' ? 'Your title' : 'Your specialty'}</label><input className="input" defaultValue={role === 'vendor' ? 'Owner & Lead Designer' : 'Lead designer'} /></div>
-      {role === 'vendor' ? <div className="field"><label className="field-label">Company name</label><input className="input" defaultValue="Bloom & Fern Studio" /></div> : null}
+      <div className="field"><label className="field-label">Phone number</label><input className="input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 (555) 555-0100" /></div>
+      <div className="field"><label className="field-label">{role === 'vendor' ? 'Your role at the studio' : 'Your specialty'}</label><input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder={role === 'vendor' ? 'Owner / Creative Director / Lead Designer' : 'Lead designer / Strike crew / Assist'} /></div>
+      {role === 'vendor' ? <div className="field"><label className="field-label">Studio / company name</label><input className="input" value={company} onChange={e => setCompany(e.target.value)} placeholder="e.g. Bloom & Fern Studio" /></div> : null}
       <div className="field"><label className="field-label">Service categories</label>
         <p className="field-hint" style={{ marginTop: -2, marginBottom: 4 }}>Tap to add or remove. {services.length} selected.</p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -694,26 +702,33 @@ function ProfileForm({ role }) {
           })}
         </div>
       </div>
-      <div className="field"><label className="field-label">{role === 'vendor' ? 'Business address' : 'Home base'}</label>
-        <AddressInput placeholder={role === 'vendor' ? 'Search a business address' : 'City or neighborhood'} />
+      <div className="field"><label className="field-label">{role === 'vendor' ? 'Studio address' : 'Home base'}</label>
+        <AddressInput placeholder={role === 'vendor' ? 'Search your studio address' : 'City or neighborhood'} />
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 13.5, fontWeight: 500 }}>Click to add public business hours</span>
-        <span className={`toggle ${hours ? 'on' : ''}`} onClick={() => setHours(h => !h)} />
-      </div>
-      {hours ? (
-        <div className="card" style={{ background: 'var(--color-surface-soft)' }}>
-          {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
-            <div key={d} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: 12, alignItems: 'center', padding: '6px 0' }}>
-              <span style={{ fontWeight: 500, fontSize: 13 }}>{d}</span>
-              <input className="input" type="time" defaultValue="09:00" style={{ height: 36 }} />
-              <input className="input" type="time" defaultValue="18:00" style={{ height: 36 }} />
+      {role === 'vendor' ? (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13.5, fontWeight: 500 }}>Show public business hours on your profile</span>
+            <span className={`toggle ${hours ? 'on' : ''}`} onClick={() => setHours(h => !h)} />
+          </div>
+          {hours ? (
+            <div className="card" style={{ background: 'var(--color-surface-soft)' }}>
+              {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
+                <div key={d} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: 12, alignItems: 'center', padding: '6px 0' }}>
+                  <span style={{ fontWeight: 500, fontSize: 13 }}>{d}</span>
+                  <input className="input" type="time" defaultValue="09:00" style={{ height: 36 }} />
+                  <input className="input" type="time" defaultValue="18:00" style={{ height: 36 }} />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          ) : null}
+        </>
       ) : null}
-      <div className="field"><label className="field-label">{role === 'vendor' ? 'Business description' : 'Bio'}</label>
-        <textarea className="textarea" defaultValue={role === 'vendor' ? 'Bloom & Fern is a Chicago-based floral studio serving weddings and brand events across Chicagoland. We specialize in suspended installations and editorial work.' : '8 years in floral events. Chicago-based. Strong at suspended installs, calm under pressure, takes direction well.'} />
+      <div className="field"><label className="field-label">{role === 'vendor' ? 'Studio description' : 'About you'}</label>
+        <textarea className="textarea" value={bio} onChange={e => setBio(e.target.value)}
+          placeholder={role === 'vendor'
+            ? 'A short paragraph couples and brands will see. What kind of work, what style, where you work.'
+            : 'A short paragraph vendors will see. Years of experience, your strongest skills, anything that stands out.'} />
       </div>
     </div>
   );

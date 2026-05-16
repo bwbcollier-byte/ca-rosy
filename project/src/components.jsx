@@ -85,13 +85,15 @@ function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', sho
   useEffect(() => {
     if (!animate) { setDisplay(value); return; }
     if (typeof value !== 'number') { setDisplay(value); return; }
+    // Skip animation for small numbers (≤ 3) — the rounding would otherwise show 0 for too long.
+    if (value <= 3) { setDisplay(value); return; }
     let start = performance.now();
     const dur = 600;
     let raf;
     const tick = (t) => {
       const p = Math.min(1, (t - start) / dur);
       const eased = 1 - Math.pow(1 - p, 3);
-      setDisplay(Math.round(eased * value));
+      setDisplay(p >= 1 ? value : Math.round(eased * value));
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -483,9 +485,11 @@ function BulkActionBar({ count, actions = [], onClear }) {
       <span style={{ fontWeight: 600 }}>{count} selected</span>
       <span style={{ flex: 1 }} />
       {actions.map((a, i) => (
-        <button key={i} onClick={a.onClick}
+        <button key={i} onClick={a.disabled ? undefined : a.onClick} disabled={!!a.disabled}
+          aria-disabled={!!a.disabled}
           className={a.danger ? 'btn btn-danger btn-sm' : 'btn btn-coral btn-sm'}
-          style={a.danger ? undefined : { background: 'var(--rosy-coral)', color: '#fff' }}>
+          title={a.disabled ? 'Not available for this selection' : undefined}
+          style={a.danger ? undefined : { background: 'var(--rosy-coral)', color: '#fff', opacity: a.disabled ? 0.45 : 1, cursor: a.disabled ? 'not-allowed' : 'pointer' }}>
           {a.icon ? <a.icon size={14} /> : null}{a.label}
         </button>
       ))}
@@ -600,9 +604,25 @@ function getGreeting(name) {
   return `${greet}, ${safe}`;
 }
 
+/* ---------- ViewToggle (table | cards) — reusable across list pages ---------- */
+function ViewToggle({ value, onChange }) {
+  const opt = (id, label, Icon) => (
+    <button key={id} type="button" onClick={() => onChange(id)} aria-pressed={value === id} aria-label={`${label} view`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', height: 36, border: '1.5px solid', borderColor: value === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: value === id ? 'var(--color-ink)' : 'transparent', color: value === id ? '#fff' : 'inherit', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+      <Icon size={13} />{label}
+    </button>
+  );
+  return (
+    <div style={{ display: 'inline-flex', gap: 4 }}>
+      {opt('table', 'Table', Ic.List)}
+      {opt('cards', 'Cards', Ic.LayoutGrid)}
+    </div>
+  );
+}
+
 Object.assign(window, {
   ToastHost, useToast, Avatar, Badge, GigChip, StatCard, Modal, Slideover, ConfirmDialog, Empty,
-  Sidebar, AppHeader, NotificationPanel, RoseLogo, RoleSwitch, SortMenu,
+  Sidebar, AppHeader, NotificationPanel, RoseLogo, RoleSwitch, SortMenu, ViewToggle,
   Pagination, usePaged, BulkActionBar, Breadcrumbs, EventImage,
   fmtDate, fmtMoney, getGreeting,
 });

@@ -15,7 +15,7 @@ window.SUPABASE_CONFIG = {
   window.sb = window.supabase.createClient(
     window.SUPABASE_CONFIG.url,
     window.SUPABASE_CONFIG.anonKey,
-    { auth: { persistSession: false } }
+    { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'rosy.auth' } }
   );
 })();
 

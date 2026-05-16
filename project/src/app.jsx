@@ -36,8 +36,7 @@ function App() {
     const { data: sub } = window.sb.auth.onAuthStateChange((_evt, sess) => setSession(sess));
     return () => sub?.subscription?.unsubscribe?.();
   }, []);
-  const [tweaks, setTweak] = useTweaks();
-  const [tweaksOpen, setTweaksOpen] = A_us(false);
+  const [tweaks] = useTweaks();
   const [sidebarOpen, setSidebarOpen] = A_us(false);
   // Realtime tick: bumped whenever supabase_client mutates window.RosyData,
   // forces a top-down re-render so screens read the new data.
@@ -53,11 +52,19 @@ function App() {
   // returns below so the hook count stays constant across mode changes
   // (React's rules-of-hooks).
   const sessionUserId = session?.user?.id;
+  const sessionUserFromData = sessionUserId ? (window.RosyData?.USERS || []).find(x => x.id === sessionUserId) : null;
   A_ue(() => {
-    if (!sessionUserId) return;
-    const u = (window.RosyData?.USERS || []).find(x => x.id === sessionUserId);
-    if (u && u.role && u.role !== role) setRole(u.role);
-  }, [sessionUserId]);
+    if (sessionUserFromData && sessionUserFromData.role && sessionUserFromData.role !== role) setRole(sessionUserFromData.role);
+  }, [sessionUserId, sessionUserFromData?.role]);
+  // Hard-lock: a signed-in user's role can NEVER be changed by the demo role-switcher.
+  // setRoleSafe is what the header passes; it silently ignores changes when signed in.
+  const setRoleSafe = (newRole) => {
+    if (sessionUserId) return;          // signed-in user: ignore
+    setRole(newRole);
+  };
+
+  // Welcome popup state — sticky modal that survives until the user takes the tour.
+  const [welcomeOpen, setWelcomeOpen] = A_us(false);
 
   // Hash router for app routes
   A_ue(() => {
@@ -125,16 +132,18 @@ function App() {
   if (mode === 'onboarding') {
     return (
       <ToastHost>
-        <OnboardingPage onComplete={() => {
+        <OnboardingPage onComplete={(pickedRole) => {
+          // Pin role from the onboarding pick so the user lands on THEIR dashboard, not admin.
+          if (pickedRole) setRole(pickedRole);
           // Drop a personal welcome notification so the bell badge lights up immediately.
           try {
-            const me = sessionUser || currentUser;
+            const me = sessionUserFromData || { first: pickedRole === 'vendor' ? 'there' : 'there', role: pickedRole, id: sessionUserId };
             const list = window.RosyData.NOTIFICATIONS = window.RosyData.NOTIFICATIONS || [];
             list.unshift({
               id:     'welcome_' + Date.now(),
               type:   'welcome',
-              title:  `Welcome to Rosy${me?.first ? ', ' + me.first : ''}!`,
-              body:   `Your ${me?.role || 'account'} is ready. Take a 60-second tour to see what's possible.`,
+              title:  `Welcome to Rosy${me?.first && me.first !== 'there' ? ', ' + me.first : ''}!`,
+              body:   `Your ${me?.role || pickedRole || 'account'} account is ready. Take a 60-second tour to see what's possible.`,
               time:   'Just now',
               link:   '#tour',
               unread: true,
@@ -143,7 +152,8 @@ function App() {
             window.dispatchEvent(new CustomEvent('rosy:data-changed'));
           } catch (e) { console.warn('welcome notif failed:', e); }
           setMode('app');
-          setTourOpen(true);
+          setRoute('dashboard');
+          setWelcomeOpen(true);
         }} />
       </ToastHost>
     );
@@ -206,7 +216,7 @@ function App() {
           open={sidebarOpen} onClose={() => setSidebarOpen(false)}
           sidebarStyle={tweaks.sidebarStyle} dark={tweaks.sidebarDark} />
         <div className="main">
-          <AppHeader title={title} role={role} setRole={(r) => { setRole(r); setRoute('dashboard'); }}
+          <AppHeader title={title} role={role} setRole={(r) => { setRoleSafe(r); setRoute('dashboard'); }}
             onSignOut={handleSignOut} onBell={() => setNotifOpen(true)} currentUser={currentUser} setRoute={setRoute}
             breadcrumbs={breadcrumbs} sessionUser={sessionUser}
             onBurger={() => setSidebarOpen(true)} />
@@ -214,15 +224,16 @@ function App() {
             currentUser={currentUser} tweaks={tweaks} />
         </div>
         <NotificationPanel open={notifOpen} onClose={() => setNotifOpen(false)} setRoute={setRoute} role={role} />
-        {tourOpen ? <Walkthrough role={role} onClose={() => setTourOpen(false)} setRoute={setRoute} /> : null}
-        <button className="tweaks-fab" aria-label="Open tweaks" onClick={() => setTweaksOpen(true)}
-          style={{ position: 'fixed', right: 24, bottom: 24, width: 48, height: 48, borderRadius: 9999, border: 0, background: 'var(--color-ink)', color: '#fff', cursor: 'pointer', boxShadow: 'var(--shadow-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
-          <window.Icons.Settings size={20} />
-        </button>
-        {tweaksOpen ? (
-          <div onClick={() => setTweaksOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 300, display: 'flex', justifyContent: 'flex-end' }}>
-            <div onClick={(e) => e.stopPropagation()} style={{ width: 360, maxWidth: '100%', height: '100%', background: 'var(--color-canvas)', overflowY: 'auto' }}>
-              <TweaksPanel tweaks={tweaks} set={setTweak} onClose={() => setTweaksOpen(false)} />
+        {tourOpen ? <Walkthrough role={role} onClose={() => { setTourOpen(false); setWelcomeOpen(false); }} setRoute={setRoute} /> : null}
+        {welcomeOpen && !tourOpen ? (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,10,0.5)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <div style={{ width: '100%', maxWidth: 480, background: 'var(--color-canvas)', borderRadius: 20, padding: 32, textAlign: 'center', boxShadow: 'var(--shadow-modal)' }}>
+              <div style={{ width: 64, height: 64, borderRadius: 9999, background: 'var(--rosy-coral)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', marginBottom: 16 }}>
+                <window.Icons.Sparkles size={28} />
+              </div>
+              <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 24 }}>Welcome to Rosy{currentUser?.first ? ', ' + currentUser.first : ''}!</h2>
+              <p style={{ margin: '12px 0 24px', color: 'var(--color-muted)', fontSize: 14.5 }}>Your {currentUser?.role || 'account'} is ready. Take a quick 60-second tour to see what's possible — we'll show you everything.</p>
+              <button className="btn btn-coral btn-lg" style={{ width: '100%' }} onClick={() => setTourOpen(true)}>Take the tour</button>
             </div>
           </div>
         ) : null}
@@ -267,7 +278,13 @@ function Forbidden({ setRoute }) {
 function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks }) {
   // Route-level role guard — block direct URL access to off-role screens.
   const allowed = ROUTE_ROLES[baseRoute];
-  if (allowed && !allowed.includes(role)) return <Forbidden setRoute={setRoute} />;
+  if (allowed && !allowed.includes(role)) {
+    // Worker / vendor only routes — silently bounce to the user's own dashboard rather than Forbidden screen.
+    // Admin-only routes stay Forbidden so the user sees that they truly can't access it.
+    const adminOnly = allowed.length === 1 && allowed[0] === 'admin';
+    if (!adminOnly) { setTimeout(() => setRoute('dashboard'), 0); return null; }
+    return <Forbidden setRoute={setRoute} />;
+  }
 
   // event detail
   if (route.startsWith('events:')) {

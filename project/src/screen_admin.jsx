@@ -11,6 +11,40 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
   const [openTx, setOpenTx] = SP_us(null);
   const [statusTab, setStatusTab] = SP_us('all');
   const [search, setSearch] = SP_us('');
+  const [picked, setPicked] = SP_us({});
+
+  // Fire in-app notifications to both parties after a payment approval.
+  const notifyPaymentApproved = async (t) => {
+    try {
+      const vendorUser = SP_D.USERS.find(u => u.company === t.payer || u.name === t.payer || (u.role === 'vendor' && u.company && t.payer.includes(u.company)));
+      const workerUser = SP_D.USERS.find(u => u.name === t.payee);
+      const stamp = new Date().toISOString();
+      const push = (entry) => {
+        SP_D.NOTIFICATIONS = SP_D.NOTIFICATIONS || [];
+        SP_D.NOTIFICATIONS.unshift(entry);
+      };
+      if (workerUser) {
+        push({ id: 'pay_wrk_' + t.id, type: 'payment_sent', title: `Payment received: ${fmtMoney(t.amount)}`, body: `${t.payer} approved your invoice ${t.invoice}. Funds land in your Stripe account within 48h.`, time: 'Just now', link: '#worker/payments', unread: true, user_id: workerUser.id });
+      }
+      if (vendorUser) {
+        push({ id: 'pay_vnd_' + t.id, type: 'payment_sent', title: `Payment confirmed: ${t.invoice}`, body: `Released ${fmtMoney(t.amount)} to ${t.payee}.`, time: 'Just now', link: '#vendor/payments', unread: true, user_id: vendorUser.id });
+      }
+      window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+      // Best-effort persist to Supabase
+      if (window.sb && (workerUser || vendorUser)) {
+        const rows = [];
+        if (workerUser) rows.push({ user_id: workerUser.id, type: 'payment_sent', title: `Payment received: ${fmtMoney(t.amount)}`, body: `${t.payer} approved your invoice ${t.invoice}.`, link: '#worker/payments', read: false });
+        if (vendorUser) rows.push({ user_id: vendorUser.id, type: 'payment_sent', title: `Payment confirmed: ${t.invoice}`, body: `Released ${fmtMoney(t.amount)} to ${t.payee}.`, link: '#vendor/payments', read: false });
+        if (rows.length) window.sb.from('rr_notifications').insert(rows).then(() => {});
+      }
+    } catch (e) { console.warn('notify payment failed:', e); }
+  };
+
+  const approveOne = async (t) => {
+    try { await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'paid'); } catch (e) { console.warn(e); }
+    await notifyPaymentApproved(t);
+    toast.push({ kind: 'success', title: 'Payment released', body: `${fmtMoney(t.amount)} sent to ${t.payee}` });
+  };
   let txs = SP_D.TRANSACTIONS;
   // Scope payments by the current user. Vendors see invoices for their company;
   // workers see invoices addressed to them. Falls back to demo names when seed data lacks UUIDs.
@@ -30,6 +64,27 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
     });
 
   const paged = usePaged(filtered, 10, `${search}|${statusTab}|${filtered.length}`);
+  const visible = paged.slice;
+  const pickedIds = Object.keys(picked).filter(k => picked[k]);
+  const pickedCount = pickedIds.length;
+  const pickedRows  = txs.filter(t => pickedIds.includes(t.id));
+  const canApproveAny = pickedRows.some(t => t.status === 'Pending');
+
+  const bulkApprove = async () => {
+    const targets = pickedRows.filter(t => t.status === 'Pending');
+    for (const t of targets) {
+      try { await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'paid'); } catch (e) { console.warn(e); }
+      await notifyPaymentApproved(t);
+    }
+    setPicked({});
+    toast.push({ kind: 'success', title: `${targets.length} payments released`, body: `Total ${fmtMoney(targets.reduce((s,t) => s + t.amount, 0))}` });
+  };
+  const bulkDispute = () => {
+    if (pickedRows.length === 1) { setDispute(pickedRows[0]); return; }
+    pickedRows.forEach(t => { try { window.RosyMutate?.applications?.setPaymentStatus(t.id, 'disputed'); } catch (e) {} });
+    setPicked({});
+    toast.push({ kind: 'warning', title: `${pickedRows.length} marked disputed`, body: 'Rosy support will review within 48 hours.' });
+  };
 
   React.useEffect(() => {
     if (!openId) return;
@@ -71,26 +126,47 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
       <div className="table-wrap">
         <table className="rosy-table">
           <thead>
-            <tr><th>Invoice</th><th>Status</th><th>{role==='worker' ? 'From' : 'To / from'}</th><th>Amount</th><th>Date</th><th></th></tr>
+            <tr>
+              {role !== 'worker' ? (
+                <th style={{ width: 36 }}>
+                  <CheckBox
+                    checked={visible.length > 0 && visible.every(t => picked[t.id])}
+                    onChange={(on) => { setPicked(p => { const n = { ...p }; visible.forEach(t => { if (on) n[t.id] = true; else delete n[t.id]; }); return n; }); }} />
+                </th>
+              ) : null}
+              <th>Invoice</th><th>Status</th><th>{role==='worker' ? 'From' : 'To / from'}</th><th>Amount</th><th>Date</th><th></th>
+            </tr>
           </thead>
           <tbody>
-            {paged.slice.length === 0 ? <tr><td colSpan={6}><Empty icon={SP_I.CreditCard} title="No matching payments" body="Try a different status or search term." /></td></tr> :
-             paged.slice.map(t => (
+            {visible.length === 0 ? <tr><td colSpan={role !== 'worker' ? 7 : 6}><Empty icon={SP_I.CreditCard} title="No matching payments" body="Try a different status or search term." /></td></tr> :
+             visible.map(t => (
               <tr key={t.id} tabIndex={0} role="button" aria-label={`Open invoice ${t.invoice}`}
-                  onClick={(e) => { if (e.target.closest('button')) return; setOpenTx(t); }}
+                  onClick={(e) => { if (e.target.closest('button') || e.target.closest('[role=checkbox]')) return; setOpenTx(t); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setOpenTx(t); } }}
                   style={{ cursor: 'pointer' }}>
+                {role !== 'worker' ? (
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <CheckBox checked={!!picked[t.id]} onChange={(on) => setPicked(p => ({ ...p, [t.id]: on }))} />
+                  </td>
+                ) : null}
                 <td style={{ fontWeight: 500, color: 'var(--color-ink)' }}>{t.invoice}{t.note ? <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-warning)' }}>{t.note}</p> : null}</td>
                 <td><Badge kind={t.status} /></td>
                 <td style={{ fontSize: 13 }}>{role === 'worker' ? t.payer : (role === 'vendor' ? t.payee : `${t.payee} ← ${t.payer}`)}</td>
                 <td className="t-mono-amount">{fmtMoney(t.amount)}</td>
                 <td style={{ color: 'var(--color-muted)', fontSize: 13 }}>{fmtDate(t.date, 'mdy-dots')}</td>
-                <td>
+                <td onClick={(e) => e.stopPropagation()}>
                   <div className="row-actions">
-                    {t.status === 'Pending' && role !== 'worker' ?
-                      <button className="btn btn-coral btn-sm" onClick={async () => { try { await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'paid'); } catch (e) { console.warn(e); } toast.push({ kind: 'success', title: 'Payment released', body: `${fmtMoney(t.amount)} sent to ${t.payee}` }); }}>Approve</button> : null}
-                    {t.status !== 'Paid' && t.status !== 'Disputed' ?
-                      <button className="btn btn-ghost btn-sm" onClick={() => setDispute(t)}><SP_I.AlertTriangle size={14} />Dispute</button> : null}
+                    {/* Approved payments show a "Complete" badge instead of action buttons */}
+                    {t.status === 'Paid' ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '4px 10px', background: 'var(--color-success-bg)', color: 'var(--color-success)', borderRadius: 9999, fontWeight: 600 }}>
+                        <SP_I.CheckCircle2 size={12} />Complete
+                      </span>
+                    ) : (<>
+                      {t.status === 'Pending' && role !== 'worker' ?
+                        <button className="btn btn-coral btn-sm" onClick={() => approveOne(t)}>Approve</button> : null}
+                      {t.status !== 'Disputed' ?
+                        <button className="btn btn-ghost btn-sm" onClick={() => setDispute(t)}><SP_I.AlertTriangle size={14} />Dispute</button> : null}
+                    </>)}
                     <button className="row-action-btn" aria-label="Open invoice" onClick={() => setOpenTx(t)}><SP_I.ExternalLink size={14} /></button>
                   </div>
                 </td>
@@ -100,6 +176,15 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
         </table>
         <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="payments" />
       </div>
+
+      {role !== 'worker' ? (
+        <BulkActionBar count={pickedCount} onClear={() => setPicked({})}
+          actions={[
+            { label: 'Approve', icon: SP_I.CheckCircle2, onClick: bulkApprove, disabled: !canApproveAny },
+            { label: 'Dispute', icon: SP_I.AlertTriangle, onClick: bulkDispute },
+            { label: 'Clear',   icon: SP_I.X,             onClick: () => setPicked({}) },
+          ]} />
+      ) : null}
 
       <Modal open={!!dispute} onClose={() => setDispute(null)} title="File a dispute" size="md"
         footer={<><button className="btn btn-ghost" onClick={() => setDispute(null)}>Cancel</button><button className="btn btn-danger" onClick={() => { setDispute(null); toast.push({ kind: 'warning', title: 'Dispute filed', body: 'Rosy support will review within 48 hours.' }); }}>File dispute</button></>}>
@@ -144,12 +229,82 @@ function PageDisputes() {
   const toast = useToast();
   const [mediate, setMediate] = SP_us(null);
   const [thread, setThread] = SP_us(null);
-  const disputed = SP_D.TRANSACTIONS.filter(t => t.status === 'Disputed' || t.status === 'Late');
+  const [view, setView] = SP_us('cards');
+  const [search, setSearch] = SP_us('');
+  const [statusFilter, setStatusFilter] = SP_us('all');
+  const [sortBy, setSortBy] = SP_us('newest');
+  const allDisputes = SP_D.TRANSACTIONS.filter(t => t.status === 'Disputed' || t.status === 'Late');
+  const disputed = allDisputes
+    .filter(t => statusFilter === 'all' || t.status === statusFilter)
+    .filter(t => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return [t.invoice, t.payer, t.payee, t.note].some(s => (s || '').toLowerCase().includes(q));
+    })
+    .sort((a, b) => {
+      if (sortBy === 'newest')  return new Date(b.date) - new Date(a.date);
+      if (sortBy === 'oldest')  return new Date(a.date) - new Date(b.date);
+      if (sortBy === 'amount-desc') return (b.amount || 0) - (a.amount || 0);
+      if (sortBy === 'amount-asc')  return (a.amount || 0) - (b.amount || 0);
+      return 0;
+    });
+  const stats = {
+    open:      allDisputes.length,
+    disputed:  allDisputes.filter(t => t.status === 'Disputed').length,
+    late:      allDisputes.filter(t => t.status === 'Late').length,
+    atStake:   allDisputes.reduce((s, t) => s + (t.amount || 0), 0),
+  };
   return (
     <div className="content fade-up">
-      <div className="section-heading"><h2>Disputes & overdue</h2></div>
+      <div className="grid-4" style={{ marginBottom: 20 }}>
+        <StatCard icon={SP_I.AlertTriangle} label="Open disputes"   value={stats.open} />
+        <StatCard icon={SP_I.ShieldAlert}   label="In dispute"      value={stats.disputed} />
+        <StatCard icon={SP_I.Clock}         label="Late payouts"    value={stats.late} />
+        <StatCard icon={SP_I.DollarSign}    label="$ at stake"      value={fmtMoney(stats.atStake)} />
+      </div>
+      <div className="section-heading">
+        <h2>Disputes & overdue</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative' }}>
+            <SP_I.Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
+            <input className="input" placeholder="Search invoice, party, note…" style={{ paddingLeft: 36, width: 280 }} value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <SortMenu value={sortBy} onChange={setSortBy} options={[['newest','Newest first'],['oldest','Oldest first'],['amount-desc','Highest amount'],['amount-asc','Lowest amount']]} />
+          <ViewToggle value={view} onChange={setView} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[['all','All'],['Disputed','Disputed'],['Late','Late']].map(([id, label]) => (
+              <button key={id} type="button" onClick={() => setStatusFilter(id)} style={{ border: '1.5px solid', borderColor: statusFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: statusFilter === id ? 'var(--color-ink)' : 'transparent', color: statusFilter === id ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
       {disputed.length === 0 ? (
         <Empty icon={SP_I.ShieldCheck} title="No active disputes" body="When a payment is contested or overdue, it'll show up here for you to mediate." />
+      ) : view === 'table' ? (
+        <div className="table-wrap">
+          <table className="rosy-table">
+            <thead><tr><th>Invoice</th><th>Type</th><th>Filed</th><th>Worker</th><th>Vendor</th><th>Amount</th><th style={{ width: 160 }}></th></tr></thead>
+            <tbody>
+              {disputed.map(t => (
+                <tr key={t.id} tabIndex={0} role="button" aria-label={`Open dispute ${t.invoice}`} style={{ cursor: 'pointer' }}
+                  onClick={(e) => { if (e.target.closest('button')) return; setThread(t); }}>
+                  <td style={{ fontWeight: 600, fontSize: 13.5 }}>{t.invoice}</td>
+                  <td><Badge kind={t.status} /></td>
+                  <td style={{ fontSize: 13, color: 'var(--color-muted)' }}>{fmtDate(t.date, 'mdy-dots')}</td>
+                  <td style={{ fontSize: 13 }}>{t.payee}</td>
+                  <td style={{ fontSize: 13 }}>{t.payer}</td>
+                  <td className="t-mono-amount" style={{ fontSize: 14 }}>{fmtMoney(t.amount)}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <div className="row-actions">
+                      <button className="row-action-btn" onClick={() => setThread(t)} title="View thread"><SP_I.MessageSquare size={14} /></button>
+                      <button className="btn btn-coral btn-sm" onClick={() => setMediate(t)}>Mediate</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
       <div className="grid-3">
         {disputed.map(t => (
@@ -213,6 +368,7 @@ function PageDisputes() {
 /* ============ Users / Workers / Vendors directory ============ */
 function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
   const [search, setSearch] = SP_us('');
+  const [view, setView] = SP_us('table');
   const [statusFilter, setStatusFilter] = SP_us('all');
   const [roleFilter, setRoleFilter] = SP_us('all');
   const [ratingFilter, setRatingFilter] = SP_us('any');
@@ -328,10 +484,40 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
             <input className="input" placeholder={`Search by name, email, company, city, role…`} style={{ paddingLeft: 36, width: 320 }} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <SortMenu value={sortBy} onChange={setSortBy} options={[['newest','Newest first'],['oldest','Oldest first'],['name','Name A–Z'],['rating','Highest rated'],['gigs','Most gigs']]} />
+          <ViewToggle value={view} onChange={setView} />
           <button className="btn btn-ghost btn-sm" onClick={() => setFilterOpen(true)}><SP_I.Filter size={14} />Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</button>
           {role === 'admin' ? <button className="btn btn-coral" onClick={() => setInviteOpen(true)}><SP_I.Plus size={14} />Invite</button> : null}
         </div>
       </div>
+      {view === 'cards' ? (
+        <>
+          <div className="grid-3">
+            {visible.length === 0 ? <div style={{ gridColumn: '1 / -1' }}><Empty icon={SP_I.Users} title="No matches" body="Try a broader search." /></div> :
+             visible.map(u => (
+              <div key={u.id} className="card" tabIndex={0} role="button" aria-label={`Open ${u.name}`} style={{ cursor: 'pointer', position: 'relative' }}
+                onClick={() => { setSelected(u); setEditing(false); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setSelected(u); setEditing(false); } }}>
+                <div onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 14, right: 14 }}>
+                  <CheckBox checked={!!picked[u.id]} onChange={(on) => setPicked(p => ({ ...p, [u.id]: on }))} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center', padding: '8px 0' }}>
+                  <Avatar name={u.name} size="xl" />
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: 15 }}>{u.name}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)', textTransform: 'capitalize' }}>{u.role}{u.company ? ` · ${u.company}` : ''}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>
+                    {u.rating ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '2px 8px', background: '#FEF3C7', color: '#92400E', borderRadius: 9999, fontWeight: 600 }}><SP_I.Star size={11} style={{ fill: '#F59E0B' }} />{u.rating}</span> : null}
+                  </div>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>{u.city || '—'}{u.gigs ? ` · ${u.gigs} gigs` : ''}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label={title.toLowerCase()} />
+        </>
+      ) : (
       <div className="table-wrap">
         <table className="rosy-table">
           <thead>
@@ -380,6 +566,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
                   <div className="row-actions">
                     <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(false); }} title="View profile"><SP_I.Eye size={14} /></button>
                     <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(true); }} title="Edit profile"><SP_I.Pencil size={14} /></button>
+                    <button className="row-action-btn" onClick={() => { const next = u.status === 'active' ? 'inactive' : 'active'; setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), status: next } })); toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.name} marked ${next}` }); }} title={u.status === 'active' ? 'Deactivate' : 'Activate'}>{u.status === 'active' ? <SP_I.UserX size={14} /> : <SP_I.CheckCircle2 size={14} />}</button>
                     <button className="row-action-btn danger" onClick={() => setConfirmId(u.id)} title="Delete"><SP_I.Trash2 size={14} /></button>
                   </div>
                 </td>
@@ -387,8 +574,9 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
             ))}
           </tbody>
         </table>
-        <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="users" />
+        <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label={title.toLowerCase()} />
       </div>
+      )}
 
       <BulkActionBar count={pickedCount} onClear={() => setPicked({})}
         actions={[
@@ -585,17 +773,43 @@ function PageVenues() {
     return () => window.removeEventListener('rosy:data-changed', sync);
   }, []);
   const [search, setSearch] = SP_us('');
+  const [view, setView] = SP_us('cards');
   const [sortBy, setSortBy] = SP_us('name');
+  const [typeFilter, setTypeFilter] = SP_us('all');
+  const [cityFilter, setCityFilter] = SP_us('all');
+  const [capacityFilter, setCapacityFilter] = SP_us('any');
+  const [filterOpen, setFilterOpen] = SP_us(false);
+  const venueTypes = Array.from(new Set(venues.map(v => v.type).filter(Boolean))).sort();
+  const venueCities = Array.from(new Set(venues.map(v => v.city).filter(Boolean))).sort();
+  const activeVenueFilters = (typeFilter !== 'all' ? 1 : 0) + (cityFilter !== 'all' ? 1 : 0) + (capacityFilter !== 'any' ? 1 : 0);
   const filtered = venues.filter(v => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
-    return [v.name, v.city, v.type].some(s => (s || '').toLowerCase().includes(q));
-  }).sort((a, b) => {
+    return [v.name, v.city, v.type, v.address, v.notes].some(s => (s || '').toLowerCase().includes(q));
+  }).filter(v => typeFilter === 'all' || v.type === typeFilter)
+    .filter(v => cityFilter === 'all' || v.city === cityFilter)
+    .filter(v => {
+      if (capacityFilter === 'any') return true;
+      const cap = v.capacity || 0;
+      if (capacityFilter === 'small')   return cap < 100;
+      if (capacityFilter === 'medium')  return cap >= 100 && cap < 250;
+      if (capacityFilter === 'large')   return cap >= 250;
+      return true;
+    }).sort((a, b) => {
     if (sortBy === 'city')     return (a.city || '').localeCompare(b.city || '');
     if (sortBy === 'capacity') return (b.capacity || 0) - (a.capacity || 0);
+    if (sortBy === 'capacity-asc') return (a.capacity || 0) - (b.capacity || 0);
+    if (sortBy === 'type')     return (a.type || '').localeCompare(b.type || '');
     return (a.name || '').localeCompare(b.name || '');
   });
-  const paged = usePaged(filtered, 9, `${search}|${sortBy}|${filtered.length}`);
+  // Stat strip
+  const venueStats = {
+    total: venues.length,
+    types: venueTypes.length,
+    avgCap: venues.length ? Math.round(venues.reduce((s, v) => s + (v.capacity || 0), 0) / venues.length) : 0,
+    largest: venues.reduce((m, v) => Math.max(m, v.capacity || 0), 0),
+  };
+  const paged = usePaged(filtered, view === 'cards' ? 9 : 10, `${view}|${search}|${sortBy}|${typeFilter}|${cityFilter}|${capacityFilter}|${filtered.length}`);
   const visible = paged.slice;
   const upsert = async (v, isNew) => {
     setVenues(arr => {
@@ -616,17 +830,57 @@ function PageVenues() {
   };
   return (
     <div className="content fade-up">
+      <div className="grid-4" style={{ marginBottom: 20 }}>
+        <StatCard icon={SP_I.MapPin}     label="Total venues" value={venueStats.total} />
+        <StatCard icon={SP_I.LayoutGrid} label="Venue types"  value={venueStats.types} />
+        <StatCard icon={SP_I.Users}      label="Avg capacity" value={venueStats.avgCap} />
+        <StatCard icon={SP_I.Building2}  label="Largest"      value={venueStats.largest} />
+      </div>
       <div className="section-heading">
         <h2>Venues</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative' }}>
             <SP_I.Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
-            <input className="input" placeholder="Search venues..." style={{ paddingLeft: 36, width: 240 }} value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="input" placeholder="Search name, city, type, address…" style={{ paddingLeft: 36, width: 280 }} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <SortMenu value={sortBy} onChange={setSortBy} options={[['name','Name A–Z'],['city','City A–Z'],['capacity','Largest first']]} />
+          <SortMenu value={sortBy} onChange={setSortBy} options={[['name','Name A–Z'],['city','City A–Z'],['capacity','Largest first'],['capacity-asc','Smallest first'],['type','By type']]} />
+          <ViewToggle value={view} onChange={setView} />
+          <button className="btn btn-ghost btn-sm" onClick={() => setFilterOpen(true)}><SP_I.Filter size={14} />Filters{activeVenueFilters > 0 ? ` (${activeVenueFilters})` : ''}</button>
           <button className="btn btn-coral" onClick={() => { setEditing(null); setAddOpen(true); }}><SP_I.Plus size={14} />Add venue</button>
         </div>
       </div>
+      {view === 'table' ? (
+        <div className="table-wrap">
+          <table className="rosy-table">
+            <thead><tr><th>Venue</th><th>City</th><th>Type</th><th>Capacity</th><th>Address</th><th style={{ width: 110 }}></th></tr></thead>
+            <tbody>
+              {visible.length === 0 ? <tr><td colSpan={6}><Empty icon={SP_I.MapPin} title="No matching venues" /></td></tr> :
+               visible.map(v => (
+                <tr key={v.id} tabIndex={0} role="button" aria-label={`Open ${v.name}`} style={{ cursor: 'pointer' }}
+                  onClick={(e) => { if (e.target.closest('button')) return; setViewOpen(v); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setViewOpen(v); } }}>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <SafeImage src={v.image} placeholderIcon={SP_I.MapPin} placeholderTone="mint" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover' }} />
+                    <p style={{ margin: 0, fontWeight: 600 }}>{v.name}</p>
+                  </div></td>
+                  <td style={{ fontSize: 13.5 }}>{v.city}</td>
+                  <td style={{ fontSize: 13 }}><span className="pill">{v.type}</span></td>
+                  <td style={{ fontSize: 13 }}>{v.capacity}</td>
+                  <td style={{ fontSize: 12, color: 'var(--color-muted)' }}>{v.address}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <div className="row-actions">
+                      <button className="row-action-btn" onClick={() => setViewOpen(v)} title="View"><SP_I.Eye size={14} /></button>
+                      <button className="row-action-btn" onClick={() => { setEditing(v); setAddOpen(true); }} title="Edit"><SP_I.Pencil size={14} /></button>
+                      <button className="row-action-btn danger" onClick={() => setDeleteId(v.id)} title="Delete"><SP_I.Trash2 size={14} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="venues" />
+        </div>
+      ) : (
       <div className="grid-3">
         {visible.length === 0 ? <div style={{ gridColumn: '1 / -1' }}><Empty icon={SP_I.MapPin} title="No matching venues" /></div> :
          visible.map(v => (
@@ -657,8 +911,38 @@ function PageVenues() {
           </div>
         ))}
       </div>
+      )}
 
-      {paged.total > paged.perPage ? <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="venues" /> : null}
+      {view === 'cards' ? <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="venues" /> : null}
+
+      <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter venues" size="md"
+        footer={<><button className="btn btn-ghost" onClick={() => { setTypeFilter('all'); setCityFilter('all'); setCapacityFilter('any'); }}>Reset all</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>
+        <div className="col" style={{ gap: 16 }}>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Venue type</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[['all','All'], ...venueTypes.map(t => [t, t])].map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setTypeFilter(id)} style={{ border: '1.5px solid', borderColor: typeFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: typeFilter === id ? 'var(--color-ink)' : 'transparent', color: typeFilter === id ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Capacity</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[['any','Any'],['small','<100'],['medium','100–250'],['large','250+']].map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setCapacityFilter(id)} style={{ border: '1.5px solid', borderColor: capacityFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: capacityFilter === id ? 'var(--color-ink)' : 'transparent', color: capacityFilter === id ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>City</p>
+            <select className="select" value={cityFilter} onChange={(e) => setCityFilter(e.target.value)}>
+              <option value="all">All cities ({venueCities.length})</option>
+              {venueCities.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+      </Modal>
 
       <VenueFormModal open={addOpen} onClose={() => setAddOpen(false)} venue={editing} onSave={(v) => { upsert(v, !editing); setAddOpen(false); toast.push({ kind: 'success', title: editing ? 'Venue updated' : 'Venue added' }); }} />
 
@@ -818,11 +1102,11 @@ function SettingsProfile({ user }) {
         <ImageUpload value={photo} onChange={setPhoto} label="Upload new photo" size={88} />
       </div>
       <div className="grid-2" style={{ gap: 14 }}>
-        <div className="field"><label className="field-label">First name</label><input className="input" defaultValue={user.first} /></div>
-        <div className="field"><label className="field-label">Last name</label><input className="input" defaultValue={user.last} /></div>
-        <div className="field"><label className="field-label">Email</label><input className="input" defaultValue={user.email} /></div>
-        <div className="field"><label className="field-label">Phone</label><input className="input" defaultValue="+1 (917) 555-0188" /></div>
-        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" defaultValue="Lead floral designer with 8 years of high-end event experience. Chicago-based. Specializes in suspended installations and editorial moments." /></div>
+        <div className="field"><label className="field-label">First name</label><input className="input" defaultValue={user?.first || ''} placeholder="First name" /></div>
+        <div className="field"><label className="field-label">Last name</label><input className="input" defaultValue={user?.last || ''} placeholder="Last name" /></div>
+        <div className="field"><label className="field-label">Email</label><input className="input" defaultValue={user?.email || ''} placeholder="you@example.com" /></div>
+        <div className="field"><label className="field-label">Phone</label><input className="input" defaultValue={user?.phone || ''} placeholder="+1 (555) 555-0100" /></div>
+        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" defaultValue={user?.bio || ''} placeholder="A short summary that vendors / workers will see on this profile." /></div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
         <button className="btn btn-coral" onClick={() => toast.push({ kind: 'info', title: 'Saved (preview)', body: 'Profile changes are session-only until backend wiring lands.' })}>Save changes</button>

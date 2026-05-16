@@ -4,6 +4,16 @@ const SD_D = window.RosyData;
 const SD_I = window.Icons;
 const { useState: SD_us, useEffect: SD_ue } = React;
 
+/* Re-render dashboards whenever the live data store mutates (Supabase hydrate / realtime). */
+function useDataTick() {
+  const [, setTick] = SD_us(0);
+  SD_ue(() => {
+    const bump = () => setTick(t => t + 1);
+    window.addEventListener('rosy:data-changed', bump);
+    return () => window.removeEventListener('rosy:data-changed', bump);
+  }, []);
+}
+
 /* Dev-notification submit form — admin reports an issue and it lands in window.RosyData.NOTIFICATIONS
    (and a Supabase row if the rr_notifications table is reachable). */
 function DevNotificationModal({ open, onClose, reportedBy }) {
@@ -64,6 +74,7 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
 }
 
 function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
+  useDataTick();
   const dateStrip = 'May 1st 2026 – June 1st 2026';
   const [devOpen, setDevOpen] = SD_us(false);
   return (
@@ -91,42 +102,91 @@ function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
 }
 
 function DashboardVendor({ user, setRoute, statStrip, statAnim }) {
+  useDataTick();
   const dateStrip = 'May 1st 2026 – June 1st 2026';
+  // Read window.RosyData fresh on every render (Supabase hydrates after first paint)
+  const D = window.RosyData || SD_D;
+  const myEvents = user?.id ? (D.EVENTS || []).filter(e => e.vendorId === user.id) : (D.EVENTS || []);
+  const openEvents = myEvents.filter(e => e.status === 'open');
+  const myEventIds = new Set(myEvents.map(e => e.id));
+  const myGigs = (D.GIGS || []).filter(g => myEventIds.has(g.eventId));
+  const openGigs = myGigs.filter(g => g.status === 'open');
+  const totalSpots = myGigs.reduce((s, g) => s + (g.spots || 0), 0);
+  const filledSpots = myGigs.reduce((s, g) => s + (g.spotsFilled || 0), 0);
+  const fillRate = totalSpots ? Math.round(filledSpots / totalSpots * 100) : 0;
+  const myTx = (D.TRANSACTIONS || []).filter(t => t.payer === user?.company || (user?.name && t.payer.includes(user.name)));
+  const monthSpend = myTx.filter(t => t.status === 'Paid').reduce((s, t) => s + t.amount, 0);
   return (
     <div className="content fade-up">
-      <h1 className="greeting">{getGreeting(user?.first)}</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <h1 className="greeting">{getGreeting(user?.first)}</h1>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setRoute('build-team')}><SD_I.Sparkles size={14} />Build my team</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { window.__rosyOpenAddGig = true; setRoute('gigs'); }}><SD_I.Briefcase size={14} />Post a gig</button>
+          <button className="btn btn-coral btn-sm" onClick={() => { window.__rosyOpenAddEvent = true; setRoute('events'); }}><SD_I.Plus size={14} />New event</button>
+        </div>
+      </div>
       <div className="grid-spotlight" style={{ marginBottom: 24 }}>
-        <StatCard icon={SD_I.UserPlus}   label="New Worker Applications" value={18} delta={28}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} primary />
-        <StatCard icon={SD_I.CalendarCheck} label="Open Events"          value={6}  delta={20}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.Briefcase}  label="All Gigs"                value={32} delta={9}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.ClipboardList} label="Open Gigs"            value={7}  delta={-3}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.CalendarCheck} label="Open events"  value={openEvents.length} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} primary />
+        <StatCard icon={SD_I.Briefcase}     label="Open gigs"    value={openGigs.length}    dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.UsersRound}    label="Crew filled"  value={`${fillRate}%`}     dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.DollarSign}    label="Paid this month" value={monthSpend} prefix="$" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
       </div>
       <div className="grid-dash">
         <div className="col" style={{ gap: 20 }}>
-          <UpcomingEventsCard setRoute={setRoute} vendorId="u1" />
-          <RecentTransactionsCard vendorScope setRoute={setRoute} />
+          <UpcomingEventsCard setRoute={setRoute} vendorId={user?.id} />
+          <RecentTransactionsCard vendorScope user={user} setRoute={setRoute} />
         </div>
-        <NewRecentUsersCard title="Your team this week" setRoute={setRoute} />
+        <NewRecentUsersCard title="Your team this week" setRoute={setRoute} role="vendor" />
       </div>
     </div>
   );
 }
 
 function DashboardWorker({ user, setRoute, statStrip, statAnim }) {
+  useDataTick();
   const dateStrip = 'May 1st 2026 – June 1st 2026';
+  const D = window.RosyData || SD_D;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const next30 = new Date(today); next30.setDate(next30.getDate() + 30);
+  const myGigs = user?.id ? (D.GIGS || []).filter(g => (g.assignedTo || []).includes(user.id)) : [];
+  const upcomingGigs = myGigs.filter(g => { const d = new Date(g.date); return d >= today; });
+  const next30Gigs = upcomingGigs.filter(g => { const d = new Date(g.date); return d <= next30; });
+  const next30Hours = next30Gigs.reduce((s, g) => {
+    const sh = parseInt((g.start || '0:0').split(':')[0]) || 0;
+    const eh = parseInt((g.end   || '0:0').split(':')[0]) || 0;
+    return s + Math.max(0, (eh - sh + 24) % 24);
+  }, 0);
+  const myTx = user?.name ? (D.TRANSACTIONS || []).filter(t => t.payee === user.name) : [];
+  const lifetimeEarned = myTx.filter(t => t.status === 'Paid').reduce((s, t) => s + t.amount, 0);
+  const pendingPay = myTx.filter(t => t.status === 'Pending').reduce((s, t) => s + t.amount, 0);
+  const rating = user?.rating || (myTx.length ? 4.85 : '—');
   return (
     <div className="content fade-up">
-      <h1 className="greeting">{getGreeting(user?.first)}</h1>
-      <div className="grid-spotlight" style={{ marginBottom: 24 }}>
-        <StatCard icon={SD_I.DollarSign}  label="Earnings"        value={3420} delta={14} prefix="$" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} primary />
-        <StatCard icon={SD_I.Briefcase}   label="Gigs This Month" value={9}    delta={20} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.Clock}       label="Hours Worked"    value={84}   delta={11} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.Star}        label="Avg Rating"      value="4.95" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <h1 className="greeting">{getGreeting(user?.first)}</h1>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setRoute('settings')}><SD_I.Calendar size={14} />Update availability</button>
+          <button className="btn btn-coral btn-sm" onClick={() => setRoute('gig-posts')}><SD_I.Search size={14} />Find gigs</button>
+        </div>
       </div>
+      <div className="grid-spotlight" style={{ marginBottom: 24 }}>
+        <StatCard icon={SD_I.DollarSign} label="Lifetime earned" value={lifetimeEarned} prefix="$" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} primary />
+        <StatCard icon={SD_I.Briefcase}  label="Upcoming gigs"   value={upcomingGigs.length} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.Clock}      label="Hours next 30 days" value={next30Hours} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.Star}       label="Rating"          value={typeof rating === 'number' ? rating.toFixed(2) : rating} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+      </div>
+      {pendingPay > 0 ? (
+        <div className="card" style={{ background: 'var(--color-warning-bg)', border: '1px solid var(--color-warning)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <div><p style={{ margin: 0, fontWeight: 600, color: 'var(--color-warning)' }}>${pendingPay.toLocaleString()} pending payout</p>
+          <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-muted)' }}>Vendor approves hours, Stripe drops it in your bank within 48h.</p></div>
+          <button className="btn btn-ghost btn-sm" onClick={() => setRoute('payments')}>View payments</button>
+        </div>
+      ) : null}
       <div className="grid-dash">
         <div className="col" style={{ gap: 20 }}>
-          <UpcomingEventsCard setRoute={setRoute} workerId="u3" />
-          <RecentTransactionsCard workerScope setRoute={setRoute} />
+          <UpcomingEventsCard setRoute={setRoute} workerId={user?.id} />
+          <RecentTransactionsCard workerScope user={user} setRoute={setRoute} />
         </div>
         <FeaturedGigPostsCard setRoute={setRoute} />
       </div>
@@ -219,9 +279,10 @@ function RecentTransactionsCard({ vendorScope, workerScope, setRoute }) {
 }
 
 /* ------- New & recent users card ------- */
-function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute }) {
+function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'admin' }) {
   const [tab, setTab] = useState('users');
   const toast = useToast();
+  const isAdmin = role === 'admin';
   const showWorkers = !tabs || tab === 'users';
   const seed = showWorkers ? SD_D.USERS.filter(u => u.role !== 'admin').slice(0, 6) : SD_D.USERS.filter(u => u.role === 'vendor').slice(0, 6);
   const [overrides, setOverrides] = useState({});
@@ -269,14 +330,22 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute }) {
                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</p>
                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{u.company}</p>
              </div>
-             <button onClick={(e) => { e.stopPropagation(); toggleActive(u); }}
-               aria-label={u.status === 'active' ? 'Deactivate user' : 'Activate user'}
-               title={u.status === 'active' ? 'Click to deactivate' : 'Click to activate'}
-               style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer' }}>
-               <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>
-             </button>
-             <button onClick={(e) => { e.stopPropagation(); setConfirmId(u.id); }} className="row-action-btn danger" aria-label="Delete user"><SD_I.Trash2 size={14} /></button>
-             <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('users:' + u.id + ':edit'); }} className="row-action-btn" aria-label="Edit user"><SD_I.Pencil size={14} /></button>
+             {isAdmin ? (
+               <button onClick={(e) => { e.stopPropagation(); toggleActive(u); }}
+                 aria-label={u.status === 'active' ? 'Deactivate user' : 'Activate user'}
+                 title={u.status === 'active' ? 'Click to deactivate' : 'Click to activate'}
+                 style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer' }}>
+                 <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>
+               </button>
+             ) : <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>}
+             {isAdmin ? (
+               <>
+                 <button onClick={(e) => { e.stopPropagation(); setConfirmId(u.id); }} className="row-action-btn danger" aria-label="Delete user"><SD_I.Trash2 size={14} /></button>
+                 <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('users:' + u.id + ':edit'); }} className="row-action-btn" aria-label="Edit user"><SD_I.Pencil size={14} /></button>
+               </>
+             ) : (
+               <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${u.first || u.name.split(' ')[0]}` }); }} className="row-action-btn" aria-label={`Message ${u.name}`} title={`Message ${u.name}`}><SD_I.MessageSquare size={14} /></button>
+             )}
            </div>
          ))}
       </div>

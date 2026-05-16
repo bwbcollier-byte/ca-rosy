@@ -14,6 +14,8 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
   const [dateFilter, setDateFilter] = SE_us('any'); // any | upcoming | thismonth | past
   const [filterOpen, setFilterOpen] = SE_us(false);
   const [addOpen, setAddOpen] = SE_us(false);
+  // Honor cross-page "open Add Event modal on mount" intent
+  SE_ue(() => { if (window.__rosyOpenAddEvent) { window.__rosyOpenAddEvent = false; setAddOpen(true); } }, []);
   const [editEvent, setEditEvent] = SE_us(null);
   const [confirmId, setConfirmId] = SE_us(null);
   const [bulkConfirm, setBulkConfirm] = SE_us(null);

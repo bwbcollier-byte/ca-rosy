@@ -18,6 +18,8 @@ function PageGigsVendor({ user, role, setRoute }) {
   }, [role, user?.id]);
   const [open, setOpen] = SG_us(SG_D.EVENTS.reduce((acc, e) => ({ ...acc, [e.id]: true }), {}));
   const [addOpen, setAddOpen] = SG_us(false);
+  // Honor cross-page "open Add Gig modal on mount" intent
+  SG_ue(() => { if (window.__rosyOpenAddGig) { window.__rosyOpenAddGig = false; setAddOpen(true); } }, []);
   const [addForm, setAddForm] = SG_us(null);
   const [search, setSearch] = SG_us('');
   const [statusFilter, setStatusFilter] = SG_us({ open: true, confirmed: true, completed: true });
@@ -424,35 +426,112 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
   const [applyGig, setApplyGig] = SG_us(null);
   const [search, setSearch] = SG_us('');
   const [typeFilter, setTypeFilter] = SG_us({ Lead: true, Design: true, Assist: true, Strike: true });
-  const [typeOpen, setTypeOpen] = SG_us(false);
+  const [minRate, setMinRate] = SG_us(0);                      // $/hr floor
+  const [dateFilter, setDateFilter] = SG_us('any');            // any | thisweek | thismonth
+  const [sortBy, setSortBy] = SG_us('date');                   // date | rate | spots
+  const [view, setView] = SG_us('cards');                      // cards | table
+  const [filterOpen, setFilterOpen] = SG_us(false);
   const [locOpen, setLocOpen] = SG_us(false);
   const [city, setCity] = SG_us('Chicago');
   const [radius, setRadius] = SG_us(25);
   const events = SG_D.EVENTS.filter(e => e.status === 'open');
-  const [open, setOpen] = SG_us(events.reduce((acc, e) => ({ ...acc, [e.id]: true }), {}));
+  const today = new Date(); today.setHours(0,0,0,0);
+  const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7);
+  const monthEnd = new Date(today); monthEnd.setDate(monthEnd.getDate() + 30);
 
   const matchGig = (g, ev) => {
     if (!typeFilter[g.type]) return false;
+    if (minRate > 0 && (g.rate || 0) < minRate) return false;
+    if (dateFilter !== 'any') {
+      const d = new Date(g.date);
+      if (dateFilter === 'thisweek'  && d > weekEnd)  return false;
+      if (dateFilter === 'thismonth' && d > monthEnd) return false;
+    }
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     const v = SG_D.VENUES.find(x => x.id === ev?.venueId);
     return [g.type, g.description, ev?.name, v?.name, v?.city].some(s => (s || '').toLowerCase().includes(q));
   };
+  // Flatten gigs with their event for cards/sort
+  const allFlat = events.flatMap(ev => SG_D.GIGS.filter(g => g.eventId === ev.id && g.status !== 'completed' && matchGig(g, ev)).map(g => ({ g, ev })));
+  const sorted = [...allFlat].sort((a, b) => {
+    if (sortBy === 'rate')  return (b.g.rate  || 0) - (a.g.rate  || 0);
+    if (sortBy === 'spots') return ((b.g.spots - b.g.spotsFilled) || 0) - ((a.g.spots - a.g.spotsFilled) || 0);
+    return new Date(a.g.date) - new Date(b.g.date);
+  });
+  const stats = {
+    open:    sorted.length,
+    avgRate: sorted.length ? Math.round(sorted.reduce((s, x) => s + (x.g.rate || 0), 0) / sorted.length) : 0,
+    nextDays: sorted.filter(x => { const d = new Date(x.g.date); return d <= weekEnd; }).length,
+    topRate: sorted.reduce((m, x) => Math.max(m, x.g.rate || 0), 0),
+  };
+  const activeFilters = (Object.values(typeFilter).filter(v => !v).length > 0 ? 1 : 0) + (minRate > 0 ? 1 : 0) + (dateFilter !== 'any' ? 1 : 0);
 
   return (
     <div className="content fade-up">
+      <div className="grid-4" style={{ marginBottom: 20 }}>
+        <StatCard icon={SG_I.Briefcase}  label="Open near you"    value={stats.open} />
+        <StatCard icon={SG_I.Calendar}   label="Next 7 days"      value={stats.nextDays} />
+        <StatCard icon={SG_I.DollarSign} label="Avg rate"         value={stats.avgRate} prefix="$" />
+        <StatCard icon={SG_I.Star}       label="Top rate"         value={stats.topRate} prefix="$" />
+      </div>
       <div className="section-heading">
         <h2>Available gigs</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative' }}>
             <SG_I.Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
-            <input className="input" placeholder="Search gigs..." style={{ paddingLeft: 36, width: 240 }} value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="input" placeholder="Search role, venue, city…" style={{ paddingLeft: 36, width: 260 }} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={() => setTypeOpen(true)}><SG_I.Filter size={14} />Filter by type ({Object.values(typeFilter).filter(Boolean).length}/4)</button>
+          <SortMenu value={sortBy} onChange={setSortBy} options={[['date','Soonest first'],['rate','Highest rate'],['spots','Most spots open']]} />
+          <ViewToggle value={view} onChange={setView} />
+          <button className="btn btn-ghost btn-sm" onClick={() => setFilterOpen(true)}><SG_I.Filter size={14} />Filters{activeFilters > 0 ? ` (${activeFilters})` : ''}</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setLocOpen(true)}><SG_I.MapPin size={14} />{city}, {radius} mi</button>
         </div>
       </div>
 
+      {view === 'cards' ? (
+        sorted.length === 0 ? (
+          <Empty icon={SG_I.Briefcase} title="No matching gigs" body="Try widening filters or your service area." />
+        ) : (
+          <div className="grid-3">
+            {sorted.map(({ g, ev }) => {
+              const v = SG_D.VENUES.find(x => x.id === ev.venueId);
+              const full = g.spotsFilled >= g.spots;
+              const isApplied = applied[g.id];
+              const youApplied = currentUser?.id ? g.assignedTo.includes(currentUser.id) : false;
+              return (
+                <div key={g.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <GigChip type={g.type} />
+                    <span className="t-mono-amount" style={{ fontSize: 18, fontWeight: 600 }}>${g.rate}/hr</span>
+                  </div>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: 15 }}>{ev.name}</p>
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--color-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.description}</p>
+                  <div className="divider" style={{ margin: 0 }} />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, color: 'var(--color-muted)' }}>
+                    <span><SG_I.Calendar size={11} style={{ verticalAlign: 'middle' }} /> {fmtDate(g.date, 'mdy-dots')}</span>
+                    <span><SG_I.Clock size={11} style={{ verticalAlign: 'middle' }} /> {g.start}–{g.end}</span>
+                    <span><SG_I.MapPin size={11} style={{ verticalAlign: 'middle' }} /> {v?.city}</span>
+                    <span>{g.spotsFilled}/{g.spots} spots</span>
+                  </div>
+                  <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <button className="btn-link" onClick={() => setRoute('events:' + ev.id)} style={{ fontSize: 12.5 }}>See event</button>
+                    {youApplied ? <Badge kind="Confirmed">Confirmed</Badge>
+                      : isApplied ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <Badge kind="Pending">Applied</Badge>
+                            <button className="btn-link" style={{ fontSize: 11.5 }} onClick={async () => { setApplied(s => ({ ...s, [g.id]: false })); try { await window.RosyMutate?.applications?.withdraw({ gigId: g.id, workerId: currentUser?.id }); } catch (e) {} toast.push({ kind: 'warning', title: 'Application withdrawn' }); }}>Withdraw</button>
+                          </div>
+                        )
+                      : full ? <Badge kind="Cancelled">Full</Badge>
+                      : <button className="btn btn-coral btn-sm" onClick={() => setApplyGig(g)}>Apply</button>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
       <div className="table-wrap">
         <table className="rosy-table">
           <thead>
@@ -525,6 +604,7 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
           </tbody>
         </table>
       </div>
+      )}
 
       <Modal open={!!applyGig} onClose={() => setApplyGig(null)} title="Apply for this gig" size="md"
         footer={<><button className="btn btn-ghost" onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const g = applyGig; setApplied(s => ({ ...s, [g.id]: true })); setApplyGig(null); try { await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId: currentUser?.id }); } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Apply failed', body: e.message }); return; } toast.push({ kind: 'success', title: 'Application sent', body: "You'll hear back within 24 hours." }); }}>Confirm application</button></>}>
@@ -542,18 +622,30 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
         ) : null}
       </Modal>
 
-      <Modal open={typeOpen} onClose={() => setTypeOpen(false)} title="Gig types" size="sm"
-        footer={<><button className="btn btn-ghost" onClick={() => setTypeFilter({ Lead: true, Design: true, Assist: true, Strike: true })}>Reset</button><button className="btn btn-coral" onClick={() => setTypeOpen(false)}>Apply</button></>}>
-        <div className="col" style={{ gap: 8 }}>
-          {Object.keys(typeFilter).map(t => (
-            <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 2px', cursor: 'pointer' }}>
-              <span className={`checkbox ${typeFilter[t] ? 'checked' : ''}`} onClick={() => setTypeFilter(f => ({ ...f, [t]: !f[t] }))}>
-                {typeFilter[t] ? <SG_I.CheckCircle size={12} /> : null}
-              </span>
-              <GigChip type={t} />
-              <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--color-muted)' }}>${SG_D.GIG_TYPES[t]?.hourly}/hr avg</span>
-            </label>
-          ))}
+      <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter gigs" size="md"
+        footer={<><button className="btn btn-ghost" onClick={() => { setTypeFilter({ Lead: true, Design: true, Assist: true, Strike: true }); setMinRate(0); setDateFilter('any'); }}>Reset all</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>
+        <div className="col" style={{ gap: 16 }}>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Gig type</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {Object.keys(typeFilter).map(t => (
+                <button key={t} type="button" onClick={() => setTypeFilter(f => ({ ...f, [t]: !f[t] }))} style={{ border: '1.5px solid', borderColor: typeFilter[t] ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: typeFilter[t] ? 'var(--color-ink)' : 'transparent', color: typeFilter[t] ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{t} <span style={{ opacity: 0.7, marginLeft: 4 }}>${SG_D.GIG_TYPES[t]?.hourly}+</span></button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>When</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[['any','Any date'],['thisweek','Next 7 days'],['thismonth','Next 30 days']].map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setDateFilter(id)} style={{ border: '1.5px solid', borderColor: dateFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: dateFilter === id ? 'var(--color-ink)' : 'transparent', color: dateFilter === id ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Minimum hourly rate: ${minRate}</p>
+            <input type="range" min={0} max={60} step={5} value={minRate} onChange={(e) => setMinRate(parseInt(e.target.value))} style={{ width: '100%' }} />
+            <p style={{ margin: 4, fontSize: 11.5, color: 'var(--color-muted)' }}>Hide gigs paying under this rate.</p>
+          </div>
         </div>
       </Modal>
 
@@ -574,14 +666,38 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
 function PageMyGigsWorker({ currentUser }) {
   const toast = useToast();
   const [tab, setTab] = SG_us('upcoming');
+  const [search, setSearch] = SG_us('');
+  const [sortBy, setSortBy] = SG_us('date');
   const today = new Date('2026-05-25');
   const allMy = currentUser?.id ? SG_D.GIGS.filter(g => g.assignedTo.includes(currentUser.id)) : [];
+  // Stats span all gigs, not the tab
+  const past = allMy.filter(g => new Date(g.date) < today);
+  const future = allMy.filter(g => new Date(g.date) >= today);
+  const stats = {
+    upcoming: future.filter(g => g.status !== 'completed').length,
+    completed: past.filter(g => g.status === 'completed').length,
+    pending: past.filter(g => g.status !== 'completed').length,
+    estEarn: future.reduce((s, g) => {
+      const sh = parseInt((g.start || '0:0').split(':')[0]) || 0;
+      const eh = parseInt((g.end   || '0:0').split(':')[0]) || 0;
+      const hours = Math.max(0, (eh - sh + 24) % 24);
+      return s + hours * (g.rate || 0);
+    }, 0),
+  };
   const my = allMy.filter(g => {
-    const past = new Date(g.date) < today;
-    if (tab === 'upcoming') return !past && g.status !== 'completed';
-    if (tab === 'past')     return g.status === 'completed';
-    if (tab === 'pending')  return past && g.status !== 'completed';
-    return true;
+    const isPast = new Date(g.date) < today;
+    if (tab === 'upcoming' && (isPast || g.status === 'completed')) return false;
+    if (tab === 'past'     && g.status !== 'completed') return false;
+    if (tab === 'pending'  && (!isPast || g.status === 'completed')) return false;
+    if (!search.trim()) return true;
+    const ev = SG_D.EVENTS.find(e => e.id === g.eventId);
+    const v = SG_D.VENUES.find(x => x.id === ev?.venueId);
+    const q = search.toLowerCase();
+    return [g.type, ev?.name, v?.name, v?.city].some(s => (s || '').toLowerCase().includes(q));
+  }).sort((a, b) => {
+    if (sortBy === 'rate-desc') return (b.rate || 0) - (a.rate || 0);
+    if (sortBy === 'oldest')    return new Date(a.date) - new Date(b.date);
+    return new Date(b.date) - new Date(a.date);
   });
   const [mark, setMark] = SG_us(null);
   const [markHours, setMarkHours] = SG_us(8.5);
@@ -589,12 +705,25 @@ function PageMyGigsWorker({ currentUser }) {
   const [rate, setRate] = SG_us(null);
   return (
     <div className="content fade-up">
+      <div className="grid-4" style={{ marginBottom: 20 }}>
+        <StatCard icon={SG_I.Briefcase}    label="Upcoming gigs" value={stats.upcoming} />
+        <StatCard icon={SG_I.CheckCircle2} label="Completed"     value={stats.completed} />
+        <StatCard icon={SG_I.Clock}        label="Awaiting payout" value={stats.pending} />
+        <StatCard icon={SG_I.DollarSign}   label="Booked earnings" value={stats.estEarn} prefix="$" />
+      </div>
       <div className="section-heading">
         <h2>My gigs</h2>
-        <div className="tabs">
-          {[['upcoming','Upcoming'],['past','Past'],['pending','Pending payment']].map(([id, label]) => (
-            <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
-          ))}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ position: 'relative' }}>
+            <SG_I.Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
+            <input className="input" placeholder="Search event, venue, role…" style={{ paddingLeft: 36, width: 240 }} value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <SortMenu value={sortBy} onChange={setSortBy} options={[['date','Newest first'],['oldest','Oldest first'],['rate-desc','Highest rate']]} />
+          <div className="tabs">
+            {[['upcoming','Upcoming'],['past','Past'],['pending','Pending payment']].map(([id, label]) => (
+              <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
+            ))}
+          </div>
         </div>
       </div>
       <div className="table-wrap">
