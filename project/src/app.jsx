@@ -132,24 +132,28 @@ function App() {
   if (mode === 'onboarding') {
     return (
       <ToastHost>
-        <OnboardingPage onComplete={(pickedRole) => {
+        <OnboardingPage onComplete={async (pickedRole) => {
           // Pin role from the onboarding pick so the user lands on THEIR dashboard, not admin.
           if (pickedRole) setRole(pickedRole);
-          // Drop a personal welcome notification so the bell badge lights up immediately.
+          // Drop a personal welcome notification so the bell badge lights up immediately AND
+          // a row lands in Supabase so a reload still has it.
+          const me = sessionUserFromData || { first: '', role: pickedRole, id: sessionUserId };
+          const meFirst = me?.first || (me?.name || '').split(' ')[0] || '';
+          const niceRole = (me?.role || pickedRole || 'account').replace(/^./, c => c.toUpperCase());
+          const title = `Welcome to Rosy${meFirst ? ', ' + meFirst : ''}!`;
+          const body  = `Your ${niceRole.toLowerCase()} account is ready. Tap to take a 60-second tour — we'll show you what every page does.`;
           try {
-            const me = sessionUserFromData || { first: pickedRole === 'vendor' ? 'there' : 'there', role: pickedRole, id: sessionUserId };
             const list = window.RosyData.NOTIFICATIONS = window.RosyData.NOTIFICATIONS || [];
             list.unshift({
-              id:     'welcome_' + Date.now(),
-              type:   'welcome',
-              title:  `Welcome to Rosy${me?.first && me.first !== 'there' ? ', ' + me.first : ''}!`,
-              body:   `Your ${me?.role || pickedRole || 'account'} account is ready. Take a 60-second tour to see what's possible.`,
-              time:   'Just now',
-              link:   '#tour',
-              unread: true,
-              user_id: me?.id,
+              id: 'welcome_' + Date.now(), type: 'welcome', title, body,
+              time: 'Just now', link: '#tour', unread: true, user_id: me?.id,
             });
             window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+            if (window.sb && me?.id) {
+              await window.sb.from('rr_notifications').insert({
+                user_id: me.id, type: 'welcome', title, body, link: '#tour', read: false,
+              });
+            }
           } catch (e) { console.warn('welcome notif failed:', e); }
           setMode('app');
           setRoute('dashboard');

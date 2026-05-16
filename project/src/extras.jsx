@@ -187,19 +187,20 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
 
   return (
     <div className="content fade-up">
-      <div className="section-heading">
-        <h2>Notifications</h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input className="input" placeholder="Search notifications…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 220, height: 36 }} />
-          <select className="select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ height: 36 }}>
-            {typeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-          </select>
-          <div className="tabs">
-            <button className={tab === 'all' ? 'on' : ''} onClick={() => setTab('all')}>All ({items.length})</button>
-            <button className={tab === 'unread' ? 'on' : ''} onClick={() => setTab('unread')}>Unread ({unreadCount})</button>
-          </div>
-          <button className="btn btn-ghost btn-sm" disabled={!unreadCount} onClick={markAll}>Mark all read</button>
+      <div className="section-heading"><h2>Notifications</h2></div>
+      <div className="card" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '14px 16px', marginBottom: 16 }}>
+        <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 200, maxWidth: 360 }}>
+          <X_I.Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
+          <input className="input" placeholder="Search notifications…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 34, height: 38, width: '100%' }} />
         </div>
+        <select className="select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ height: 38, flex: '0 0 auto' }}>
+          {typeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </select>
+        <div className="tabs" style={{ flex: '0 0 auto' }}>
+          <button className={tab === 'all' ? 'on' : ''} onClick={() => setTab('all')}>All ({items.length})</button>
+          <button className={tab === 'unread' ? 'on' : ''} onClick={() => setTab('unread')}>Unread ({unreadCount})</button>
+        </div>
+        <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} disabled={!unreadCount} onClick={markAll}>Mark all read</button>
       </div>
       <div className="card card-flush">
         {filtered.length === 0 ? <Empty icon={X_I.Bell} title="You're all caught up" body="No new notifications." /> :
@@ -243,7 +244,7 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
               return (
                 <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--color-hairline)' }}>
                   <span>{label}</span>
-                  <button type="button" onClick={() => togglePref(key)} className={`toggle ${on ? 'on' : ''}`} style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer' }} aria-pressed={on} aria-label={`Toggle ${label}`} />
+                  <button type="button" onClick={() => togglePref(key)} className={`toggle ${on ? 'on' : ''}`} aria-pressed={on} aria-label={`Toggle ${label}`} />
                 </div>
               );
             })}

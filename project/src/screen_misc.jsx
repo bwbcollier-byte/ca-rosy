@@ -16,7 +16,15 @@ function PageInbox({ currentUser }) {
   const [extraConvs, setExtraConvs] = SX_us([]);
   const fileInputRef = React.useRef(null);
   const toast = useToast();
-  const allConvs = [...extraConvs, ...SX_D.MESSAGES];
+  // Scope to conversations the signed-in user is actually in. Without a session, fall back to
+  // the demo seed (so the role-switcher demo still has content).
+  const baseConvs = meId
+    ? SX_D.MESSAGES.filter(c => {
+        const ppl = c.participants || [];
+        return ppl.includes(meId) || c.startedBy === meId || c.with === meId;
+      })
+    : SX_D.MESSAGES;
+  const allConvs = [...extraConvs, ...baseConvs];
   const conv = allConvs.find(c => c.id === active);
   const visibleConvs = allConvs.filter(c => {
     if (!search.trim()) return true;

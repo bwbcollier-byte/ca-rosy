@@ -242,7 +242,6 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, side
         { id: 'events',    label: 'Events',    icon: Ic.Calendar },
         { id: 'gigs',      label: 'Gigs',      icon: Ic.Briefcase },
         { id: 'build-team', label: 'Build my team', icon: Ic.Sparkles },
-        { id: 'workers',   label: 'Workers',   icon: Ic.UserCircle2 },
         { id: 'payments',  label: 'Payments',  icon: Ic.CreditCard },
         { id: 'notifications', label: 'Notifications', icon: Ic.Bell, badge: 3 },
         { id: 'inbox',     label: 'Inbox',     icon: Ic.MessageSquare, badge: 3 },
@@ -254,7 +253,6 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, side
         { id: 'events',    label: 'Events',    icon: Ic.Calendar },
         { id: 'gig-posts', label: 'Gig Posts', icon: Ic.ClipboardList, badge: 7 },
         { id: 'my-gigs',   label: 'My Gigs',   icon: Ic.CheckSquare },
-        { id: 'workers',   label: 'Workers',   icon: Ic.UserCircle2 },
         { id: 'payments',  label: 'Payments',  icon: Ic.CreditCard },
         { id: 'notifications', label: 'Notifications', icon: Ic.Bell, badge: 2 },
         { id: 'inbox',     label: 'Inbox',     icon: Ic.MessageSquare, badge: 1 },
@@ -336,7 +334,7 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
       </button>
       <div style={{ position: 'relative' }}>
         <button className="header-avatar" onClick={() => setMenuOpen(o => !o)}>
-          <Avatar name={safeUser.name} size="sm" />
+          <Avatar name={safeUser.name} src={safeUser.photo || safeUser.avatar_url || safeUser.avatarUrl} size="sm" />
           <span className="name">{safeUser.first}</span>
           <Ic.ChevronDown size={14} />
         </button>
