@@ -193,7 +193,7 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
           <X_I.Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
           <input className="input" placeholder="Search notifications…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 32, height: 38, width: '100%' }} />
         </div>
-        <select className="select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ height: 38, flex: '0 0 auto', minWidth: 140 }}>
+        <select className="select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ height: 38, flex: '0 0 180px', width: 180 }}>
           {typeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select>
         <div className="tabs" style={{ flex: '0 0 auto' }}>
