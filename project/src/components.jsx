@@ -203,8 +203,51 @@ function Empty({ icon: Icon = Ic.Sparkles, title, body, cta }) {
 }
 
 /* ---------- Sidebar nav ---------- */
-function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, sidebarStyle = 'pill', dark = false, brandColor = 'coral' }) {
-  const closeAfter = (fn) => () => { fn(); onClose && onClose(); };
+function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, currentUser, sidebarStyle = 'pill', dark = false, brandColor = 'coral' }) {
+  // Re-render when live data changes so badge counts stay accurate.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setTick(t => t + 1);
+    window.addEventListener('rosy:data-changed', bump);
+    return () => window.removeEventListener('rosy:data-changed', bump);
+  }, []);
+
+  // Per-user, per-route "last visited" timestamps (localStorage). Badge counts
+  // = items that arrived after that timestamp. Clicking the nav item resets it,
+  // making the badge disappear.
+  const meKey = currentUser?.id || 'anon';
+  const lastVisitedKey = `rosy.lastVisited.${meKey}`;
+  const readVisits = () => { try { return JSON.parse(localStorage.getItem(lastVisitedKey) || '{}'); } catch (e) { return {}; } };
+  const writeVisits = (v) => { try { localStorage.setItem(lastVisitedKey, JSON.stringify(v)); } catch (e) {} };
+  const visits = readVisits();
+  const markVisited = (id) => { const v = readVisits(); v[id] = new Date().toISOString(); writeVisits(v); setTick(t => t + 1); };
+  const sinceCount = (routeId, arr, getDate) => {
+    const since = visits[routeId];
+    if (!since) return arr.length; // never visited → everything is "new"
+    const t = new Date(since).getTime();
+    return arr.filter(x => { const d = getDate(x); return d && new Date(d).getTime() > t; }).length;
+  };
+
+  const D = window.RosyData || {};
+  const notifs = (D.NOTIFICATIONS || []).filter(n => !n.user_id || n.user_id === currentUser?.id);
+  const msgs   = D.MESSAGES || [];
+  const myMsgs = msgs.filter(c => !currentUser?.id || (c.participants || []).includes(currentUser.id) || c.startedBy === currentUser.id || c.with === currentUser.id);
+
+  // Compute counts per route id
+  const counts = {
+    notifications: notifs.filter(n => n.unread).length,                       // unread always (independent of visits)
+    inbox: myMsgs.reduce((s, c) => s + (c.unread || 0), 0),                   // total unread messages in your convs
+    'gig-posts': sinceCount('gig-posts', (D.GIGS || []).filter(g => g.status === 'open'), g => g.date || g.created_at),
+    events:      sinceCount('events',    (D.EVENTS || []), e => e.created_at || e.date),
+    gigs:        sinceCount('gigs',      (D.GIGS || []),   g => g.created_at || g.date),
+    disputes:    (D.TRANSACTIONS || []).filter(t => t.status === 'Disputed' || t.status === 'Late').length,
+  };
+
+  // Hide badge when the route is the one you're already viewing.
+  const badgeFor = (id) => (route === id ? 0 : (counts[id] || 0));
+
+  const closeAfter = (id, fn) => () => { markVisited(id); fn(); onClose && onClose(); };
+
   const NAV = {
     admin: [
       { section: 'OVERVIEW', items: [
@@ -212,15 +255,15 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, side
         { id: 'users',     label: 'Users',     icon: Ic.Users },
         { id: 'events',    label: 'Events',    icon: Ic.Calendar },
         { id: 'gigs',      label: 'Gigs',      icon: Ic.Briefcase },
-        { id: 'notifications', label: 'Notifications', icon: Ic.Bell, badge: 3 },
+        { id: 'notifications', label: 'Notifications', icon: Ic.Bell },
       ]},
       { section: 'DATABASE', items: [
         { id: 'workers',  label: 'Workers',  icon: Ic.UserCircle2 },
         { id: 'vendors',  label: 'Vendors',  icon: Ic.Building2 },
         { id: 'venues',   label: 'Venues',   icon: Ic.MapPin },
         { id: 'payments', label: 'Payments', icon: Ic.CreditCard },
-        { id: 'disputes', label: 'Disputes', icon: Ic.AlertTriangle, badge: 2 },
-        { id: 'inbox',    label: 'Inbox',    icon: Ic.MessageSquare, badge: 3 },
+        { id: 'disputes', label: 'Disputes', icon: Ic.AlertTriangle },
+        { id: 'inbox',    label: 'Inbox',    icon: Ic.MessageSquare },
       ]},
       { section: 'CONTENT', items: [
         { id: 'site-content', label: 'Site Content',     icon: Ic.FileText },
@@ -243,22 +286,25 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, side
         { id: 'gigs',      label: 'Gigs',      icon: Ic.Briefcase },
         { id: 'build-team', label: 'Build my team', icon: Ic.Sparkles },
         { id: 'payments',  label: 'Payments',  icon: Ic.CreditCard },
-        { id: 'notifications', label: 'Notifications', icon: Ic.Bell, badge: 3 },
-        { id: 'inbox',     label: 'Inbox',     icon: Ic.MessageSquare, badge: 3 },
+        { id: 'notifications', label: 'Notifications', icon: Ic.Bell },
+        { id: 'inbox',     label: 'Inbox',     icon: Ic.MessageSquare },
       ]},
     ],
     worker: [
       { section: '', items: [
         { id: 'dashboard', label: 'Dashboard', icon: Ic.LayoutDashboard },
         { id: 'events',    label: 'Events',    icon: Ic.Calendar },
-        { id: 'gig-posts', label: 'Gig Posts', icon: Ic.ClipboardList, badge: 7 },
+        { id: 'gig-posts', label: 'Gig Posts', icon: Ic.ClipboardList },
         { id: 'my-gigs',   label: 'My Gigs',   icon: Ic.CheckSquare },
         { id: 'payments',  label: 'Payments',  icon: Ic.CreditCard },
-        { id: 'notifications', label: 'Notifications', icon: Ic.Bell, badge: 2 },
-        { id: 'inbox',     label: 'Inbox',     icon: Ic.MessageSquare, badge: 1 },
+        { id: 'notifications', label: 'Notifications', icon: Ic.Bell },
+        { id: 'inbox',     label: 'Inbox',     icon: Ic.MessageSquare },
       ]},
     ],
   };
+
+  // Mark the current route as visited whenever it changes so the user is "caught up".
+  useEffect(() => { if (route) markVisited(route); }, [route]);
 
   const sections = NAV[role] || NAV.admin;
   const styleClass = sidebarStyle === 'bar' ? 'style-bar' : sidebarStyle === 'subtle' ? 'style-subtle' : '';
@@ -274,15 +320,18 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, side
         {sections.map((sec, i) => (
           <React.Fragment key={i}>
             {sec.section ? <div className="sidebar-divider">{sec.section}</div> : null}
-            {sec.items.map(item => (
-              <button key={item.id}
-                className={`nav-item ${route === item.id ? 'active' : ''}`}
-                onClick={closeAfter(() => setRoute(item.id))}>
-                <item.icon className="nav-icon" />
-                <span>{item.label}</span>
-                {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
-              </button>
-            ))}
+            {sec.items.map(item => {
+              const b = badgeFor(item.id);
+              return (
+                <button key={item.id}
+                  className={`nav-item ${route === item.id ? 'active' : ''}`}
+                  onClick={closeAfter(item.id, () => setRoute(item.id))}>
+                  <item.icon className="nav-icon" />
+                  <span>{item.label}</span>
+                  {b > 0 ? <span className="nav-badge">{b > 99 ? '99+' : b}</span> : null}
+                </button>
+              );
+            })}
           </React.Fragment>
         ))}
         <div style={{ flex: 1 }} />

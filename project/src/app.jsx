@@ -216,7 +216,7 @@ function App() {
     <ToastHost>
       <div className={`app-shell`}>
         <Sidebar role={role} route={baseRoute} setRoute={setRoute}
-          onSignOut={handleSignOut}
+          onSignOut={handleSignOut} currentUser={currentUser}
           open={sidebarOpen} onClose={() => setSidebarOpen(false)}
           sidebarStyle={tweaks.sidebarStyle} dark={tweaks.sidebarDark} />
         <div className="main">
