@@ -309,7 +309,21 @@ function RoseLogo({ size = 28 }) {
 /* ---------- App header ---------- */
 function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRoute, breadcrumbs, onBurger, sessionUser }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // Re-render this header when notifications mutate so the bell dot stays in sync.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setTick(t => t + 1);
+    window.addEventListener('rosy:data-changed', bump);
+    return () => window.removeEventListener('rosy:data-changed', bump);
+  }, []);
   const safeUser = currentUser || { name: 'Guest', first: 'Guest' };
+  // Show the red dot only when this user has at least one unread notification.
+  const allNotifs = (window.RosyData?.NOTIFICATIONS || []);
+  const myUnread = allNotifs.filter(n => {
+    if (!n.unread && !(n.read === false)) return false;
+    if (!currentUser?.id) return false;
+    return !n.user_id || n.user_id === currentUser.id;
+  }).length;
   // Role switcher rules:
   //   - signed-in admin    → show as a "View as" tool (admins can preview vendor/worker)
   //   - signed-in non-admin → hide entirely (your role is fixed)
@@ -328,9 +342,9 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
       </div>
       <div className="header-spacer" />
       {showRoleSwitch ? <RoleSwitch role={role} setRole={setRole} viewAs={!!sessionUser} /> : null}
-      <button className="icon-btn" aria-label="Notifications" onClick={onBell}>
+      <button className="icon-btn" aria-label={`Notifications${myUnread ? ' — ' + myUnread + ' unread' : ''}`} onClick={onBell}>
         <Ic.Bell size={18} />
-        <span className="bell-dot" />
+        {myUnread > 0 ? <span className="bell-dot" /> : null}
       </button>
       <div style={{ position: 'relative' }}>
         <button className="header-avatar" onClick={() => setMenuOpen(o => !o)}>

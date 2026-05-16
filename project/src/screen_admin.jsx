@@ -1094,22 +1094,50 @@ function SettingsPrivacy({ role }) {
 
 function SettingsProfile({ user }) {
   const toast = useToast();
-  const [photo, setPhoto] = SP_us(null);
+  const [photo, setPhoto] = SP_us(user?.photo || null);
+  const [first, setFirst] = SP_us(user?.first || '');
+  const [last,  setLast]  = SP_us(user?.last  || '');
+  const [email, setEmail] = SP_us(user?.email || '');
+  const [phone, setPhone] = SP_us(user?.phone || '');
+  const [bio,   setBio]   = SP_us(user?.bio   || '');
+  React.useEffect(() => {
+    setPhoto(user?.photo || null); setFirst(user?.first || ''); setLast(user?.last || '');
+    setEmail(user?.email || ''); setPhone(user?.phone || ''); setBio(user?.bio || '');
+  }, [user?.id]);
+
+  const save = async () => {
+    if (!user?.id) { toast.push({ kind: 'warning', title: 'Sign in first', body: 'Sign in to save your profile.' }); return; }
+    // Patch local store + broadcast so the header avatar updates immediately.
+    const u = (window.RosyData?.USERS || []).find(x => x.id === user.id);
+    if (u) Object.assign(u, { photo, first, last, name: `${first} ${last}`.trim() || u.name, email, phone, bio });
+    window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+    // Best-effort persist to Supabase
+    try {
+      if (window.sb) {
+        await window.sb.from('rr_profiles').update({
+          first_name: first || null, last_name: last || null, email: email || null,
+          phone: phone || null, bio: bio || null, avatar_url: photo || null,
+        }).eq('id', user.id);
+      }
+    } catch (e) { console.warn('profile save failed:', e); }
+    toast.push({ kind: 'success', title: 'Profile saved' });
+  };
+
   return (
     <div className="card">
       <h3 className="card-title" style={{ marginBottom: 16 }}>Profile</h3>
       <div style={{ marginBottom: 16 }}>
-        <ImageUpload value={photo} onChange={setPhoto} label="Upload new photo" size={88} />
+        <ImageUpload value={photo} onChange={setPhoto} label="Upload profile photo" size={88} />
       </div>
       <div className="grid-2" style={{ gap: 14 }}>
-        <div className="field"><label className="field-label">First name</label><input className="input" defaultValue={user?.first || ''} placeholder="First name" /></div>
-        <div className="field"><label className="field-label">Last name</label><input className="input" defaultValue={user?.last || ''} placeholder="Last name" /></div>
-        <div className="field"><label className="field-label">Email</label><input className="input" defaultValue={user?.email || ''} placeholder="you@example.com" /></div>
-        <div className="field"><label className="field-label">Phone</label><input className="input" defaultValue={user?.phone || ''} placeholder="+1 (555) 555-0100" /></div>
-        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" defaultValue={user?.bio || ''} placeholder="A short summary that vendors / workers will see on this profile." /></div>
+        <div className="field"><label className="field-label">First name</label><input className="input" value={first} onChange={e => setFirst(e.target.value)} placeholder="First name" /></div>
+        <div className="field"><label className="field-label">Last name</label><input className="input" value={last} onChange={e => setLast(e.target.value)} placeholder="Last name" /></div>
+        <div className="field"><label className="field-label">Email</label><input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></div>
+        <div className="field"><label className="field-label">Phone</label><input className="input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 (555) 555-0100" /></div>
+        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" value={bio} onChange={e => setBio(e.target.value)} placeholder="A short summary that vendors / workers will see on this profile." /></div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-        <button className="btn btn-coral" onClick={() => toast.push({ kind: 'info', title: 'Saved (preview)', body: 'Profile changes are session-only until backend wiring lands.' })}>Save changes</button>
+        <button className="btn btn-coral" onClick={save}>Save changes</button>
       </div>
     </div>
   );
