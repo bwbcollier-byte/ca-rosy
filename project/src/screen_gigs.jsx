@@ -422,8 +422,12 @@ function AddGigForm({ value, onChange, events }) {
 /* ============ Worker: Gig posts ============ */
 function PageGigPostsWorker({ setRoute, currentUser }) {
   const toast = useToast();
-  const [applied, setApplied] = SG_us({});
+  // Seed local "applied" state from real APPLICATIONS so it survives reload
+  const myApps = currentUser?.id ? (SG_D.APPLICATIONS || []).filter(a => a.workerId === currentUser.id && a.status !== 'withdrawn' && a.status !== 'rejected') : [];
+  const seedApplied = Object.fromEntries(myApps.map(a => [a.gigId, true]));
+  const [applied, setApplied] = SG_us(seedApplied);
   const [applyGig, setApplyGig] = SG_us(null);
+  const [detailGig, setDetailGig] = SG_us(null);
   const [search, setSearch] = SG_us('');
   const [typeFilter, setTypeFilter] = SG_us({ Lead: true, Design: true, Assist: true, Strike: true });
   const [minRate, setMinRate] = SG_us(0);                      // $/hr floor
@@ -500,7 +504,7 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
               const isApplied = applied[g.id];
               const youApplied = currentUser?.id ? g.assignedTo.includes(currentUser.id) : false;
               return (
-                <div key={g.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div key={g.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12, cursor: 'pointer' }} onClick={() => setDetailGig({ g, ev })}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <GigChip type={g.type} />
                     <span className="t-mono-amount" style={{ fontSize: 18, fontWeight: 600 }}>${g.rate}/hr</span>
@@ -515,16 +519,16 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
                     <span>{g.spotsFilled}/{g.spots} spots</span>
                   </div>
                   <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                    <button className="btn-link" onClick={() => setRoute('events:' + ev.id)} style={{ fontSize: 12.5 }}>See event</button>
+                    <button className="btn-link" onClick={(e) => { e.stopPropagation(); setRoute('events:' + ev.id); }} style={{ fontSize: 12.5 }}>See event</button>
                     {youApplied ? <Badge kind="Confirmed">Confirmed</Badge>
                       : isApplied ? (
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                             <Badge kind="Pending">Applied</Badge>
-                            <button className="btn-link" style={{ fontSize: 11.5 }} onClick={async () => { setApplied(s => ({ ...s, [g.id]: false })); try { await window.RosyMutate?.applications?.withdraw({ gigId: g.id, workerId: currentUser?.id }); } catch (e) {} toast.push({ kind: 'warning', title: 'Application withdrawn' }); }}>Withdraw</button>
+                            <button className="btn-link" style={{ fontSize: 11.5 }} onClick={async (e) => { e.stopPropagation(); setApplied(s => ({ ...s, [g.id]: false })); try { await window.RosyMutate?.applications?.withdraw({ gigId: g.id, workerId: currentUser?.id }); } catch (e) {} toast.push({ kind: 'warning', title: 'Application withdrawn' }); }}>Withdraw</button>
                           </div>
                         )
                       : full ? <Badge kind="Cancelled">Full</Badge>
-                      : <button className="btn btn-coral btn-sm" onClick={() => setApplyGig(g)}>Apply</button>}
+                      : <button className="btn btn-coral btn-sm" onClick={(e) => { e.stopPropagation(); setApplyGig(g); }}>Apply</button>}
                   </div>
                 </div>
               );
@@ -607,7 +611,7 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
       )}
 
       <Modal open={!!applyGig} onClose={() => setApplyGig(null)} title="Apply for this gig" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const g = applyGig; setApplied(s => ({ ...s, [g.id]: true })); setApplyGig(null); try { await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId: currentUser?.id }); } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Apply failed', body: e.message }); return; } toast.push({ kind: 'success', title: 'Application sent', body: "You'll hear back within 24 hours." }); }}>Confirm application</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const g = applyGig; setApplyGig(null); const dup = (SG_D.APPLICATIONS || []).some(a => a.gigId === g.id && a.workerId === currentUser?.id && a.status !== 'withdrawn' && a.status !== 'rejected'); if (dup) { toast.push({ kind: 'warning', title: 'Already applied', body: 'You’ve already applied to this gig.' }); return; } setApplied(s => ({ ...s, [g.id]: true })); try { await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId: currentUser?.id }); } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Apply failed', body: e.message }); return; } toast.push({ kind: 'success', title: 'Application sent', body: "You'll hear back within 24 hours." }); }}>Confirm application</button></>}>
         {applyGig ? (
           <div className="col" style={{ gap: 14 }}>
             <GigChip type={applyGig.type} />
@@ -649,6 +653,48 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
         </div>
       </Modal>
 
+      <Modal open={!!detailGig} onClose={() => setDetailGig(null)} title={detailGig ? `${detailGig.g.type} · ${detailGig.ev.name}` : 'Gig details'} size="md"
+        footer={(() => {
+          if (!detailGig) return null;
+          const { g } = detailGig;
+          const dup = (SG_D.APPLICATIONS || []).some(a => a.gigId === g.id && a.workerId === currentUser?.id && a.status !== 'withdrawn' && a.status !== 'rejected');
+          const youApplied = currentUser?.id && (g.assignedTo || []).includes(currentUser.id);
+          const full = g.spotsFilled >= g.spots;
+          return (
+            <>
+              <button className="btn btn-ghost" onClick={() => setDetailGig(null)}>Close</button>
+              {youApplied ? <Badge kind="Confirmed">Confirmed</Badge>
+                : dup ? <Badge kind="Pending">Already applied</Badge>
+                : full ? <Badge kind="Cancelled">Full</Badge>
+                : <button className="btn btn-coral" onClick={() => { setDetailGig(null); setApplyGig(g); }}>Apply</button>}
+            </>
+          );
+        })()}>
+        {detailGig ? (() => {
+          const { g, ev } = detailGig;
+          const v = SG_D.VENUES.find(x => x.id === ev?.venueId);
+          const vendor = SG_D.USERS.find(u => u.id === ev?.vendorId);
+          return (
+            <div className="col" style={{ gap: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <GigChip type={g.type} />
+                <span className="t-mono-amount" style={{ fontSize: 18, fontWeight: 600 }}>${g.rate}/hr</span>
+              </div>
+              <KV label="Event" value={ev?.name} />
+              <KV label="Date" value={`${fmtDate(g.date, 'mdy-dots')} · ${g.start}–${g.end}`} />
+              <KV label="Venue" value={`${v?.name || '—'} · ${v?.city || ''}`} />
+              <KV label="Spots" value={`${g.spots - g.spotsFilled} of ${g.spots} left`} />
+              <KV label="Vendor" value={vendor?.company || vendor?.name || '—'} />
+              <div>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-muted)' }}>What you'll do</p>
+                <p style={{ marginTop: 6, fontSize: 14, color: 'var(--color-body)', lineHeight: 1.55 }}>{g.description || 'No description provided.'}</p>
+              </div>
+              <button className="btn-link" style={{ alignSelf: 'flex-start' }} onClick={() => { setDetailGig(null); setRoute('events:' + ev.id); }}>See full event →</button>
+            </div>
+          );
+        })() : null}
+      </Modal>
+
       {locOpen ? (
         <Modal open={locOpen} onClose={() => setLocOpen(false)} title="Service area" size="sm"
           footer={<><button className="btn btn-ghost" onClick={() => setLocOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={() => { setLocOpen(false); toast.push({ kind: 'success', title: 'Filter updated', body: `Showing gigs within ${radius} mi of ${city}` }); }}>Apply</button></>}>
@@ -663,13 +709,21 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
 }
 
 /* ============ Worker: My gigs ============ */
-function PageMyGigsWorker({ currentUser }) {
+function PageMyGigsWorker({ currentUser, setRoute }) {
   const toast = useToast();
   const [tab, setTab] = SG_us('upcoming');
   const [search, setSearch] = SG_us('');
   const [sortBy, setSortBy] = SG_us('date');
   const today = new Date('2026-05-25');
-  const allMy = currentUser?.id ? SG_D.GIGS.filter(g => g.assignedTo.includes(currentUser.id)) : [];
+  const assignedGigs = currentUser?.id ? SG_D.GIGS.filter(g => g.assignedTo.includes(currentUser.id)) : [];
+  // Also surface pending applications as Applied entries (only ones not already assigned)
+  const assignedIds = new Set(assignedGigs.map(g => g.id));
+  const myApps = currentUser?.id ? (SG_D.APPLICATIONS || []).filter(a => a.workerId === currentUser.id && a.status !== 'withdrawn' && a.status !== 'rejected') : [];
+  const appliedGigs = myApps
+    .filter(a => !assignedIds.has(a.gigId))
+    .map(a => { const g = SG_D.GIGS.find(x => x.id === a.gigId); return g ? { ...g, _appStatus: 'applied' } : null; })
+    .filter(Boolean);
+  const allMy = [...assignedGigs, ...appliedGigs];
   // Stats span all gigs, not the tab
   const past = allMy.filter(g => new Date(g.date) < today);
   const future = allMy.filter(g => new Date(g.date) >= today);
@@ -730,7 +784,7 @@ function PageMyGigsWorker({ currentUser }) {
         <table className="rosy-table">
           <thead><tr><th>Event</th><th>Gig</th><th>Date / time</th><th>Location</th><th>Pay rate</th><th>Hours</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {my.length === 0 ? <tr><td colSpan={8}><Empty icon={SG_I.Briefcase} title="No gigs yet" body="Browse open gig posts to apply." /></td></tr> :
+            {my.length === 0 ? <tr><td colSpan={8}><Empty icon={SG_I.Briefcase} title="No gigs yet" body="Browse open gig posts to apply." cta={<button className="btn btn-coral" onClick={() => setRoute && setRoute('gig-posts')}><SG_I.Search size={14} />Find gigs</button>} /></td></tr> :
              my.map(g => {
                const ev = SG_D.EVENTS.find(e => e.id === g.eventId);
                const v = SG_D.VENUES.find(x => x.id === ev?.venueId);
@@ -743,7 +797,7 @@ function PageMyGigsWorker({ currentUser }) {
                    <td style={{ fontSize: 13 }}>{v?.name}<br/><span className="t-muted" style={{ fontSize: 12 }}>{v?.city}</span></td>
                    <td className="t-mono-amount">${g.rate}/hr</td>
                    <td>{past ? '8.5' : '—'}</td>
-                   <td><Badge kind={g.status === 'completed' ? 'Completed' : g.status === 'confirmed' ? 'Confirmed' : 'Open'} /></td>
+                   <td><Badge kind={g._appStatus === 'applied' ? 'Pending' : g.status === 'completed' ? 'Completed' : g.status === 'confirmed' ? 'Confirmed' : 'Open'}>{g._appStatus === 'applied' ? 'Applied' : null}</Badge></td>
                    <td>
                      {g.status === 'completed' ? <button className="btn btn-ghost btn-sm" onClick={() => setRate(g)}><SG_I.Star size={14} />Rate vendor</button>
                        : past ? <button className="btn btn-coral btn-sm" onClick={() => setMark(g)}>Mark complete</button>

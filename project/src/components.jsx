@@ -386,7 +386,23 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
         </button>
       ) : null}
       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <h1 style={{ margin: 0 }}>{title}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h1 style={{ margin: 0 }}>{title}</h1>
+          {(() => {
+            const roleMeta = {
+              admin:  { label: 'Admin portal',  bg: 'rgba(26,188,176,0.12)',  fg: '#0F8278' },
+              vendor: { label: 'Vendor portal', bg: 'rgba(244,124,93,0.12)',  fg: '#B84A2E' },
+              worker: { label: 'Worker portal', bg: 'rgba(196,158,80,0.16)',  fg: '#8A6A1F' },
+            }[role] || null;
+            if (!roleMeta) return null;
+            return (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 9999, background: roleMeta.bg, color: roleMeta.fg, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                <span style={{ width: 6, height: 6, borderRadius: 9999, background: roleMeta.fg }} />
+                {roleMeta.label}
+              </span>
+            );
+          })()}
+        </div>
         <Breadcrumbs items={breadcrumbs} />
       </div>
       <div className="header-spacer" />

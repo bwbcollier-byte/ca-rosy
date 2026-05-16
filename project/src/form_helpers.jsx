@@ -4,32 +4,47 @@ const { useState: F_us, useEffect: F_ue, useRef: F_ur } = React;
 const F_I = window.Icons;
 
 /* ============ In-memory runtime stores ============ */
-window.RosyStores = window.RosyStores || {
-  // Email templates the admin can edit. Body uses {{var}} placeholders.
-  emailTemplates: {
-    'worker-confirmed': {
-      name: 'Worker — gig confirmed',
-      subject: "You're confirmed: {{event_name}}",
-      body: "Hi {{worker_first}},\n\nYou're confirmed for {{event_name}} on {{event_date}}.\n\nCall time: {{call_time}}\nVenue: {{venue_name}}, {{venue_city}}\nLead: {{lead_name}}\nRate: ${{hourly_rate}}/hr\n\nSee gig details in the app.\n\n— Rosy",
-      lastEdited: '2026-05-10',
-      live: true,
-    },
-    'worker-rejected': { name: 'Worker — gig rejected', subject: 'Update on your application', body: 'Hi {{worker_first}},\n\nThanks for applying to {{event_name}}. The vendor has filled the role this time. Plenty more gigs in your feed.\n\n— Rosy', lastEdited: '2026-05-04', live: true },
-    'vendor-application': { name: 'Vendor — application received', subject: '{{worker_name}} applied to your gig', body: 'Hi {{vendor_first}},\n\n{{worker_name}} (★ {{worker_rating}}, {{worker_gigs}} gigs) applied to your {{gig_type}} gig at {{event_name}}.\n\nReview now in the app.\n\n— Rosy', lastEdited: '2026-05-08', live: true },
-    'worker-paid': { name: 'Worker — payment paid', subject: "You've been paid ${{amount}}", body: 'Hi {{worker_first}},\n\n${{amount}} for {{event_name}} just landed in your Stripe account.\n\n— Rosy', lastEdited: '2026-05-06', live: true },
-    'dispute-filed': { name: 'Both — dispute filed', subject: 'A dispute was filed on {{invoice}}', body: 'A dispute has been filed on {{invoice}} (${{amount}}).\n\nReason: {{reason}}\nFiled by: {{filed_by}}\n\nYou have 48 hours to respond.\n\n— Rosy', lastEdited: '2026-05-12', live: true },
-    'weekly-summary': { name: 'Both — weekly summary', subject: 'Your week on Rosy Recruits', body: 'Hi {{first_name}},\n\nThis week: {{gigs_count}} gigs, {{hours}} hours, ${{earned}} earned.\n\nUpcoming: {{upcoming_count}} confirmed.\n\n— Rosy', lastEdited: '2026-04-28', live: false },
-  },
-  // Gallery — items with section assignment
-  gallery: [
+(function initRosyStores() {
+  if (window.RosyStores) return;
+  // Shared HTML wrapper applied at send time. Body is the inner HTML.
+  const htmlWrap = (inner) => `<!doctype html><html><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1A1A1A;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAF7F2;padding:24px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);"><tr><td style="background:#F47C5D;padding:18px 24px;color:#fff;font-weight:600;font-size:18px;font-family:Georgia,serif;">Rosy <span style="opacity:0.8;">Recruits</span></td></tr><tr><td style="padding:28px 28px 24px;font-size:15px;line-height:1.6;color:#1A1A1A;">` + inner + `</td></tr><tr><td style="padding:16px 28px;background:#FAF7F2;border-top:1px solid #ECE6DD;font-size:11.5px;color:#7A7470;">You're getting this because you have a Rosy Recruits account. <a href="{{unsubscribe_url}}" style="color:#7A7470;">Unsubscribe</a> · <a href="{{help_url}}" style="color:#7A7470;">Help</a></td></tr></table></td></tr></table></body></html>`;
+  const emails = {
+    'welcome-vendor': { name: 'Welcome — vendor', subject: 'Welcome to Rosy Recruits, {{first_name}}', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Welcome aboard, {{first_name}}.</h2><p>Your vendor account is being reviewed. Most studios are approved within a few business hours — we'll email you the moment it's live.</p><p>While you wait, you can finish setting up your studio profile, add a venue, and draft your first event.</p><p style="margin-top:24px;"><a href="{{app_url}}/#app/dashboard" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Open my dashboard</a></p><p style="color:#7A7470;font-size:13px;margin-top:24px;">— The Rosy Recruits team</p>`), lastEdited: '2026-05-15', live: true },
+    'welcome-worker': { name: 'Welcome — worker', subject: 'Welcome to Rosy Recruits, {{first_name}}', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Welcome to the crew, {{first_name}}.</h2><p>Your worker account is being reviewed. We verify every applicant manually to keep the network strong — expect a decision within a few business hours.</p><p>In the meantime, fill out your profile and W-9 so you're ready to apply the moment you're approved.</p><p style="margin-top:24px;"><a href="{{app_url}}/#app/settings" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Finish my profile</a></p><p style="color:#7A7470;font-size:13px;margin-top:24px;">— The Rosy Recruits team</p>`), lastEdited: '2026-05-15', live: true },
+    'verified': { name: 'Account verified', subject: "You're in — start using Rosy Recruits", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">You're verified, {{first_name}}.</h2><p>Your {{role}} account is live. Jump in and start using the platform.</p><p style="margin-top:24px;"><a href="{{app_url}}/#app/dashboard" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Open Rosy Recruits</a></p>`), lastEdited: '2026-05-15', live: true },
+    'application-received': { name: 'Vendor — application received', subject: '{{worker_name}} applied to your gig', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">New application for {{event_name}}</h2><p><strong>{{worker_name}}</strong> (★ {{worker_rating}}, {{worker_gigs}} gigs) applied to your <strong>{{gig_type}}</strong> gig.</p><table cellpadding="0" cellspacing="0" style="margin:18px 0;font-size:13.5px;color:#5A5550;"><tr><td style="padding:4px 12px 4px 0;">Event</td><td>{{event_name}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Date</td><td>{{event_date}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Rate</td><td>\${{hourly_rate}}/hr</td></tr></table><p><a href="{{app_url}}/#app/applications" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Review application</a></p>`), lastEdited: '2026-05-10', live: true },
+    'worker-confirmed': { name: 'Worker — gig confirmed', subject: "You're confirmed: {{event_name}}", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">You're confirmed for {{event_name}}.</h2><table cellpadding="0" cellspacing="0" style="margin:18px 0;font-size:13.5px;color:#5A5550;"><tr><td style="padding:4px 12px 4px 0;">Date</td><td>{{event_date}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Call time</td><td>{{call_time}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Venue</td><td>{{venue_name}}, {{venue_city}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Lead</td><td>{{lead_name}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Rate</td><td>\${{hourly_rate}}/hr</td></tr></table><p><a href="{{app_url}}/#app/my-gigs" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">See gig details</a></p>`), lastEdited: '2026-05-10', live: true },
+    'worker-rejected': { name: 'Worker — application not selected', subject: 'Update on your {{event_name}} application', body: htmlWrap(`<p>Hi {{worker_first}},</p><p>Thanks for applying to <strong>{{event_name}}</strong>. The vendor has filled the role this time. Plenty more gigs in your feed.</p><p style="margin-top:18px;"><a href="{{app_url}}/#app/gig-posts" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Find more gigs</a></p>`), lastEdited: '2026-05-04', live: true },
+    'day-of-event': { name: 'Day-of-event reminder', subject: "Today: {{event_name}} — call time {{call_time}}", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">It's go day, {{worker_first}}.</h2><p><strong>{{event_name}}</strong> · Call time <strong>{{call_time}}</strong> · {{venue_name}}, {{venue_address}}</p><p>Reply to your vendor in the app if you're delayed. Safe travels.</p><p style="margin-top:18px;"><a href="{{maps_url}}" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Open directions</a></p>`), lastEdited: '2026-05-15', live: true },
+    'worker-paid': { name: 'Worker — payment paid', subject: "You've been paid ${{amount}}", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">$ {{amount}} just landed.</h2><p>For <strong>{{event_name}}</strong> on {{event_date}}.</p><p>Funds should reach your Stripe payout account within 2 business days.</p>`), lastEdited: '2026-05-06', live: true },
+    'dispute-filed': { name: 'Both — dispute filed', subject: 'A dispute was filed on {{invoice}}', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Dispute on {{invoice}}</h2><p>Amount: <strong>$ {{amount}}</strong><br>Reason: {{reason}}<br>Filed by: {{filed_by}}</p><p>You have <strong>48 hours</strong> to respond before our team steps in.</p><p style="margin-top:18px;"><a href="{{app_url}}/#app/disputes" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Respond now</a></p>`), lastEdited: '2026-05-12', live: true },
+    'weekly-summary': { name: 'Both — weekly summary', subject: 'Your week on Rosy Recruits', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Hi {{first_name}}, here's your week.</h2><p><strong>{{gigs_count}}</strong> gigs · <strong>{{hours}}</strong> hours · <strong>$ {{earned}}</strong> earned.</p><p>Upcoming: {{upcoming_count}} confirmed.</p>`), lastEdited: '2026-04-28', live: false },
+  };
+  const notificationTemplates = {
+    'application-received': { name: 'Vendor — new application', title: 'New application', body: '{{worker_name}} applied to your {{gig_type}} gig at {{event_name}}.', live: true, lastEdited: '2026-05-15' },
+    'application-approved': { name: 'Worker — application approved', title: "You're booked!", body: '{{vendor_first}} confirmed you for {{event_name}} on {{event_date}}.', live: true, lastEdited: '2026-05-15' },
+    'application-rejected': { name: 'Worker — application rejected', title: 'Application update', body: 'Your application to {{event_name}} wasn’t selected this time.', live: true, lastEdited: '2026-05-15' },
+    'payment-released':     { name: 'Worker — payment released', title: "You've been paid", body: '${{amount}} for {{event_name}} just sent.', live: true, lastEdited: '2026-05-15' },
+    'gig-tomorrow':         { name: 'Worker — gig tomorrow', title: 'Heads up — gig tomorrow', body: '{{event_name}} at {{venue_name}}, call time {{call_time}}.', live: true, lastEdited: '2026-05-15' },
+    'dispute-filed':        { name: 'Both — dispute filed', title: 'Dispute filed', body: 'A dispute was filed on invoice {{invoice}}. Respond within 48h.', live: true, lastEdited: '2026-05-15' },
+    'welcome':              { name: 'Welcome notification', title: 'Welcome to Rosy Recruits!', body: 'Take the tour to see how everything works.', live: true, lastEdited: '2026-05-15' },
+  };
+  const legalDocs = {
+    'terms-of-service': { name: 'Terms of Service', updatedAt: '2026-05-15', body: '# Terms of Service\n\nLast updated: May 15, 2026\n\nWelcome to Rosy Recruits. By using the platform you agree to the following terms…\n\n## 1. Accounts\n\n## 2. Payments\n\n## 3. Conduct\n\n## 4. Liability\n\n## 5. Termination\n' },
+    'privacy-policy':   { name: 'Privacy Policy',   updatedAt: '2026-05-15', body: '# Privacy Policy\n\nLast updated: May 15, 2026\n\nWe collect the minimum necessary to operate the platform…\n' },
+    'worker-agreement': { name: 'Worker Agreement', updatedAt: '2026-05-15', body: '# Worker Agreement\n\nLast updated: May 15, 2026\n\nWorkers on Rosy Recruits are independent contractors…\n' },
+    'vendor-agreement': { name: 'Vendor Agreement', updatedAt: '2026-05-15', body: '# Vendor Agreement\n\nLast updated: May 15, 2026\n\nVendors agree to release funds promptly on completed gigs…\n' },
+  };
+  const gallery = [
     { id: 'g1', src: 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=600&q=80', section: 'hero' },
     { id: 'g2', src: 'https://images.unsplash.com/photo-1606041011872-596597976b25?w=600&q=80', section: 'gallery' },
     { id: 'g3', src: 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80', section: 'gallery' },
     { id: 'g4', src: 'https://images.unsplash.com/photo-1487070183336-b863922373d4?w=600&q=80', section: 'about' },
     { id: 'g5', src: 'https://images.unsplash.com/photo-1455659817273-f96807779a8a?w=600&q=80', section: 'gallery' },
     { id: 'g6', src: 'https://images.unsplash.com/photo-1416379590848-77df60bf64ec?w=600&q=80', section: 'gallery' },
-  ],
-};
+  ];
+  window.RosyStores = { emailTemplates: emails, notificationTemplates, legalDocs, gallery };
+})();
 
 const GALLERY_SECTIONS = [
   { id: 'hero',     label: 'Marketing hero',        max: 1 },

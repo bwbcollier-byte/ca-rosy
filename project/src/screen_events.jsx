@@ -301,7 +301,7 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
   );
 }
 
-function EventCard({ event, onClick, showApply = false }) {
+function EventCard({ event, onClick, onApply, showApply = false }) {
   const v = SE_D.VENUES.find(v => v.id === event.venueId);
   return (
     <div className="event-card" onClick={onClick} role="button" tabIndex={0}>
@@ -323,7 +323,7 @@ function EventCard({ event, onClick, showApply = false }) {
             <p style={{ margin: '1px 0 0', color: 'var(--color-muted)', fontSize: 11.5 }}>{v?.name} · {fmtDate(event.date, 'mdy-dots')}</p>
           </div>
           {showApply && event.status === 'open' ? (
-            <button className="btn btn-coral btn-sm" onClick={(e) => { e.stopPropagation(); onClick && onClick(); }}>Apply</button>
+            <button className="btn btn-coral btn-sm" onClick={(e) => { e.stopPropagation(); (onApply || onClick) && (onApply || onClick)(); }}>Apply</button>
           ) : null}
         </div>
       </div>
@@ -372,13 +372,36 @@ function NewEventForm({ value = {}, onChange = () => {}, onCreateVenue }) {
 }
 
 /* ----- Worker events browse (card grid) ----- */
-function PageEventsWorker({ setRoute }) {
+function PageEventsWorker({ setRoute, currentUser }) {
   const [filters, setFilters] = SE_us({ Lead: true, Design: true, Assist: true, Strike: true });
   const [search, setSearch] = SE_us('');
+  const [applyEvent, setApplyEvent] = SE_us(null);
+  const [pickedGigId, setPickedGigId] = SE_us('');
+  const toast = useToast();
+  const openApply = (ev) => { setApplyEvent(ev); setPickedGigId(''); };
+  const closeApply = () => { setApplyEvent(null); setPickedGigId(''); };
+  const eventGigs = applyEvent ? SE_D.GIGS.filter(g => g.eventId === applyEvent.id && (g.spots - g.spotsFilled) > 0) : [];
+  const pickedGig = eventGigs.find(g => g.id === pickedGigId) || null;
+  const submitApply = async () => {
+    if (!pickedGig) return;
+    const workerId = currentUser?.id || SE_D.USERS.find(u => u.role === 'worker')?.id;
+    const vendor = SE_D.USERS.find(u => u.id === applyEvent.vendorId);
+    const dup = (SE_D.APPLICATIONS || []).some(a => a.gigId === pickedGig.id && a.workerId === workerId && a.status !== 'withdrawn' && a.status !== 'rejected');
+    closeApply();
+    if (dup) { toast.push({ kind: 'warning', title: 'Already applied', body: 'You’ve already applied to this gig.' }); return; }
+    try {
+      await window.RosyMutate?.applications?.apply({ gigId: pickedGig.id, workerId });
+    } catch (err) {
+      console.warn(err);
+      toast.push({ kind: 'error', title: 'Apply failed', body: err.message });
+      return;
+    }
+    toast.push({ kind: 'success', title: 'Application sent', body: `You'll hear from ${vendor?.first || 'the vendor'} soon.` });
+  };
   const activeTypes = Object.keys(filters).filter(k => filters[k]);
   const events = SE_D.EVENTS
     .filter(e => e.status === 'open')
-    .filter(e => e.types.some(t => activeTypes.includes(t)))
+    .filter(e => SE_D.GIGS.some(g => g.eventId === e.id && (g.spots - g.spotsFilled) > 0 && activeTypes.includes(g.type)))
     .filter(e => {
       if (!search.trim()) return true;
       const q = search.toLowerCase();
@@ -408,8 +431,42 @@ function PageEventsWorker({ setRoute }) {
       <div className="grid-3">
         {events.length === 0 ?
           <div style={{ gridColumn: '1 / -1' }}><Empty icon={SE_I.Calendar} title="No matching events" body="Try clearing your filters or a broader search." /></div>
-          : events.map(e => <EventCard key={e.id} event={e} showApply onClick={() => setRoute('events:' + e.id)} />)}
+          : events.map(e => <EventCard key={e.id} event={e} showApply onClick={() => setRoute('events:' + e.id)} onApply={() => openApply(e)} />)}
       </div>
+
+      <Modal open={!!applyEvent} onClose={closeApply} title={applyEvent ? `Apply to ${applyEvent.name}` : 'Apply'} size="md"
+        footer={<><button className="btn btn-ghost" onClick={closeApply}>Cancel</button><button className="btn btn-coral" disabled={!pickedGig} onClick={submitApply}>Confirm application</button></>}>
+        {applyEvent ? (
+          <div className="col" style={{ gap: 16 }}>
+            <p style={{ margin: 0, fontSize: 13.5, color: 'var(--color-muted)' }}>Pick the gig you want to apply for. Only open gigs with spots remaining are shown.</p>
+            {eventGigs.length === 0 ? (
+              <Empty icon={SE_I.Briefcase} title="No open gigs" body="All gigs for this event are filled. Check back soon." />
+            ) : (
+              <div className="col" style={{ gap: 10 }}>
+                {eventGigs.map(g => {
+                  const selected = g.id === pickedGigId;
+                  return (
+                    <button key={g.id} type="button" onClick={() => setPickedGigId(g.id)}
+                      style={{ textAlign: 'left', padding: 14, borderRadius: 12, border: selected ? '2px solid var(--rosy-coral)' : '1px solid var(--color-hairline)', background: selected ? 'var(--color-surface-soft)' : 'var(--color-surface)', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <GigChip type={g.type} />
+                          <span style={{ fontWeight: 600 }}>${g.rate}/hr</span>
+                        </div>
+                        <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>{g.spots - g.spotsFilled} of {g.spots} left</span>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 13, color: 'var(--color-body)' }}>
+                        {fmtDate(g.date, 'mdy-dots')} · {g.start}–{g.end}
+                      </div>
+                      {g.description ? <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)' }}>{g.description}</div> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
@@ -446,7 +503,7 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div className="tabs">
-          {['overview','gigs','applications','payments'].map(t => (
+          {(role === 'worker' ? ['overview','gigs'] : ['overview','gigs','applications','payments']).map(t => (
             <button key={t} className={tab===t ? 'on' : ''} onClick={() => setTab(t)} style={{ textTransform: 'capitalize' }}>{t}</button>
           ))}
         </div>
@@ -483,7 +540,11 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
                   <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-muted)' }}>{vendor?.name} · {vendor?.city}</p>
                 </div>
               </div>
-              <button className="btn btn-ghost-teal btn-sm" style={{ marginTop: 14 }} onClick={() => { setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${vendor?.first}` }); }}><SE_I.MessageSquare size={14} />Message</button>
+              {role === 'worker' ? (
+                <p style={{ marginTop: 14, fontSize: 12.5, color: 'var(--color-muted)' }}>You'll be able to message {vendor?.first || 'the vendor'} once your application is accepted.</p>
+              ) : (
+                <button className="btn btn-ghost-teal btn-sm" style={{ marginTop: 14 }} onClick={() => { setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${vendor?.first}` }); }}><SE_I.MessageSquare size={14} />Message</button>
+              )}
             </div>
             <div className="card">
               <h3 className="card-title" style={{ marginBottom: 10 }}>Gig types</h3>
@@ -506,9 +567,16 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
                   <td className="t-mono-amount">${g.rate}/hr</td>
                   <td><Badge kind={g.status === 'confirmed' ? 'Confirmed' : g.status === 'completed' ? 'Completed' : 'Open'} /></td>
                   <td>
-                    {role === 'worker' && g.status === 'open' ? (
-                      <button className="btn btn-coral btn-sm" onClick={() => setApplyGig(g)}>Apply</button>
-                    ) : <button className="btn btn-ghost btn-sm">Details</button>}
+                    {(() => {
+                      if (role !== 'worker') return <button className="btn btn-ghost btn-sm">Details</button>;
+                      const apps = (SE_D.APPLICATIONS || []).filter(a => a.gigId === g.id && a.workerId === currentUser?.id);
+                      const myApp = apps[apps.length - 1];
+                      const isAssigned = currentUser?.id && (g.assignedTo || []).includes(currentUser.id);
+                      if (isAssigned) return <Badge kind="Confirmed">Confirmed</Badge>;
+                      if (myApp && myApp.status !== 'withdrawn' && myApp.status !== 'rejected') return <Badge kind="Pending">Applied</Badge>;
+                      if (g.status !== 'open' || (g.spots - g.spotsFilled) <= 0) return <Badge kind="Cancelled">Closed</Badge>;
+                      return <button className="btn btn-coral btn-sm" onClick={() => setApplyGig(g)}>Apply</button>;
+                    })()}
                   </td>
                 </tr>
               ))}
@@ -557,7 +625,7 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
       ) : null}
 
       <Modal open={!!applyGig} onClose={() => setApplyGig(null)} title="Apply for this gig" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const g = applyGig; setApplyGig(null); try { const workerId = SE_D.USERS.find(u => u.role === 'worker')?.id; await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId }); } catch (err) { console.warn(err); toast.push({ kind: 'error', title: 'Apply failed', body: err.message }); return; } toast.push({ kind: 'success', title: 'Application sent', body: `You'll hear from ${vendor?.first || 'the vendor'} soon.` }); }}>Confirm application</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const g = applyGig; setApplyGig(null); const workerId = currentUser?.id || SE_D.USERS.find(u => u.role === 'worker')?.id; const dup = (SE_D.APPLICATIONS || []).some(a => a.gigId === g.id && a.workerId === workerId && a.status !== 'withdrawn' && a.status !== 'rejected'); if (dup) { toast.push({ kind: 'warning', title: 'Already applied', body: 'You’ve already applied to this gig.' }); return; } try { await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId }); } catch (err) { console.warn(err); toast.push({ kind: 'error', title: 'Apply failed', body: err.message }); return; } toast.push({ kind: 'success', title: 'Application sent', body: `You'll hear from ${vendor?.first || 'the vendor'} soon.` }); }}>Confirm application</button></>}>
         {applyGig ? (
           <div>
             <p style={{ margin: '0 0 16px' }}><GigChip type={applyGig.type} /> {e.name}</p>

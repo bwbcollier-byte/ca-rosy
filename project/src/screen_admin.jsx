@@ -46,14 +46,20 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
     toast.push({ kind: 'success', title: 'Payment released', body: `${fmtMoney(t.amount)} sent to ${t.payee}` });
   };
   let txs = SP_D.TRANSACTIONS;
-  // Scope payments by the current user. Vendors see invoices for their company;
-  // workers see invoices addressed to them. Falls back to demo names when seed data lacks UUIDs.
+  // Scope payments strictly by the current user. Workers see only invoices
+  // addressed exactly to them; vendors see only invoices from their company.
+  // No fallback matching — that leaks demo rows to brand-new users.
   if (role === 'vendor') {
     const company = currentUser?.company || '';
     const name = currentUser?.name || '';
-    txs = txs.filter(t => (company && t.payer === company) || (name && t.payer.includes(name)) || t.payer.includes('Bloom') || t.payer.includes('Floral Forge'));
+    txs = txs.filter(t => (company && t.payer === company) || (name && t.payer === name));
   }
-  if (role === 'worker') txs = txs.filter(t => (currentUser?.name && t.payee === currentUser.name) || t.payee === 'Multiple');
+  if (role === 'worker') {
+    const name = currentUser?.name || '';
+    // Workers only see records for actual completed work — hide $0 / "Not Due"
+    // placeholder rows that get generated when a gig is merely assigned.
+    txs = txs.filter(t => name && t.payee === name && t.status !== 'Not Due' && (t.amount || 0) > 0);
+  }
 
   const filtered = txs
     .filter(t => statusTab === 'all' || t.status.toLowerCase() === statusTab)
@@ -1369,6 +1375,8 @@ function PageSiteContent() {
           </div>
         ))}
       </div>
+      <h3 style={{ margin: '28px 0 12px', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.015em' }}>Legal documents</h3>
+      <LegalDocsEditor />
       {addSectionOpen ? (
         <Modal open={addSectionOpen} onClose={() => setAddSectionOpen(false)} title="Add section" size="sm"
           footer={<><button className="btn btn-ghost" onClick={() => setAddSectionOpen(false)}>Cancel</button><button className="btn btn-coral" disabled={!newSection.title.trim()} onClick={() => { setSections(s => [...s, { id: 's' + Date.now(), ...newSection }]); setNewSection({ title: '', desc: '' }); setAddSectionOpen(false); toast.push({ kind: 'success', title: 'Section added' }); }}>Add</button></>}>
@@ -1379,6 +1387,41 @@ function PageSiteContent() {
         </Modal>
       ) : null}
     </div>
+  );
+}
+
+function LegalDocsEditor() {
+  const toast = useToast();
+  const [docs, setDocs] = SP_us(window.RosyStores.legalDocs || {});
+  const [editId, setEditId] = SP_us(null);
+  const [draft, setDraft] = SP_us('');
+  const open = (id) => { setEditId(id); setDraft(docs[id]?.body || ''); };
+  const save = () => {
+    const next = { ...docs, [editId]: { ...docs[editId], body: draft, updatedAt: new Date().toISOString().slice(0, 10) } };
+    setDocs(next); window.RosyStores.legalDocs = next; setEditId(null);
+    toast.push({ kind: 'success', title: 'Saved', body: `${next[editId === null ? Object.keys(next)[0] : editId]?.name || 'Document'} updated.` });
+  };
+  return (
+    <>
+      <div className="grid-2">
+        {Object.entries(docs).map(([id, d]) => (
+          <div key={id} className="card" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{d.name}</p>
+              <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--color-muted)' }}>Last updated {d.updatedAt}</p>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => open(id)}><SP_I.Pencil size={14} />Edit</button>
+          </div>
+        ))}
+      </div>
+      <Modal open={!!editId} onClose={() => setEditId(null)} title={editId ? docs[editId]?.name : ''} size="lg"
+        footer={<><button className="btn btn-ghost" onClick={() => setEditId(null)}>Cancel</button><button className="btn btn-coral" onClick={save}>Save changes</button></>}>
+        <div className="col" style={{ gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Markdown is supported. Changes go live immediately on the marketing site.</p>
+          <textarea className="textarea" value={draft} onChange={(e) => setDraft(e.target.value)} style={{ minHeight: 360, fontFamily: 'var(--font-mono)', fontSize: 13 }} />
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -1429,8 +1472,11 @@ function PageEmails() {
         footer={<><button className="btn btn-ghost" onClick={() => setEditId(null)}>Cancel</button><button className="btn btn-ghost" onClick={() => setTestModalOpen(true)}>Send test</button><button className="btn btn-coral" onClick={saveTemplate}>Save changes</button></>}>
         <div className="col" style={{ gap: 14 }}>
           <div className="field"><label className="field-label">Subject line</label><input className="input" value={draft.subject} onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))} /></div>
-          <div className="field"><label className="field-label">Body</label>
-            <textarea className="textarea" value={draft.body} onChange={e => setDraft(d => ({ ...d, body: e.target.value }))} style={{ minHeight: 220, fontFamily: 'var(--font-mono)', fontSize: 13 }} />
+          <div className="field"><label className="field-label">Body (HTML)</label>
+            <textarea className="textarea" value={draft.body} onChange={e => setDraft(d => ({ ...d, body: e.target.value }))} style={{ minHeight: 220, fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+          </div>
+          <div className="field"><label className="field-label">Live preview</label>
+            <iframe title="Email preview" srcDoc={draft.body} style={{ width: '100%', height: 360, border: '1px solid var(--color-hairline)', borderRadius: 12, background: '#FAF7F2' }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--color-hairline)' }}>
             <span style={{ fontSize: 13.5, fontWeight: 500 }}>Live (send to users)</span>

@@ -212,6 +212,9 @@ function App() {
     setMode('marketing');
   };
 
+  // Verification gate — signed-in non-admins with verified === false see only a pending-approval popup.
+  const needsVerification = !!sessionUser && sessionUser.role !== 'admin' && sessionUser.verified === false;
+
   return (
     <ToastHost>
       <div className={`app-shell`}>
@@ -226,7 +229,24 @@ function App() {
             onBurger={() => setSidebarOpen(true)} />
           <ScreenRouter role={role} route={route} baseRoute={baseRoute} setRoute={setRoute}
             currentUser={currentUser} tweaks={tweaks} />
+          {role === 'admin' ? <DevNoteButton route={route} currentUser={currentUser} /> : null}
         </div>
+        {needsVerification ? (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,10,0.7)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <div style={{ width: '100%', maxWidth: 460, background: 'var(--color-canvas)', borderRadius: 20, padding: 32, textAlign: 'center', boxShadow: 'var(--shadow-modal)' }}>
+              <div style={{ width: 64, height: 64, borderRadius: 9999, background: 'var(--color-warning-bg, #FFE7CC)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-warning, #B85C00)', marginBottom: 16 }}>
+                <window.Icons.ShieldAlert size={28} />
+              </div>
+              <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22 }}>Pending verification</h2>
+              <p style={{ margin: '12px 0 6px', color: 'var(--color-body)', fontSize: 14.5 }}>Thanks for signing up, {currentUser?.first || 'there'}!</p>
+              <p style={{ margin: '0 0 24px', color: 'var(--color-muted)', fontSize: 13.5 }}>Our team reviews every new {currentUser?.role || 'account'} before unlocking the platform. You'll get an email the moment you're approved — usually within a few business hours.</p>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                <button className="btn btn-ghost" onClick={() => window.location.reload()}>Check again</button>
+                <button className="btn btn-ghost-coral" onClick={handleSignOut}>Sign out</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <NotificationPanel open={notifOpen} onClose={() => setNotifOpen(false)} setRoute={setRoute} role={role} />
         {tourOpen ? <Walkthrough role={role} onClose={() => { setTourOpen(false); setWelcomeOpen(false); }} setRoute={setRoute} /> : null}
         {welcomeOpen && !tourOpen ? (
@@ -305,7 +325,7 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
 
   // events
   if (baseRoute === 'events') {
-    if (role === 'worker') return <PageEventsWorker setRoute={setRoute} />;
+    if (role === 'worker') return <PageEventsWorker setRoute={setRoute} currentUser={currentUser} />;
     return <PageEventsVendor user={currentUser} role={role} setRoute={setRoute} viewMode={tweaks.eventsView} />;
   }
 
@@ -313,7 +333,7 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
   if (baseRoute === 'gigs') return <PageGigsVendor user={currentUser} role={role} setRoute={setRoute} />;
   // worker variants
   if (baseRoute === 'gig-posts') return <PageGigPostsWorker setRoute={setRoute} currentUser={currentUser} />;
-  if (baseRoute === 'my-gigs')   return <PageMyGigsWorker currentUser={currentUser} />;
+  if (baseRoute === 'my-gigs')   return <PageMyGigsWorker currentUser={currentUser} setRoute={setRoute} />;
 
   // directories
   const parts = route.split(':');
@@ -341,6 +361,52 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
   if (baseRoute === 'platform') return <PagePlatformSettings />;
 
   return <div className="content"><Empty title={`No ${baseRoute} screen yet`} body="Try a different sidebar item." /></div>;
+}
+
+/* ---------- Admin dev-note floating button (every page) ---------- */
+function DevNoteButton({ route, currentUser }) {
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState('');
+  const [savedFlash, setSavedFlash] = React.useState(false);
+  const storeKey = 'rosy.devNotes';
+  const readNotes = () => { try { return JSON.parse(localStorage.getItem(storeKey) || '[]'); } catch (e) { return []; } };
+  const save = () => {
+    const entry = { id: 'dn_' + Date.now(), route, author: currentUser?.name || 'admin', body: text.trim(), createdAt: new Date().toISOString() };
+    if (!entry.body) { setOpen(false); return; }
+    const all = readNotes();
+    all.unshift(entry);
+    try { localStorage.setItem(storeKey, JSON.stringify(all.slice(0, 500))); } catch (e) {}
+    setText(''); setOpen(false); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1500);
+  };
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title="Leave a dev note for this page"
+        style={{ position: 'fixed', bottom: 20, right: 20, width: 44, height: 44, borderRadius: 9999, border: 0, background: 'var(--color-ink)', color: '#fff', boxShadow: 'var(--shadow-modal)', cursor: 'pointer', zIndex: 350, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <window.Icons.StickyNote size={18} />
+      </button>
+      {savedFlash ? (
+        <div style={{ position: 'fixed', bottom: 74, right: 20, background: 'var(--color-ink)', color: '#fff', padding: '8px 12px', borderRadius: 9999, fontSize: 12, zIndex: 350 }}>Saved</div>
+      ) : null}
+      {open ? (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,10,0.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setOpen(false)}>
+          <div style={{ width: '100%', maxWidth: 520, background: 'var(--color-canvas)', borderRadius: 16, padding: 20, boxShadow: 'var(--shadow-modal)' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>Dev note for /{route}</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Close</button>
+            </div>
+            <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--color-muted)' }}>Captured for future upgrades. Stored locally and visible only to admins.</p>
+            <textarea className="textarea" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="What needs improving here? Bugs, copy, layout, ideas…" />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+              <button className="btn-link" onClick={() => { const all = readNotes(); const json = JSON.stringify(all, null, 2); const blob = new Blob([json], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'rosy-dev-notes.json'; a.click(); URL.revokeObjectURL(url); }}>Export all ({readNotes().length})</button>
+              <button className="btn btn-coral" onClick={save} disabled={!text.trim()}>Save note</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 // Hydrate from Supabase, mount React, then open the realtime channel so other
