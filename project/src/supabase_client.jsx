@@ -102,6 +102,8 @@ function buildUsers(profiles, vendors, workers) {
       bio:     p.bio || v?.business_description || null,
       company: v?.company_name || p.title || (p.role === 'admin' ? 'Rosy Recruits' : 'Freelancer'),
       status:  p.status || 'active',
+      verified: p.verified === false ? false : (p.verified === true ? true : null),
+      onboarding_complete: !!p.onboarding_complete,
       joined:  (p.created_at || '').slice(0, 10),
       city:    p.city ? `${p.city}, ${p.state || ''}`.replace(/, $/, '') : null,
       rating:  v?.rating || w?.rating || null,

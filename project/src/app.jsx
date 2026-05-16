@@ -184,6 +184,16 @@ function App() {
               await window.sb.from('rr_notifications').insert({
                 user_id: me.id, type: 'welcome', title, body, link: '#tour', read: false,
               });
+              // Persist profile completion + role + unverified status so the
+              // verification gate fires immediately after onboarding.
+              try {
+                await window.sb.from('rr_profiles').upsert({
+                  id: me.id, role: pickedRole, onboarding_complete: true, verified: false,
+                }, { onConflict: 'id' });
+                // Reflect in-memory too so the gate appears without waiting for hydration
+                const u = (window.RosyData.USERS || []).find(x => x.id === me.id);
+                if (u) { u.role = pickedRole; u.verified = false; window.dispatchEvent(new CustomEvent('rosy:data-changed')); }
+              } catch (e) { console.warn('profile upsert failed:', e); }
             }
           } catch (e) { console.warn('welcome notif failed:', e); }
           setMode('app');
@@ -263,16 +273,25 @@ function App() {
           {role === 'admin' ? <DevNoteButton route={route} currentUser={currentUser} /> : null}
         </div>
         {needsVerification ? (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,10,0.7)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <div style={{ width: '100%', maxWidth: 460, background: 'var(--color-canvas)', borderRadius: 20, padding: 32, textAlign: 'center', boxShadow: 'var(--shadow-modal)' }}>
-              <div style={{ width: 64, height: 64, borderRadius: 9999, background: 'var(--color-warning-bg, #FFE7CC)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-warning, #B85C00)', marginBottom: 16 }}>
-                <window.Icons.ShieldAlert size={28} />
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,10,0.55)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+               onKeyDown={(e) => e.preventDefault()}>
+            <div style={{ width: '100%', maxWidth: 520, background: 'var(--color-canvas)', borderRadius: 24, padding: '36px 36px 32px', boxShadow: 'var(--shadow-modal)' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
+                <img src="project/assets/logo.avif" alt="Rosy Recruits" width={72} height={72} style={{ objectFit: 'contain' }} />
               </div>
-              <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22 }}>Pending verification</h2>
-              <p style={{ margin: '12px 0 6px', color: 'var(--color-body)', fontSize: 14.5 }}>Thanks for signing up, {currentUser?.first || 'there'}!</p>
-              <p style={{ margin: '0 0 24px', color: 'var(--color-muted)', fontSize: 13.5 }}>Our team reviews every new {currentUser?.role || 'account'} before unlocking the platform. You'll get an email the moment you're approved — usually within a few business hours.</p>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                <button className="btn btn-ghost" onClick={() => window.location.reload()}>Check again</button>
+              <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 24, textAlign: 'center', color: 'var(--color-ink)' }}>Rosy Recruits Application Pending</h2>
+              <div style={{ marginTop: 22, background: 'var(--color-surface-soft)', borderRadius: 14, padding: '18px 20px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                <div style={{ flex: 'none', color: 'var(--rosy-teal, #1ABCB0)', marginTop: 2 }}>
+                  <window.Icons.Sparkles size={20} />
+                </div>
+                <div style={{ flex: 1, fontSize: 14.5, color: 'var(--color-body)', lineHeight: 1.6 }}>
+                  <p style={{ margin: 0 }}>We've received your application and are reviewing it now.</p>
+                  <p style={{ margin: '14px 0 0' }}>We'll send you an email when we've reached a decision.</p>
+                  <p style={{ margin: '14px 0 0' }}>Or you can check back soon!</p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 22 }}>
+                <button className="btn btn-ghost" onClick={() => window.location.reload()}>Check status</button>
                 <button className="btn btn-ghost-coral" onClick={handleSignOut}>Sign out</button>
               </div>
             </div>

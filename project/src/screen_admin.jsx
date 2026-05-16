@@ -572,6 +572,15 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
                   <div className="row-actions">
                     <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(false); }} title="View profile"><SP_I.Eye size={14} /></button>
                     <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(true); }} title="Edit profile"><SP_I.Pencil size={14} /></button>
+                    {u.role !== 'admin' && u.verified !== true ? (
+                      <button className="row-action-btn" onClick={async () => {
+                        setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), verified: true } }));
+                        try { if (window.sb) await window.sb.from('rr_profiles').update({ verified: true }).eq('id', u.id); } catch (e) { console.warn(e); }
+                        const uu = (window.RosyData?.USERS || []).find(x => x.id === u.id);
+                        if (uu) { uu.verified = true; window.dispatchEvent(new CustomEvent('rosy:data-changed')); }
+                        toast.push({ kind: 'success', title: `${u.name} verified`, body: 'They can now access the dashboard.' });
+                      }} title="Verify account"><SP_I.UserCheck size={14} /></button>
+                    ) : null}
                     <button className="row-action-btn" onClick={() => { const next = u.status === 'active' ? 'inactive' : 'active'; setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), status: next } })); toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.name} marked ${next}` }); }} title={u.status === 'active' ? 'Deactivate' : 'Activate'}>{u.status === 'active' ? <SP_I.UserX size={14} /> : <SP_I.CheckCircle2 size={14} />}</button>
                     <button className="row-action-btn danger" onClick={() => setConfirmId(u.id)} title="Delete"><SP_I.Trash2 size={14} /></button>
                   </div>
