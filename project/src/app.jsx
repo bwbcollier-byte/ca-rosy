@@ -28,7 +28,36 @@ function App() {
   const [route, setRoute] = A_us('dashboard');
   const [notifOpen, setNotifOpen] = A_us(false);
   const [tourOpen, setTourOpen] = A_us(false);
-  const [tweaks] = useTweaks();
+  // Auth session — non-null when a user is signed in via Supabase Auth
+  const [session, setSession] = A_us(null);
+  A_ue(() => {
+    if (!window.sb) return;
+    window.sb.auth.getSession().then(({ data }) => setSession(data?.session || null));
+    const { data: sub } = window.sb.auth.onAuthStateChange((_evt, sess) => setSession(sess));
+    return () => sub?.subscription?.unsubscribe?.();
+  }, []);
+  const [tweaks, setTweak] = useTweaks();
+  const [tweaksOpen, setTweaksOpen] = A_us(false);
+  const [sidebarOpen, setSidebarOpen] = A_us(false);
+  // Realtime tick: bumped whenever supabase_client mutates window.RosyData,
+  // forces a top-down re-render so screens read the new data.
+  const [, setDataTick] = A_us(0);
+  A_ue(() => {
+    const bump = () => setDataTick(t => t + 1);
+    window.addEventListener('rosy:data-changed', bump);
+    return () => window.removeEventListener('rosy:data-changed', bump);
+  }, []);
+  A_ue(() => { setSidebarOpen(false); }, [route]);
+
+  // Sync the role with the signed-in user's role. Hoisted ABOVE the early
+  // returns below so the hook count stays constant across mode changes
+  // (React's rules-of-hooks).
+  const sessionUserId = session?.user?.id;
+  A_ue(() => {
+    if (!sessionUserId) return;
+    const u = (window.RosyData?.USERS || []).find(x => x.id === sessionUserId);
+    if (u && u.role && u.role !== role) setRole(u.role);
+  }, [sessionUserId]);
 
   // Hash router for app routes
   A_ue(() => {
@@ -71,25 +100,63 @@ function App() {
     );
   }
   if (mode === 'auth') {
+    // Skip onboarding for already-onboarded users (i.e. existing accounts).
+    const goToApp = async () => {
+      try {
+        if (window.sb) {
+          const { data: sess } = await window.sb.auth.getSession();
+          const uid = sess?.session?.user?.id;
+          if (uid) {
+            const profile = AD.USERS.find(u => u.id === uid);
+            if (profile) { setMode('app'); return; }
+            const { data } = await window.sb.from('rr_profiles').select('onboarding_complete').eq('id', uid).maybeSingle();
+            if (data?.onboarding_complete) { setMode('app'); return; }
+          }
+        }
+      } catch (e) { console.warn('onboarding gate check failed:', e); }
+      setMode('onboarding');
+    };
     return (
       <ToastHost>
-        <AuthPage mode={authMode} setMode={setAuthMode} goToApp={() => setMode('onboarding')} />
+        <AuthPage mode={authMode} setMode={setAuthMode} goToApp={goToApp} />
       </ToastHost>
     );
   }
   if (mode === 'onboarding') {
     return (
       <ToastHost>
-        <OnboardingPage onComplete={() => { setMode('app'); setTourOpen(true); }} />
+        <OnboardingPage onComplete={() => {
+          // Drop a personal welcome notification so the bell badge lights up immediately.
+          try {
+            const me = sessionUser || currentUser;
+            const list = window.RosyData.NOTIFICATIONS = window.RosyData.NOTIFICATIONS || [];
+            list.unshift({
+              id:     'welcome_' + Date.now(),
+              type:   'welcome',
+              title:  `Welcome to Rosy${me?.first ? ', ' + me.first : ''}!`,
+              body:   `Your ${me?.role || 'account'} is ready. Take a 60-second tour to see what's possible.`,
+              time:   'Just now',
+              link:   '#tour',
+              unread: true,
+              user_id: me?.id,
+            });
+            window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+          } catch (e) { console.warn('welcome notif failed:', e); }
+          setMode('app');
+          setTourOpen(true);
+        }} />
       </ToastHost>
     );
   }
 
   // ---------- App mode ----------
-  const currentUser = role === 'admin' ? AD.USERS.find(u => u.id === 'u2')
-                    : role === 'vendor' ? AD.USERS.find(u => u.id === 'u1')
-                    : AD.USERS.find(u => u.id === 'u3');
-
+  // If signed in, the session user trumps the demo role-switcher.
+  const sessionUser = session?.user?.id ? AD.USERS.find(u => u.id === session.user.id) : null;
+  const currentUser = sessionUser || (
+    role === 'admin'  ? (AD.USERS.find(u => u.id === 'u2') || AD.USERS.find(u => u.role === 'admin'))
+  : role === 'vendor' ? (AD.USERS.find(u => u.id === 'u1') || AD.USERS.find(u => u.role === 'vendor'))
+  :                     (AD.USERS.find(u => u.id === 'u3') || AD.USERS.find(u => u.role === 'worker'))
+  );
   // header title from route
   const titleMap = {
     dashboard: 'Dashboard', users: 'Users', events: 'Events', gigs: 'Gigs',
@@ -123,32 +190,89 @@ function App() {
     return [root, section, { label: leaf }];
   })();
 
-  const handleSignOut = () => { setMode('marketing'); };
+  const handleSignOut = async () => {
+    try { if (window.sb) await window.sb.auth.signOut(); } catch (e) { console.warn('signOut error:', e); }
+    setSession(null);
+    setRole('admin');     // reset to default demo role for next sign-in
+    setRoute('dashboard');
+    setMode('marketing');
+  };
 
   return (
     <ToastHost>
       <div className={`app-shell`}>
         <Sidebar role={role} route={baseRoute} setRoute={setRoute}
+          onSignOut={handleSignOut}
+          open={sidebarOpen} onClose={() => setSidebarOpen(false)}
           sidebarStyle={tweaks.sidebarStyle} dark={tweaks.sidebarDark} />
         <div className="main">
           <AppHeader title={title} role={role} setRole={(r) => { setRole(r); setRoute('dashboard'); }}
-            onSignOut={handleSignOut} onBell={() => setRoute('notifications')} currentUser={currentUser} setRoute={setRoute}
-            breadcrumbs={breadcrumbs} />
+            onSignOut={handleSignOut} onBell={() => setNotifOpen(true)} currentUser={currentUser} setRoute={setRoute}
+            breadcrumbs={breadcrumbs} sessionUser={sessionUser}
+            onBurger={() => setSidebarOpen(true)} />
           <ScreenRouter role={role} route={route} baseRoute={baseRoute} setRoute={setRoute}
             currentUser={currentUser} tweaks={tweaks} />
         </div>
-        <NotificationPanel open={notifOpen} onClose={() => setNotifOpen(false)} setRoute={setRoute} />
+        <NotificationPanel open={notifOpen} onClose={() => setNotifOpen(false)} setRoute={setRoute} role={role} />
         {tourOpen ? <Walkthrough role={role} onClose={() => setTourOpen(false)} setRoute={setRoute} /> : null}
+        <button className="tweaks-fab" aria-label="Open tweaks" onClick={() => setTweaksOpen(true)}
+          style={{ position: 'fixed', right: 24, bottom: 24, width: 48, height: 48, borderRadius: 9999, border: 0, background: 'var(--color-ink)', color: '#fff', cursor: 'pointer', boxShadow: 'var(--shadow-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <window.Icons.Settings size={20} />
+        </button>
+        {tweaksOpen ? (
+          <div onClick={() => setTweaksOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 300, display: 'flex', justifyContent: 'flex-end' }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: 360, maxWidth: '100%', height: '100%', background: 'var(--color-canvas)', overflowY: 'auto' }}>
+              <TweaksPanel tweaks={tweaks} set={setTweak} onClose={() => setTweaksOpen(false)} />
+            </div>
+          </div>
+        ) : null}
       </div>
     </ToastHost>
   );
 }
 
+// Per-route role guards. Anything not listed here is open to all roles.
+const ROUTE_ROLES = {
+  'users':         ['admin'],
+  'workers':       ['admin'],
+  'vendors':       ['admin'],
+  'disputes':      ['admin'],
+  'audit':         ['admin'],
+  'analytics':     ['admin'],
+  'site-content':  ['admin'],
+  'emails':        ['admin'],
+  'gallery':       ['admin'],
+  'platform':      ['admin'],
+  'admin-team':    ['admin'],
+  'broadcast':     ['admin'],
+  'notif-rules':   ['admin'],
+  'gigs':          ['admin', 'vendor'],
+  'venues':        ['admin', 'vendor'],
+  'build-team':    ['admin', 'vendor'],
+  'gig-posts':     ['worker'],
+  'my-gigs':       ['worker'],
+};
+
+function Forbidden({ setRoute }) {
+  return (
+    <div className="content">
+      <Empty icon={window.Icons.ShieldAlert || window.Icons.AlertTriangle}
+        title="You don't have access to this page"
+        body="Try one of the items in the sidebar instead."
+        cta={<button className="btn btn-coral" onClick={() => setRoute('dashboard')}>Back to dashboard</button>} />
+    </div>
+  );
+}
+
 function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks }) {
+  // Route-level role guard — block direct URL access to off-role screens.
+  const allowed = ROUTE_ROLES[baseRoute];
+  if (allowed && !allowed.includes(role)) return <Forbidden setRoute={setRoute} />;
+
   // event detail
   if (route.startsWith('events:')) {
     const id = route.split(':')[1];
-    return <PageEventDetail eventId={id} role={role} setRoute={setRoute} />;
+    return <PageEventDetail eventId={id} role={role} currentUser={currentUser} setRoute={setRoute} />;
   }
 
   // dashboard
@@ -161,11 +285,11 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
   // events
   if (baseRoute === 'events') {
     if (role === 'worker') return <PageEventsWorker setRoute={setRoute} />;
-    return <PageEventsVendor user={currentUser} setRoute={setRoute} viewMode={tweaks.eventsView} />;
+    return <PageEventsVendor user={currentUser} role={role} setRoute={setRoute} viewMode={tweaks.eventsView} />;
   }
 
   // gigs (vendor + admin)
-  if (baseRoute === 'gigs') return <PageGigsVendor setRoute={setRoute} />;
+  if (baseRoute === 'gigs') return <PageGigsVendor user={currentUser} role={role} setRoute={setRoute} />;
   // worker variants
   if (baseRoute === 'gig-posts') return <PageGigPostsWorker setRoute={setRoute} currentUser={currentUser} />;
   if (baseRoute === 'my-gigs')   return <PageMyGigsWorker currentUser={currentUser} />;
@@ -181,8 +305,8 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
 
   if (baseRoute === 'payments') return <PagePayments role={role} currentUser={currentUser} setRoute={setRoute} openId={subId} />;
   if (baseRoute === 'disputes') return <PageDisputes />;
-  if (baseRoute === 'inbox')    return <PageInbox />;
-  if (baseRoute === 'notifications') return <PageNotificationCenter setRoute={setRoute} role={role} />;
+  if (baseRoute === 'inbox')    return <PageInbox currentUser={currentUser} />;
+  if (baseRoute === 'notifications') return <PageNotificationCenter setRoute={setRoute} role={role} currentUser={currentUser} />;
   if (baseRoute === 'build-team')    return <PageBuildTeam currentUser={currentUser} />;
   if (baseRoute === 'admin-team')    return <PageAdminAssistants />;
   if (baseRoute === 'broadcast')     return <PageBroadcast />;
@@ -194,9 +318,25 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
   if (baseRoute === 'emails')   return <PageEmails />;
   if (baseRoute === 'gallery')  return <PageGallery />;
   if (baseRoute === 'platform') return <PagePlatformSettings />;
-  if (baseRoute === 'logout')   return <div className="content"><Empty icon={AI.LogOut} title="Logging you out…" body="Returning to the marketing site." /></div>;
 
   return <div className="content"><Empty title={`No ${baseRoute} screen yet`} body="Try a different sidebar item." /></div>;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+// Hydrate from Supabase, mount React, then open the realtime channel so other
+// tabs / direct DB writes propagate to the UI without a refresh.
+// Mount the UI no later than 3s even if Supabase is slow / unreachable —
+// the seed data already loaded in data.jsx is always available as fallback.
+(async () => {
+  try {
+    if (typeof window.bootRosyFromSupabase === 'function') {
+      await Promise.race([
+        window.bootRosyFromSupabase(),
+        new Promise(r => setTimeout(() => { console.warn('[boot] Supabase hydration > 3s, mounting on seed.'); r(null); }, 3000)),
+      ]);
+    }
+  } catch (e) { console.warn('Supabase hydration error:', e); }
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  if (typeof window.subscribeRealtime === 'function') {
+    try { window.subscribeRealtime(); } catch (e) { console.warn('Realtime subscribe error:', e); }
+  }
+})();

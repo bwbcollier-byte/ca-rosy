@@ -83,9 +83,15 @@ function ImageUpload({ value, onChange, label = 'Upload photo', size = 96, round
   const inputRef = X_ur(null);
   const [preview, setPreview] = X_us(value || null);
   React.useEffect(() => { setPreview(value || null); }, [value]);
+  const toast = useToast();
   const onFile = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
+    if (f.size > 8 * 1024 * 1024) {
+      toast.push({ kind: 'warning', title: 'Image too large', body: `${(f.size / 1024 / 1024).toFixed(1)}MB exceeds the 8MB limit.` });
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => { setPreview(ev.target.result); onChange && onChange(ev.target.result); };
     reader.readAsDataURL(f);
@@ -106,15 +112,67 @@ function ImageUpload({ value, onChange, label = 'Upload photo', size = 96, round
 }
 
 /* ============ Notification Center (full page) ============ */
-function PageNotificationCenter({ setRoute, role }) {
+function PageNotificationCenter({ setRoute, role, currentUser }) {
   const toast = useToast();
-  const [items, setItems] = X_us(X_D.NOTIFICATIONS);
+  // Scope to the signed-in user's notifications.
+  const meId = currentUser?.id;
+  const scopeFn = (arr) => meId ? arr.filter(n => !n._userId && !n.user_id || n._userId === meId || n.user_id === meId) : arr;
+  const [items, setItems] = X_us(scopeFn(X_D.NOTIFICATIONS || []));
+  X_ue(() => {
+    const sync = () => setItems(scopeFn([...(X_D.NOTIFICATIONS || [])]));
+    window.addEventListener('rosy:data-changed', sync);
+    return () => window.removeEventListener('rosy:data-changed', sync);
+  }, [meId]);
   const [tab, setTab] = X_us('all');
-  const filtered = items.filter(n => tab === 'all' || (tab === 'unread' && n.unread));
-  const unreadCount = items.filter(n => n.unread).length;
+  const [search, setSearch] = X_us('');
+  const [typeFilter, setTypeFilter] = X_us('all');
+  // Persisted notification preferences. Mute-types are excluded from the list.
+  const prefDefaults = {
+    gig_application: true, gig_confirmed: true, gig_rejected: true,
+    payment_sent: true, payment_disputed: true,
+    new_message: true, rating_received: false,
+    welcome: true, dev_issue: true, weekly_digest: false,
+  };
+  const [prefs, setPrefs] = X_us(() => {
+    try { return { ...prefDefaults, ...(JSON.parse(localStorage.getItem('rosy.notif.prefs') || '{}')) }; }
+    catch (e) { return prefDefaults; }
+  });
+  X_ue(() => { try { localStorage.setItem('rosy.notif.prefs', JSON.stringify(prefs)); } catch (e) {} }, [prefs]);
+  const togglePref = (key) => setPrefs(p => ({ ...p, [key]: !p[key] }));
+
+  const typeOptions = [
+    ['all',              'All types'],
+    ['gig_application',  'Applications'],
+    ['gig_confirmed',    'Confirmations'],
+    ['gig_rejected',     'Rejections'],
+    ['payment_sent',     'Payments'],
+    ['payment_disputed', 'Disputes'],
+    ['new_message',      'Messages'],
+    ['rating_received',  'Ratings'],
+    ['welcome',          'Welcome'],
+    ['dev_issue',        'Dev issues'],
+  ];
+
+  const filtered = items.filter(n => {
+    if (prefs[n.type] === false) return false;
+    if (typeFilter !== 'all' && n.type !== typeFilter) return false;
+    if (tab === 'unread' && !n.unread) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      if (![n.title, n.body, n.type].some(s => (s || '').toLowerCase().includes(q))) return false;
+    }
+    return true;
+  });
+  const unreadCount = items.filter(n => n.unread && prefs[n.type] !== false).length;
 
   const open = (n) => {
     setItems(arr => arr.map(x => x.id === n.id ? { ...x, unread: false } : x));
+    if (window.RosyMutate?.notifications) window.RosyMutate.notifications.markRead(n.id).catch(() => {});
+    // Special-case: welcome notif kicks off the product tour rather than navigating
+    if (n.type === 'welcome' || n.link === '#tour') {
+      window.dispatchEvent(new CustomEvent('rosy:start-tour'));
+      return;
+    }
     const target = (n.link || '').replace('#', '').split('/').pop() || 'dashboard';
     // Map old-style links to current routes
     const map = { 'e1': 'events:e1', 'admin': 'dashboard', 'vendor': 'dashboard', 'worker': 'dashboard', 'disputes': 'disputes', 'my-gigs': 'my-gigs', 'inbox': 'inbox', 'profile': 'settings', 'payments': 'payments' };
@@ -123,6 +181,7 @@ function PageNotificationCenter({ setRoute, role }) {
 
   const markAll = () => {
     setItems(arr => arr.map(n => ({ ...n, unread: false })));
+    if (window.RosyMutate?.notifications) window.RosyMutate.notifications.markAllRead().catch(() => {});
     toast.push({ kind: 'success', title: 'All notifications marked read' });
   };
 
@@ -130,7 +189,11 @@ function PageNotificationCenter({ setRoute, role }) {
     <div className="content fade-up">
       <div className="section-heading">
         <h2>Notifications</h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input className="input" placeholder="Search notifications…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 220, height: 36 }} />
+          <select className="select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ height: 36 }}>
+            {typeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
           <div className="tabs">
             <button className={tab === 'all' ? 'on' : ''} onClick={() => setTab('all')}>All ({items.length})</button>
             <button className={tab === 'unread' ? 'on' : ''} onClick={() => setTab('unread')}>Unread ({unreadCount})</button>
@@ -167,19 +230,25 @@ function PageNotificationCenter({ setRoute, role }) {
         <div className="card">
           <div className="col" style={{ gap: 12 }}>
             {[
-              ['Gig applications & confirmations', true],
-              ['New messages',                     true],
-              ['Payment status changes',           true],
-              ['Disputes',                         true],
-              ['Ratings & reviews',                false],
-              ['Weekly summary digest',            false],
-            ].map(([label, on]) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--color-hairline)' }}>
-                <span>{label}</span>
-                <span className={`toggle ${on ? 'on' : ''}`} />
-              </div>
-            ))}
+              ['gig_application',  'Gig applications'],
+              ['gig_confirmed',    'Gig confirmations'],
+              ['gig_rejected',     'Gig rejections'],
+              ['new_message',      'New messages'],
+              ['payment_sent',     'Payment status changes'],
+              ['payment_disputed', 'Disputes'],
+              ['rating_received',  'Ratings & reviews'],
+              ['weekly_digest',    'Weekly summary digest'],
+            ].map(([key, label]) => {
+              const on = prefs[key] !== false;
+              return (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--color-hairline)' }}>
+                  <span>{label}</span>
+                  <button type="button" onClick={() => togglePref(key)} className={`toggle ${on ? 'on' : ''}`} style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer' }} aria-pressed={on} aria-label={`Toggle ${label}`} />
+                </div>
+              );
+            })}
           </div>
+          <p style={{ margin: '14px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>Preferences save automatically to this device. Muted types are hidden from the list above.</p>
         </div>
       </div>
     </div>
@@ -194,7 +263,7 @@ function BuildMyTeamWizard({ open, onClose }) {
     eventName: 'Carter Garden Brunch',
     date: '2026-07-04',
     duration: 6,
-    location: 'Brooklyn, NY',
+    location: 'Chicago, IL',
     radius: 25,
     needs: { Lead: 1, Design: 2, Assist: 3, Strike: 2 },
     minRating: 4.5,
@@ -211,7 +280,11 @@ function BuildMyTeamWizard({ open, onClose }) {
   // Generate team: pick top workers per role from seed data
   const generateTeam = () => {
     const workers = X_D.USERS.filter(u => u.role === 'worker' && u.status === 'active' && (u.rating || 0) >= config.minRating);
-    const sorted = [...workers].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    // Sort by rating desc, with random tiebreak so re-roll produces different teams when ratings tie
+    const sorted = [...workers].sort((a, b) => {
+      const dr = (b.rating || 0) - (a.rating || 0);
+      return dr !== 0 ? dr : Math.random() - 0.5;
+    });
     const team = [];
     Object.entries(config.needs).forEach(([type, count]) => {
       let pool = sorted;
@@ -259,11 +332,11 @@ function BuildMyTeamWizard({ open, onClose }) {
           <div className="field"><label className="field-label">Event name</label><input className="input" value={config.eventName} onChange={e => update('eventName', e.target.value)} /></div>
           <div className="grid-2">
             <div className="field"><label className="field-label">Date</label><input className="input" type="date" value={config.date} onChange={e => update('date', e.target.value)} /></div>
-            <div className="field"><label className="field-label">Duration (hours)</label><input className="input" type="number" value={config.duration} onChange={e => update('duration', +e.target.value)} /></div>
+            <div className="field"><label className="field-label">Duration (hours)</label><input className="input" type="number" min={1} value={config.duration} onChange={e => update('duration', Math.max(1, parseInt(e.target.value) || 1))} /></div>
           </div>
           <div className="grid-2">
             <div className="field"><label className="field-label">Location</label><input className="input" value={config.location} onChange={e => update('location', e.target.value)} /></div>
-            <div className="field"><label className="field-label">Search radius (mi)</label><input className="input" type="number" value={config.radius} onChange={e => update('radius', +e.target.value)} /></div>
+            <div className="field"><label className="field-label">Search radius (mi)</label><input className="input" type="number" min={1} value={config.radius} onChange={e => update('radius', Math.max(1, parseInt(e.target.value) || 1))} /></div>
           </div>
         </div>
       ) : null}
@@ -385,14 +458,14 @@ function PageBuildTeam({ currentUser }) {
           </div>
           <div style={{ width: 220, flex: 'none' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {['u3','u9','u10','u7'].map(id => {
-                const u = X_D.USERS.find(x => x.id === id);
+              {(() => { const fallback = X_D.USERS.filter(u => u.role === 'worker' && (u.rating || 0) >= 4.7).slice(0, 4); const ids = ['u3','u9','u10','u7']; const picks = ids.map(id => X_D.USERS.find(u => u.id === id) || fallback.shift()).filter(Boolean); return picks; })().map((u, i) => {
+                if (!u) return null;
                 return (
-                  <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.7)', padding: '8px 12px', borderRadius: 12 }}>
+                  <div key={u.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.7)', padding: '8px 12px', borderRadius: 12 }}>
                     <Avatar name={u.name} size="sm" />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600 }}>{u.name}</p>
-                      <p style={{ margin: 0, fontSize: 11, color: 'var(--color-muted)' }}>★ {u.rating} · {u.gigs} gigs</p>
+                      <p style={{ margin: 0, fontSize: 11, color: 'var(--color-muted)' }}>★ {u.rating || '—'} · {u.gigs || 0} gigs</p>
                     </div>
                     <X_I.CheckCircle2 size={14} style={{ color: 'var(--rosy-teal-dark)' }} />
                   </div>
@@ -490,8 +563,8 @@ function Walkthrough({ role, onClose, setRoute }) {
   const Icon = X_I[slide.icon] || X_I.Sparkles;
   const tones = { coral: 'var(--rosy-coral)', mint: 'var(--color-brand-mint)', peach: 'var(--color-brand-peach)', lavender: 'var(--color-brand-lavender)', ochre: 'var(--color-brand-ochre)' };
   return (
-    <div className="modal-backdrop" style={{ background: 'rgba(10, 10, 10, 0.55)' }}>
-      <div className="modal lg" style={{ maxWidth: 720, overflow: 'hidden' }}>
+    <div className="modal-backdrop" onClick={onClose} style={{ background: 'rgba(10, 10, 10, 0.55)' }}>
+      <div className="modal lg" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720, overflow: 'hidden' }}>
         <div style={{ height: 240, background: tones[slide.tone] || tones.coral, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 110, height: 110, borderRadius: 9999, background: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon size={56} style={{ color: 'var(--color-ink)' }} />

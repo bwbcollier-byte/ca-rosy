@@ -2,12 +2,77 @@
 
 const SD_D = window.RosyData;
 const SD_I = window.Icons;
+const { useState: SD_us, useEffect: SD_ue } = React;
+
+/* Dev-notification submit form — admin reports an issue and it lands in window.RosyData.NOTIFICATIONS
+   (and a Supabase row if the rr_notifications table is reachable). */
+function DevNotificationModal({ open, onClose, reportedBy }) {
+  const toast = useToast();
+  const [page, setPage] = SD_us('');
+  const [severity, setSeverity] = SD_us('medium');
+  const [desc, setDesc] = SD_us('');
+  SD_ue(() => { if (open) { setPage(window.location.hash || '#unknown'); setSeverity('medium'); setDesc(''); } }, [open]);
+  const submit = async () => {
+    if (!desc.trim()) { toast.push({ kind: 'warning', title: 'Add a short description' }); return; }
+    const sev = severity === 'high' ? '🔴' : severity === 'medium' ? '🟡' : '🟢';
+    const entry = {
+      id:     'dev_' + Date.now(),
+      type:   'dev_issue',
+      title:  `${sev} Dev issue · ${page}`,
+      body:   desc.trim(),
+      time:   'Just now',
+      link:   page.startsWith('#') ? page : '#' + page,
+      unread: true,
+      user_id: reportedBy?.id,
+    };
+    window.RosyData.NOTIFICATIONS = window.RosyData.NOTIFICATIONS || [];
+    window.RosyData.NOTIFICATIONS.unshift(entry);
+    window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+    // Best-effort persist to Supabase
+    try {
+      if (window.sb && reportedBy?.id) {
+        await window.sb.from('rr_notifications').insert({
+          user_id: reportedBy.id,
+          type:    'dev_issue',
+          title:   entry.title,
+          body:    entry.body,
+          link:    entry.link,
+          read:    false,
+        });
+      }
+    } catch (e) { console.warn('dev notif persist failed:', e); }
+    toast.push({ kind: 'success', title: 'Issue reported', body: 'Logged in your notifications. The team will review.' });
+    onClose();
+  };
+  return (
+    <Modal open={open} onClose={onClose} title="Report a development issue" size="md"
+      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-coral" onClick={submit}>Send report</button></>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div><label className="field-label">Page / route</label><input className="input" value={page} onChange={(e) => setPage(e.target.value)} placeholder="#app/dashboard" /></div>
+        <div><label className="field-label">Severity</label>
+          <select className="select" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+            <option value="low">Low — minor polish / copy</option>
+            <option value="medium">Medium — bug, not blocking</option>
+            <option value="high">High — blocks workflow / data loss</option>
+          </select>
+        </div>
+        <div><label className="field-label">What's wrong?</label><textarea className="textarea" rows={5} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What did you expect to happen? What actually happened? Steps to reproduce." /></div>
+        <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>This creates a notification you'll see in your inbox bell. We use these to triage the next sprint.</p>
+      </div>
+    </Modal>
+  );
+}
 
 function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
   const dateStrip = 'May 1st 2026 – June 1st 2026';
+  const [devOpen, setDevOpen] = SD_us(false);
   return (
     <div className="content fade-up">
-      <h1 className="greeting">{getGreeting(user.first)}</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <h1 className="greeting">{getGreeting(user?.first)}</h1>
+        <button className="btn btn-ghost btn-sm" onClick={() => setDevOpen(true)} aria-label="Report a development issue"><SD_I.AlertTriangle size={14} />Report dev issue</button>
+      </div>
+      <DevNotificationModal open={devOpen} onClose={() => setDevOpen(false)} reportedBy={user} />
       <div className="grid-4" style={{ marginBottom: 24 }}>
         <StatCard icon={SD_I.Users}        label="All Workers"    value={3498} delta={6}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
         <StatCard icon={SD_I.UsersRound}   label="Total Workers"  value={1284} delta={4}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
@@ -29,7 +94,7 @@ function DashboardVendor({ user, setRoute, statStrip, statAnim }) {
   const dateStrip = 'May 1st 2026 – June 1st 2026';
   return (
     <div className="content fade-up">
-      <h1 className="greeting">{getGreeting(user.first)}</h1>
+      <h1 className="greeting">{getGreeting(user?.first)}</h1>
       <div className="grid-spotlight" style={{ marginBottom: 24 }}>
         <StatCard icon={SD_I.UserPlus}   label="New Worker Applications" value={18} delta={28}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} primary />
         <StatCard icon={SD_I.CalendarCheck} label="Open Events"          value={6}  delta={20}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
@@ -51,7 +116,7 @@ function DashboardWorker({ user, setRoute, statStrip, statAnim }) {
   const dateStrip = 'May 1st 2026 – June 1st 2026';
   return (
     <div className="content fade-up">
-      <h1 className="greeting">{getGreeting(user.first)}</h1>
+      <h1 className="greeting">{getGreeting(user?.first)}</h1>
       <div className="grid-spotlight" style={{ marginBottom: 24 }}>
         <StatCard icon={SD_I.DollarSign}  label="Earnings"        value={3420} delta={14} prefix="$" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} primary />
         <StatCard icon={SD_I.Briefcase}   label="Gigs This Month" value={9}    delta={20} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
@@ -173,7 +238,7 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute }) {
     const u = list.find(x => x.id === confirmId);
     setDeleted(d => ({ ...d, [confirmId]: true }));
     setConfirmId(null);
-    toast.push({ kind: 'warning', title: 'User removed', body: `${u?.name || 'User'} removed from this list.` });
+    toast.push({ kind: 'info', title: 'Hidden from list', body: `${u?.name || 'User'} hidden from your dashboard list (still active in Users).` });
   };
 
   return (

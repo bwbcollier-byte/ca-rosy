@@ -27,12 +27,14 @@ function MarketingNav({ route, setRoute, goToAuth }) {
     { id: 'vendors',  label: 'For vendors' },
     { id: 'workers',  label: 'For workers' },
     { id: 'gallery',  label: 'Gallery' },
-    { id: 'pricing',  label: 'Pricing' },
     { id: 'faq',      label: 'FAQ' },
   ];
+  const [open, setOpen] = MP_us(false);
+  React.useEffect(() => { setOpen(false); }, [route]);
+  const go = (id) => { setOpen(false); setRoute(id); };
   return (
     <header className="mk-nav">
-      <div className="mk-logo" style={{ cursor: 'pointer' }} onClick={() => setRoute('home')}>
+      <div className="mk-logo" style={{ cursor: 'pointer' }} onClick={() => go('home')}>
         <RoseLogo />Rosy<span className="accent"> Recruits</span>
       </div>
       <nav className="mk-links">
@@ -44,15 +46,28 @@ function MarketingNav({ route, setRoute, goToAuth }) {
         <button className="btn btn-ghost btn-sm" onClick={() => goToAuth('login')}>Log in</button>
         <button className="btn btn-coral btn-sm" onClick={() => goToAuth('signup')}>Get started</button>
       </div>
+      <button className="mk-burger" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} onClick={() => setOpen(o => !o)}>
+        {open ? <MP_I.X size={22} /> : <MP_I.Menu size={22} />}
+      </button>
+      {open ? (
+        <div className="mk-mobile-menu">
+          {items.map(i => (
+            <button key={i.id} className={`mk-mobile-link ${route === i.id ? 'is-active' : ''}`} onClick={() => go(i.id)}>{i.label}</button>
+          ))}
+          <div className="mk-mobile-divider" />
+          <button className="btn btn-ghost btn-block" onClick={() => { setOpen(false); goToAuth('login'); }}>Log in</button>
+          <button className="btn btn-coral btn-block" onClick={() => { setOpen(false); goToAuth('signup'); }}>Get started</button>
+        </div>
+      ) : null}
     </header>
   );
 }
 
 function MarketingFooter({ setRoute, goToAuth }) {
   const cols = [
-    { h: 'Product', items: [['Vendors','vendors'], ['Workers','workers'], ['Pricing','pricing'], ['Security','security']] },
-    { h: 'Company', items: [['About','about'], ['Careers','careers'], ['Press','press'], ['Contact','contact']] },
-    { h: 'Legal',   items: [['Terms','terms'], ['Privacy','privacy'], ['Payments','payments-info'], ['Disputes','disputes-info']] },
+    { h: 'Product', items: [['Vendors','vendors'], ['Workers','workers']] },
+    { h: 'Company', items: [['About','about'], ['Contact','contact']] },
+    { h: 'Legal',   items: [['Terms','terms'], ['Privacy','privacy']] },
   ];
   return (
     <footer style={{ background: 'var(--color-surface-soft)', padding: '56px 32px 28px', borderTop: '1px solid var(--color-hairline)' }}>
@@ -60,7 +75,7 @@ function MarketingFooter({ setRoute, goToAuth }) {
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 32, alignItems: 'flex-start' }}>
           <div>
             <div className="mk-logo" style={{ marginBottom: 12 }}><RoseLogo />Rosy<span className="accent"> Recruits</span></div>
-            <p style={{ margin: 0, color: 'var(--color-muted)', fontSize: 13.5, maxWidth: 320 }}>Built in Brooklyn for floral event teams across the tri-state, with Stripe Connect for instant worker payouts.</p>
+            <p style={{ margin: 0, color: 'var(--color-muted)', fontSize: 13.5, maxWidth: 320 }}>Built in Chicago for floral event teams across Chicagoland, with Stripe Connect for instant worker payouts.</p>
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
               <button className="btn btn-coral btn-sm" onClick={() => goToAuth('signup')}>Get started</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setRoute('contact')}>Talk to us</button>
@@ -79,7 +94,7 @@ function MarketingFooter({ setRoute, goToAuth }) {
         </div>
         <div className="divider" style={{ margin: '32px 0 16px' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--color-muted-soft)' }}>
-          <span>© 2026 Rosy Recruits, Inc. · Made in Brooklyn.</span>
+          <span>© 2026 Rosy Recruits, Inc. · Made in Chicago.</span>
           <span style={{ display: 'flex', gap: 16 }}>
             <a style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }} onClick={() => setRoute('terms')}>Terms</a>
             <a style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }} onClick={() => setRoute('privacy')}>Privacy</a>
@@ -264,7 +279,7 @@ function MkPricingPage({ goToAuth }) {
         <div style={{ maxWidth: 1200, margin: '0 auto', textAlign: 'center' }}>
           <span className="t-eyebrow">Pricing</span>
           <h1 className="display-xl" style={{ margin: '14px 0 14px' }}>Plans that scale with your event load.</h1>
-          <p style={{ margin: '0 auto', fontSize: 18, color: 'var(--color-body)', maxWidth: 620 }}>Free to start. Workers always free. Vendors pay a transparent platform fee plus an optional plan for higher volume.</p>
+          <p style={{ margin: '0 auto', fontSize: 18, color: 'var(--color-body)', maxWidth: 620 }}>Workers join at no cost. Vendors pay a transparent per-gig platform fee plus an optional plan for higher volume.</p>
           <div style={{ display: 'inline-flex', background: 'var(--color-surface-soft)', padding: 3, borderRadius: 9999, marginTop: 24 }}>
             <button onClick={() => setYearly(false)} style={{ border: 0, padding: '8px 18px', borderRadius: 9999, background: !yearly ? 'var(--color-canvas)' : 'transparent', color: !yearly ? 'var(--color-ink)' : 'var(--color-muted)', boxShadow: !yearly ? 'var(--shadow-soft)' : 'none', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Monthly</button>
             <button onClick={() => setYearly(true)} style={{ border: 0, padding: '8px 18px', borderRadius: 9999, background: yearly ? 'var(--color-canvas)' : 'transparent', color: yearly ? 'var(--color-ink)' : 'var(--color-muted)', boxShadow: yearly ? 'var(--shadow-soft)' : 'none', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Yearly <span style={{ color: 'var(--rosy-coral)', fontSize: 11, marginLeft: 4 }}>Save 20%</span></button>
@@ -349,7 +364,7 @@ function MkAboutPage({ goToAuth }) {
       <MkHero accent="lavender"
         eyebrow="About"
         title="Built by florists. For florists."
-        sub="Rosy started as a private group text between three Brooklyn studios passing workers back and forth. It got out of hand. Then it got organized." />
+        sub="Rosy started as a private group text between three Chicago studios passing workers back and forth. It got out of hand. Then it got organized." />
       <section className="mk-section" style={{ paddingTop: 64 }}>
         <div className="grid-2" style={{ gap: 48, alignItems: 'flex-start' }}>
           <div className="col" style={{ gap: 20 }}>
@@ -381,15 +396,15 @@ function MkAboutPage({ goToAuth }) {
 /* ============ Careers ============ */
 function MkCareersPage({ setRoute }) {
   const jobs = [
-    { team: 'Engineering',  title: 'Senior Backend Engineer',     city: 'Brooklyn or remote',  type: 'Full-time' },
-    { team: 'Engineering',  title: 'Mobile Engineer (iOS/Android)',city: 'Brooklyn or remote', type: 'Full-time' },
-    { team: 'Design',       title: 'Product Designer, Vendor app',city: 'Brooklyn or remote',  type: 'Full-time' },
-    { team: 'Operations',   title: 'Worker Success Lead',         city: 'Brooklyn',            type: 'Full-time' },
-    { team: 'Marketing',    title: 'Content & Community Manager', city: 'Brooklyn',            type: 'Part-time' },
+    { team: 'Engineering',  title: 'Senior Backend Engineer',     city: 'Chicago or remote',  type: 'Full-time' },
+    { team: 'Engineering',  title: 'Mobile Engineer (iOS/Android)',city: 'Chicago or remote', type: 'Full-time' },
+    { team: 'Design',       title: 'Product Designer, Vendor app',city: 'Chicago or remote',  type: 'Full-time' },
+    { team: 'Operations',   title: 'Worker Success Lead',         city: 'Chicago',            type: 'Full-time' },
+    { team: 'Marketing',    title: 'Content & Community Manager', city: 'Chicago',            type: 'Part-time' },
   ];
   return (
     <>
-      <MkHero accent="peach" eyebrow="Careers" title="Help us build the rest of this." sub="Small team. Brooklyn HQ above a florist shop. We move quickly, ship constantly, and care a lot about the people on both sides of the marketplace." />
+      <MkHero accent="peach" eyebrow="Careers" title="Help us build the rest of this." sub="Small team. Chicago HQ above a florist shop in West Loop. We move quickly, ship constantly, and care a lot about the people on both sides of the marketplace." />
       <section className="mk-section">
         <h2 className="display-md" style={{ marginBottom: 24 }}>Open roles</h2>
         <div className="table-wrap">
@@ -419,7 +434,7 @@ function MkPressPage({ setRoute }) {
   const press = [
     { source: 'The Cut',              headline: 'The startup making New York wedding florists less miserable.', date: 'May 2026' },
     { source: 'Vogue Business',       headline: 'How Rosy Recruits is rebuilding the freelance floral economy.', date: 'Apr 2026' },
-    { source: 'NYT Real Estate',      headline: 'Inside the Brooklyn studios training the next generation of florists.', date: 'Feb 2026' },
+    { source: 'NYT Real Estate',      headline: 'Inside the Chicago studios training the next generation of florists.', date: 'Feb 2026' },
     { source: 'Brides',               headline: 'Why your favorite wedding florist quietly hires a different team every weekend.', date: 'Dec 2025' },
   ];
   return (
@@ -468,18 +483,7 @@ function MkContactPage() {
       <section className="mk-section" style={{ paddingTop: 48 }}>
         <div className="grid-2" style={{ gap: 48 }}>
           <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 className="card-title">Send a message</h3>
-              <WriteForMe context={{ kind: 'contact', fields: ['body'] }}
-                placeholderQuestions={[
-                  { key: 'company', label: 'Company / studio', placeholder: 'Bloom & Fern Studio' },
-                  { key: 'intent', label: 'What do you need?', placeholder: 'demo, pricing, integration help' },
-                  { key: 'volume', label: 'Events per year (approx)', placeholder: '20-30' },
-                  { key: 'need', label: 'Specific features?', placeholder: 'API access, same-day payouts...' },
-                  { key: 'when', label: 'Best time to reach you', placeholder: 'mornings EST' },
-                ]}
-                onFill={(d) => setForm(f => ({ ...f, body: d.body || d._raw || f.body }))} />
-            </div>
+            <h3 className="card-title" style={{ marginBottom: 16 }}>Send a message</h3>
             <form className="col" style={{ gap: 14 }} onSubmit={submit}>
               <div className="field"><label className="field-label">Your name</label><input className="input" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Mariana Cruz" /></div>
               <div className="field"><label className="field-label">Email</label><input className="input" required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="you@studio.com" /></div>
@@ -511,7 +515,7 @@ function MkContactPage() {
             <div className="card" style={{ background: 'var(--color-brand-peach)', border: 0 }}>
               <p className="t-eyebrow" style={{ marginBottom: 6 }}>Studio</p>
               <p style={{ margin: 0, fontWeight: 600 }}>Rosy Recruits, Inc.</p>
-              <p style={{ margin: '2px 0 0', fontSize: 13 }}>238 N 6th St · Brooklyn, NY 11211</p>
+              <p style={{ margin: '2px 0 0', fontSize: 13 }}>238 N 6th St · Chicago, IL 11211</p>
             </div>
           </div>
         </div>
@@ -587,7 +591,7 @@ function CTABand({ goToAuth, ctaLabel = 'Get started' }) {
   return (
     <section style={{ background: 'var(--color-brand-peach)', padding: '72px 32px', textAlign: 'center' }}>
       <h2 className="display-lg" style={{ maxWidth: 800, margin: '0 auto 16px' }}>Run your next event with the right team.</h2>
-      <p style={{ margin: '0 auto 28px', color: 'var(--color-body)', fontSize: 17, maxWidth: 560 }}>Free for vendors to try. No credit card. Post your first gig in 60 seconds.</p>
+      <p style={{ margin: '0 auto 28px', color: 'var(--color-body)', fontSize: 17, maxWidth: 560 }}>Post your first gig in 60 seconds. Card on file required so we can fund worker payouts via Stripe Connect.</p>
       <button className="btn btn-primary btn-lg" onClick={() => goToAuth('signup')}>{ctaLabel}</button>
     </section>
   );

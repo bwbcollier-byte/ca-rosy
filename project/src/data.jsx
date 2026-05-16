@@ -15,40 +15,40 @@ const IMAGES = {
     `${IMG}/photo-1561181286-d3fee7d55364?w=600&q=80`,
     `${IMG}/photo-1487070183336-b863922373d4?w=600&q=80`,
     `${IMG}/photo-1455659817273-f96807779a8a?w=600&q=80`,
-    `${IMG}/photo-1416379590848-77df60bf64ec?w=600&q=80`,
+    `${IMG}/photo-1469371670807-013ccf25f16a?w=600&q=80`,
   ],
   events: [
     `${IMG}/photo-1519741497674-611481863552?w=800&q=80`,
     `${IMG}/photo-1464366400600-7168b8af9bc3?w=800&q=80`,
-    `${IMG}/photo-1465495976277-4387d4b0e4a6?w=800&q=80`,
+    `${IMG}/photo-1518895949257-7621c3c786d7?w=800&q=80`,
     `${IMG}/photo-1530023367847-a683933f4172?w=800&q=80`,
     `${IMG}/photo-1519671482749-fd09be7ccebf?w=800&q=80`,
-    `${IMG}/photo-1518790268549-d1a604f3a364?w=800&q=80`,
+    `${IMG}/photo-1525310072745-f49212b5ac6d?w=800&q=80`,
   ],
   avatar: (seed) => `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}`,
 };
 
 const USERS = [
-  { id: 'u1', name: 'Mariana Cruz',   first: 'Mariana', last: 'Cruz',   email: 'mariana@bloomandfern.co',   role: 'vendor', company: 'Bloom & Fern Studio',  status: 'active',   joined: '2024-08-12', city: 'Brooklyn, NY', rating: 4.9, gigs: 47 },
+  { id: 'u1', name: 'Mariana Cruz',   first: 'Mariana', last: 'Cruz',   email: 'mariana@bloomandfern.co',   role: 'vendor', company: 'Bloom & Fern Studio',  status: 'active',   joined: '2024-08-12', city: 'Chicago, IL', rating: 4.9, gigs: 47 },
   { id: 'u2', name: 'Ben Reyes',      first: 'Ben',     last: 'Reyes',  email: 'ben@rosyrecruits.com',       role: 'admin',  company: 'Rosy Recruits',        status: 'active',   joined: '2023-01-04', city: 'Austin, TX' },
-  { id: 'u3', name: 'Naomi Park',     first: 'Naomi',   last: 'Park',   email: 'naomi.park@gmail.com',        role: 'worker', company: 'Freelance Designer',   status: 'active',   joined: '2024-03-22', city: 'Queens, NY', rating: 4.95, gigs: 88 },
+  { id: 'u3', name: 'Naomi Park',     first: 'Naomi',   last: 'Park',   email: 'naomi.park@gmail.com',        role: 'worker', company: 'Freelance Designer',   status: 'active',   joined: '2024-03-22', city: 'Chicago, IL', rating: 4.95, gigs: 88 },
   { id: 'u4', name: 'Theo Akande',    first: 'Theo',    last: 'Akande', email: 'theo@floralforge.io',         role: 'vendor', company: 'Floral Forge',         status: 'active',   joined: '2024-11-02', city: 'Atlanta, GA', rating: 4.7 },
-  { id: 'u5', name: 'Sasha Iversen',  first: 'Sasha',   last: 'Iversen',email: 'sasha.i@protonmail.com',      role: 'worker', company: 'Lead Installer',       status: 'inactive', joined: '2023-09-18', city: 'Hoboken, NJ', rating: 4.6, gigs: 32 },
-  { id: 'u6', name: 'Priya Mehta',    first: 'Priya',   last: 'Mehta',  email: 'priya@thistleandhoney.com',   role: 'vendor', company: 'Thistle & Honey',      status: 'active',   joined: '2025-02-14', city: 'Jersey City, NJ' },
-  { id: 'u7', name: 'Marcus Chen',    first: 'Marcus',  last: 'Chen',   email: 'marcus.chen@gmail.com',       role: 'worker', company: 'Strike Specialist',    status: 'active',   joined: '2025-01-09', city: 'Bronx, NY', rating: 4.8, gigs: 21 },
-  { id: 'u8', name: 'Olivia Greene',  first: 'Olivia',  last: 'Greene', email: 'olivia@wildivory.com',        role: 'vendor', company: 'Wild & Ivory',         status: 'active',   joined: '2024-05-30', city: 'Brooklyn, NY' },
-  { id: 'u9', name: 'Jasper Wu',      first: 'Jasper',  last: 'Wu',     email: 'jasper.wu@icloud.com',        role: 'worker', company: 'Onsite Designer',      status: 'active',   joined: '2025-03-15', city: 'Long Island City, NY', rating: 4.85, gigs: 14 },
-  { id: 'u10',name: 'Daniela Soto',   first: 'Daniela', last: 'Soto',   email: 'daniela.s@gmail.com',         role: 'worker', company: 'Floral Assistant',     status: 'active',   joined: '2025-04-01', city: 'Manhattan, NY', rating: 4.9, gigs: 9 },
-  { id: 'u11',name: 'Henry Lim',      first: 'Henry',   last: 'Lim',    email: 'henry.lim@yahoo.com',         role: 'worker', company: 'Freelance D.I.Y. Coach',status: 'inactive',joined: '2023-12-11', city: 'Queens, NY', rating: 4.2, gigs: 3 },
+  { id: 'u5', name: 'Sasha Iversen',  first: 'Sasha',   last: 'Iversen',email: 'sasha.i@protonmail.com',      role: 'worker', company: 'Lead Installer',       status: 'inactive', joined: '2023-09-18', city: 'Evanston, IL', rating: 4.6, gigs: 32 },
+  { id: 'u6', name: 'Priya Mehta',    first: 'Priya',   last: 'Mehta',  email: 'priya@thistleandhoney.com',   role: 'vendor', company: 'Thistle & Honey',      status: 'active',   joined: '2025-02-14', city: 'Oak Park, IL' },
+  { id: 'u7', name: 'Marcus Chen',    first: 'Marcus',  last: 'Chen',   email: 'marcus.chen@gmail.com',       role: 'worker', company: 'Strike Specialist',    status: 'active',   joined: '2025-01-09', city: 'Chicago, IL', rating: 4.8, gigs: 21 },
+  { id: 'u8', name: 'Olivia Greene',  first: 'Olivia',  last: 'Greene', email: 'olivia@wildivory.com',        role: 'vendor', company: 'Wild & Ivory',         status: 'active',   joined: '2024-05-30', city: 'Chicago, IL' },
+  { id: 'u9', name: 'Jasper Wu',      first: 'Jasper',  last: 'Wu',     email: 'jasper.wu@icloud.com',        role: 'worker', company: 'Onsite Designer',      status: 'active',   joined: '2025-03-15', city: 'Chicago, IL', rating: 4.85, gigs: 14 },
+  { id: 'u10',name: 'Daniela Soto',   first: 'Daniela', last: 'Soto',   email: 'daniela.s@gmail.com',         role: 'worker', company: 'Floral Assistant',     status: 'active',   joined: '2025-04-01', city: 'Chicago, IL', rating: 4.9, gigs: 9 },
+  { id: 'u11',name: 'Henry Lim',      first: 'Henry',   last: 'Lim',    email: 'henry.lim@yahoo.com',         role: 'worker', company: 'Freelance D.I.Y. Coach',status: 'inactive',joined: '2023-12-11', city: 'Chicago, IL', rating: 4.2, gigs: 3 },
 ];
 
 const VENUES = [
-  { id: 'v1', name: 'The Foundry',        city: 'Long Island City, NY', capacity: 280, type: 'Industrial loft' },
-  { id: 'v2', name: 'Brooklyn Botanic',   city: 'Brooklyn, NY',         capacity: 400, type: 'Garden' },
-  { id: 'v3', name: 'Greenpoint Loft',    city: 'Brooklyn, NY',         capacity: 120, type: 'Loft' },
-  { id: 'v4', name: 'The Glasshouse',     city: 'Manhattan, NY',        capacity: 350, type: 'Skyline venue' },
-  { id: 'v5', name: 'Wave Hill',          city: 'Bronx, NY',            capacity: 180, type: 'Estate' },
-  { id: 'v6', name: 'Liberty Warehouse',  city: 'Brooklyn, NY',         capacity: 500, type: 'Waterfront' },
+  { id: 'v1', name: 'The Foundry',        city: 'Chicago, IL', capacity: 280, type: 'Industrial loft' },
+  { id: 'v2', name: 'Lincoln Park Conservatory',   city: 'Chicago, IL',         capacity: 400, type: 'Garden' },
+  { id: 'v3', name: 'West Loop Loft',    city: 'Chicago, IL',         capacity: 120, type: 'Loft' },
+  { id: 'v4', name: 'The Glasshouse',     city: 'Chicago, IL',        capacity: 350, type: 'Skyline venue' },
+  { id: 'v5', name: 'Wave Hill',          city: 'Chicago, IL',            capacity: 180, type: 'Estate' },
+  { id: 'v6', name: 'Lakeshore Warehouse',  city: 'Chicago, IL',         capacity: 500, type: 'Waterfront' },
 ];
 
 const EVENTS = [

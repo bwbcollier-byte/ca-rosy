@@ -45,21 +45,21 @@ window.GALLERY_SECTIONS = GALLERY_SECTIONS;
 /* ============ Address autocomplete (mock) ============
    Looks like Google Maps Place Autocomplete — keystrokes filter a list of plausible NY/NJ addresses. */
 const ADDRESS_BANK = [
-  '238 N 6th St, Brooklyn, NY 11211',
-  '111 N 12th St, Brooklyn, NY 11249',
-  '1900 Hudson St, Hoboken, NJ 07030',
-  '155 W 11th St, New York, NY 10011',
-  '900 Fulton St, Brooklyn, NY 11238',
-  '47-31 35th St, Long Island City, NY 11101',
-  '290 Conover St, Brooklyn, NY 11231',
-  '475 W 21st St, New York, NY 10011',
-  '1 Wave Hill, Bronx, NY 10471',
-  '5 Boathouse Rd, Brooklyn, NY 11215',
-  '1000 Washington Ave, Brooklyn, NY 11225',
-  '7 Bond St, New York, NY 10012',
-  '321 Greenwich St, New York, NY 10013',
-  '60 W 8th St, New York, NY 10011',
-  '88 Greenpoint Ave, Brooklyn, NY 11222',
+  '238 N Halsted St, Chicago, IL 60661',
+  '111 N Aberdeen St, Chicago, IL 60607',
+  '1900 Sherman Ave, Evanston, IL 60201',
+  '155 W Kinzie St, Chicago, IL 60654',
+  '900 W Fulton Market, Chicago, IL 60607',
+  '4731 N Lincoln Ave, Chicago, IL 60625',
+  '290 W Roosevelt Rd, Chicago, IL 60607',
+  '475 W Hubbard St, Chicago, IL 60654',
+  '1 Lincoln Park West, Chicago, IL 60614',
+  '5 Lake Shore Dr, Chicago, IL 60611',
+  '1000 W Washington Blvd, Chicago, IL 60607',
+  '7 W Madison St, Chicago, IL 60603',
+  '321 N Clark St, Chicago, IL 60654',
+  '60 W Wacker Dr, Chicago, IL 60601',
+  '88 N Halsted St, Chicago, IL 60661',
 ];
 
 function AddressInput({ value, onChange, placeholder = 'Search address', hint = 'Powered by Google Maps' }) {
@@ -145,7 +145,7 @@ function WriteForMe({ context, onFill, label = 'Write it for me', placeholderQue
       // Fall back to canned content if Claude isn't reachable
       const fallback = canned(context, answers);
       onFill(fallback);
-      toast.push({ kind: 'success', title: 'Draft generated', body: 'Using a quick template.' });
+      toast.push({ kind: 'info', title: 'Draft inserted', body: 'Used a quick template — review and tweak before saving.' });
       setOpen(false);
     }
     setBusy(false);
@@ -200,15 +200,15 @@ function canned(context, answers) {
   }
   if (kind === 'gig') {
     return {
-      description: `Build crew for ${answers.eventKind || 'a floral install'}. Strong ${answers.role || 'Assist'} role — calm under pressure, takes direction, lifts 50 lbs. ${answers.notes || 'Brooklyn-based studio with editorial expectations.'}`,
+      description: `Build crew for ${answers.eventKind || 'a floral install'}. Strong ${answers.role || 'Assist'} role — calm under pressure, takes direction, lifts 50 lbs. ${answers.notes || 'Chicago-based studio with editorial expectations.'}`,
     };
   }
   if (kind === 'venue') {
     return {
       name: answers.name || 'Carter Garden Estate',
       type: answers.type || 'Garden',
-      city: answers.city || 'Brooklyn, NY',
-      address: answers.city || '900 Fulton St, Brooklyn, NY 11238',
+      city: answers.city || 'Chicago, IL',
+      address: answers.city || '900 W Fulton Market, Chicago, IL 60607',
       capacity: parseInt(answers.guests) || 220,
       parking: 'Lot for 40 cars, street parking around the perimeter, valet on request.',
       notes: 'Loading dock at the rear, single 30A 120V circuit, contact Ms Lin for site visits.',
@@ -216,7 +216,7 @@ function canned(context, answers) {
   }
   if (kind === 'profile') {
     return {
-      bio: `${answers.years || '8'} years across floral events in the tri-state. Specializing in ${answers.specialty || 'suspended installations and editorial moments'}. Reliable, calm under pressure, takes direction well.`,
+      bio: `${answers.years || '8'} years across floral events in the Chicagoland. Specializing in ${answers.specialty || 'suspended installations and editorial moments'}. Reliable, calm under pressure, takes direction well.`,
     };
   }
   if (kind === 'contact') {

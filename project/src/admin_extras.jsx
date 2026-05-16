@@ -278,7 +278,7 @@ function PageNotificationRules() {
         <h2>Notification workflows</h2>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => { setRules(init()); toast.push({ kind: 'info', title: 'Reset to defaults' }); }}>Reset defaults</button>
-          <button className="btn btn-coral" onClick={() => toast.push({ kind: 'success', title: 'Workflows saved', body: 'Live for the next outgoing notification.' })}>Save workflows</button>
+          <button className="btn btn-coral" onClick={() => toast.push({ kind: 'success', title: 'Workflows saved', body: 'Preview only — backend wiring coming soon.' })}>Save workflows</button>
         </div>
       </div>
       <div className="card card-flush" style={{ marginBottom: 24, overflowX: 'auto' }}>
@@ -355,7 +355,10 @@ function PageBroadcast() {
   };
 
   const send = () => {
-    const entry = { id: 's' + Math.random().toString(36).slice(2, 6), audience, subject, sent: new Date().toISOString().replace('T', ' ').slice(0, 16), reach: audienceCounts[audience] };
+    const sentTime = schedule === 'schedule' && scheduleTime
+      ? scheduleTime.replace('T', ' ').slice(0, 16)
+      : new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const entry = { id: 's' + Math.random().toString(36).slice(2, 6), audience, subject, sent: sentTime, reach: audienceCounts[audience] };
     setSent(arr => [entry, ...arr]);
     toast.push({ kind: 'success', title: schedule === 'now' ? `Broadcast sent to ${audienceCounts[audience].toLocaleString()} ${audience === 'all' ? 'people' : audience}` : 'Broadcast scheduled', body: schedule === 'now' ? `Subject: ${subject}` : `Will send on ${scheduleTime}.` });
     setSubject(''); setBody('');

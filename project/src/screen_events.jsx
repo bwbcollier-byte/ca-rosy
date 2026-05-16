@@ -2,27 +2,54 @@
 
 const SE_D = window.RosyData;
 const SE_I = window.Icons;
-const { useState: SE_us } = React;
+const { useState: SE_us, useEffect: SE_ue } = React;
 
-function PageEventsVendor({ user, setRoute, viewMode, density }) {
+function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
   const [view, setView] = SE_us(viewMode || 'table');
   const [search, setSearch] = SE_us('');
   const [sortBy, setSortBy] = SE_us('date-asc');
   const [filter, setFilter] = SE_us({ open: true, draft: true, completed: true });
+  const [typeFilter, setTypeFilter] = SE_us({ Lead: true, Design: true, Assist: true, Strike: true });
+  const [venueFilter, setVenueFilter] = SE_us('all');
+  const [dateFilter, setDateFilter] = SE_us('any'); // any | upcoming | thismonth | past
   const [filterOpen, setFilterOpen] = SE_us(false);
   const [addOpen, setAddOpen] = SE_us(false);
   const [editEvent, setEditEvent] = SE_us(null);
   const [confirmId, setConfirmId] = SE_us(null);
   const [bulkConfirm, setBulkConfirm] = SE_us(null);
-  const [events, setEvents] = SE_us(SE_D.EVENTS);
+  // Vendors only see their own events; admins see all.
+  const scopeForRole = (arr) => (role === 'vendor' && user?.id) ? arr.filter(e => e.vendorId === user.id) : arr;
+  const [events, setEvents] = SE_us(scopeForRole(SE_D.EVENTS));
+  // Sync local state with realtime / cross-screen mutations
+  SE_ue(() => {
+    const sync = () => setEvents(scopeForRole([...SE_D.EVENTS]));
+    window.addEventListener('rosy:data-changed', sync);
+    return () => window.removeEventListener('rosy:data-changed', sync);
+  }, [role, user?.id]);
   const [selected, setSelected] = SE_us({});
-  const [newEvent, setNewEvent] = SE_us({ name: 'Carter Garden Brunch', desc: 'Saturday morning brunch with garden installations and intimate tablescapes for 80 guests.', date: '2026-07-04', start: '10:00', end: '15:00', venueId: SE_D.VENUES[0]?.id, image: '', address: '' });
+  const [postCreatePrompt, setPostCreatePrompt] = SE_us(null);
+  const blankEvent = { name: '', desc: '', date: '', endDate: '', start: '', end: '', venueId: '', image: '', address: '' };
+  const [newEvent, setNewEvent] = SE_us(blankEvent);
+  // Reset to blank every time the slideover opens (so each new-event session starts clean).
+  SE_ue(() => { if (addOpen) setNewEvent(blankEvent); }, [addOpen]);
   const toast = useToast();
 
   React.useEffect(() => setView(viewMode || 'table'), [viewMode]);
 
+  const today = new Date(); today.setHours(0,0,0,0);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const filtered = events
     .filter(e => filter[e.status])
+    .filter(e => (e.types || []).some(t => typeFilter[t]))
+    .filter(e => venueFilter === 'all' || e.venueId === venueFilter)
+    .filter(e => {
+      if (dateFilter === 'any') return true;
+      const d = new Date(e.date);
+      if (dateFilter === 'upcoming')  return d >= today;
+      if (dateFilter === 'past')      return d <  today;
+      if (dateFilter === 'thismonth') return d >= today && d <= monthEnd;
+      return true;
+    })
     .filter(e => {
       if (!search.trim()) return true;
       const q = search.toLowerCase();
@@ -33,26 +60,29 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
       if (sortBy === 'date-asc')  return new Date(a.date) - new Date(b.date);
       if (sortBy === 'date-desc') return new Date(b.date) - new Date(a.date);
       if (sortBy === 'name')      return a.name.localeCompare(b.name);
-      if (sortBy === 'fill')      return (b.filledCount / b.gigCount) - (a.filledCount / a.gigCount);
+      if (sortBy === 'fill')      return ((b.gigCount ? b.filledCount / b.gigCount : 0)) - ((a.gigCount ? a.filledCount / a.gigCount : 0));
       return 0;
     });
 
-  const paged = usePaged(filtered, 10, `${search}|${sortBy}|${filter.open ? 1 : 0}${filter.draft ? 1 : 0}${filter.completed ? 1 : 0}|${filtered.length}`);
-  const tableRows = view === 'table' ? paged.slice : filtered;
+  const paged = usePaged(filtered, view === 'cards' ? 9 : 10, `${view}|${search}|${sortBy}|${JSON.stringify(filter)}|${JSON.stringify(typeFilter)}|${venueFilter}|${dateFilter}|${filtered.length}`);
+  const tableRows = paged.slice;
   const pickedIds = Object.keys(selected).filter(k => selected[k]);
   const pickedCount = pickedIds.length;
 
-  const applyBulk = (action) => {
+  const applyBulk = async (action) => {
     if (action === 'open' || action === 'draft' || action === 'completed') {
       setEvents(es => es.map(e => pickedIds.includes(e.id) ? { ...e, status: action } : e));
+      try { await Promise.all(pickedIds.map(id => window.RosyMutate?.events?.update(id, { status: action }))); } catch (e) { console.warn(e); }
       toast.push({ kind: 'success', title: `${pickedCount} marked ${action}` });
       setSelected({});
     } else if (action === 'delete') {
       setBulkConfirm({ ids: pickedIds, count: pickedCount });
     }
   };
-  const confirmBulkDelete = () => {
-    setEvents(es => es.filter(e => !bulkConfirm.ids.includes(e.id)));
+  const confirmBulkDelete = async () => {
+    const ids = bulkConfirm.ids;
+    setEvents(es => es.filter(e => !ids.includes(e.id)));
+    try { await Promise.all(ids.map(id => window.RosyMutate?.events?.delete(id))); } catch (e) { console.warn(e); }
     toast.push({ kind: 'warning', title: `${bulkConfirm.count} events deleted` });
     setSelected({}); setBulkConfirm(null);
   };
@@ -67,7 +97,7 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
       </div>
 
       <div className="section-heading">
-        <h2>My events</h2>
+        <h2>{role === 'admin' ? 'All events' : 'My events'}</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
             <SE_I.Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
@@ -84,9 +114,14 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
       </div>
 
       {view === 'cards' ? (
-        <div className="grid-3">
-          {filtered.map(e => <EventCard key={e.id} event={e} onClick={() => setRoute('events:' + e.id)} />)}
-        </div>
+        <>
+          {tableRows.length === 0 ? <Empty icon={SE_I.Calendar} title="No events match" body="Adjust filters or search to see more." /> : (
+            <div className="grid-3">
+              {tableRows.map(e => <EventCard key={e.id} event={e} onClick={() => setRoute('events:' + e.id)} />)}
+            </div>
+          )}
+          {paged.total > paged.perPage ? <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="events" /> : null}
+        </>
       ) : (
         <div className="table-wrap">
           <table className="rosy-table">
@@ -159,10 +194,12 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
         footer={
           <>
             <button className="btn btn-ghost" onClick={() => setEditEvent(null)}>Cancel</button>
-            <button className="btn btn-coral" onClick={() => {
+            <button className="btn btn-coral" onClick={async () => {
               const id = editEvent.id;
-              setEvents(es => es.map(x => x.id === id ? { ...x, ...editEvent } : x));
-              toast.push({ kind: 'success', title: 'Event updated', body: `${editEvent.name} saved.` });
+              const patch = editEvent;
+              setEvents(es => es.map(x => x.id === id ? { ...x, ...patch } : x));
+              try { await window.RosyMutate?.events?.update(id, patch); } catch (e) { console.warn(e); }
+              toast.push({ kind: 'success', title: 'Event updated', body: `${patch.name} saved.` });
               setEditEvent(null);
             }}>Save changes</button>
           </>
@@ -188,35 +225,81 @@ function PageEventsVendor({ user, setRoute, viewMode, density }) {
               ]}
               onFill={(d) => { setNewEvent(s => ({ ...s, name: d.name || s.name, desc: d.desc || s.desc })); }} />
             <button className="btn btn-coral" disabled={!newEvent.name.trim() || !newEvent.desc.trim()}
-              onClick={() => { setAddOpen(false); toast.push({ kind: 'success', title: 'Event published', body: `${newEvent.name} is open for gig posts.` }); }}>Publish Event</button>
+              onClick={async () => {
+                const draftEvent = { ...newEvent, vendorId: user?.id, status: 'open', gigCount: 0, filledCount: 0 };
+                let createdId = null;
+                try {
+                  const live = await window.RosyMutate?.events?.create(draftEvent);
+                  if (live) { setEvents(es => [live, ...es]); createdId = live.id; }
+                  else      { createdId = 'e_' + Math.random().toString(36).slice(2,8); setEvents(es => [{ id: createdId, ...draftEvent }, ...es]); }
+                } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Publish failed', body: e.message }); return; }
+                setAddOpen(false);
+                toast.push({ kind: 'success', title: 'Event published', body: `${newEvent.name} is open for gig posts.` });
+                // Prompt to create gigs straight away (admin's #1 next step)
+                if (createdId) setPostCreatePrompt({ eventId: createdId, name: newEvent.name });
+              }}>Publish Event</button>
           </>
         }>
-        <NewEventForm value={newEvent} onChange={setNewEvent} />
+        <NewEventForm value={newEvent} onChange={setNewEvent}
+          onCreateVenue={() => { setAddOpen(false); setRoute && setRoute('venues'); toast.push({ kind: 'info', title: 'Add venue first', body: "Add the venue here, then click '+ New Event' again." }); }} />
       </Slideover>
+      {/* Post-create CTA — 'Add gigs now?' */}
+      <ConfirmDialog open={!!postCreatePrompt} onClose={() => setPostCreatePrompt(null)}
+        title="Event published 🎉"
+        message={postCreatePrompt ? `Post gigs for ${postCreatePrompt.name} now so workers can start applying.` : ''}
+        confirmLabel="Add gigs"
+        onConfirm={() => { const id = postCreatePrompt.eventId; setPostCreatePrompt(null); window.__rosyAddGigEventId = id; setRoute && setRoute('gigs'); }} />
 
       <ConfirmDialog open={!!confirmId} onClose={() => setConfirmId(null)} title="Delete this event?" message="This will also remove all gigs, applications, and pending payments. You can't undo this."
         confirmLabel="Delete event"
-        onConfirm={() => { setEvents(es => es.filter(x => x.id !== confirmId)); toast.push({ kind: 'warning', title: 'Event deleted' }); }} />
+        onConfirm={async () => {
+          const id = confirmId;
+          setEvents(es => es.filter(x => x.id !== id));
+          try { await window.RosyMutate?.events?.delete(id); } catch (e) { console.warn(e); }
+          toast.push({ kind: 'warning', title: 'Event deleted' });
+        }} />
 
-      <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter events" size="sm"
-        footer={<><button className="btn btn-ghost" onClick={() => setFilter({open: true, draft: true, completed: true})}>Reset</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>
-        <p className="t-eyebrow" style={{ marginBottom: 8 }}>Status</p>
-        <div className="col">
-          {Object.keys(filter).map(k => (
-            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 2px', cursor: 'pointer' }}>
-              <span className={`checkbox ${filter[k] ? 'checked' : ''}`} onClick={() => setFilter(f => ({ ...f, [k]: !f[k] }))}>
-                {filter[k] ? <SE_I.CheckCircle size={12} /> : null}
-              </span>
-              <span style={{ textTransform: 'capitalize' }}>{k} events</span>
-            </label>
-          ))}
+      <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter events" size="md"
+        footer={<><button className="btn btn-ghost" onClick={() => { setFilter({ open: true, draft: true, completed: true }); setTypeFilter({ Lead: true, Design: true, Assist: true, Strike: true }); setVenueFilter('all'); setDateFilter('any'); }}>Reset all</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>
+        <div className="col" style={{ gap: 16 }}>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Status</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {Object.keys(filter).map(k => (
+                <button key={k} type="button" onClick={() => setFilter(f => ({ ...f, [k]: !f[k] }))} style={{ border: '1.5px solid', borderColor: filter[k] ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: filter[k] ? 'var(--color-ink)' : 'transparent', color: filter[k] ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{k}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Date range</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[['any','Any time'],['upcoming','Upcoming'],['thismonth','This month'],['past','Past']].map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setDateFilter(id)} style={{ border: '1.5px solid', borderColor: dateFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: dateFilter === id ? 'var(--color-ink)' : 'transparent', color: dateFilter === id ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Gig types needed</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {Object.keys(typeFilter).map(k => (
+                <button key={k} type="button" onClick={() => setTypeFilter(f => ({ ...f, [k]: !f[k] }))} style={{ border: '1.5px solid', borderColor: typeFilter[k] ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: typeFilter[k] ? 'var(--color-ink)' : 'transparent', color: typeFilter[k] ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{k}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Venue</p>
+            <select className="select" value={venueFilter} onChange={(e) => setVenueFilter(e.target.value)}>
+              <option value="all">All venues ({SE_D.VENUES.length})</option>
+              {SE_D.VENUES.map(v => <option key={v.id} value={v.id}>{v.name} — {v.city}</option>)}
+            </select>
+          </div>
         </div>
       </Modal>
     </div>
   );
 }
 
-function EventCard({ event, onClick }) {
+function EventCard({ event, onClick, showApply = false }) {
   const v = SE_D.VENUES.find(v => v.id === event.venueId);
   return (
     <div className="event-card" onClick={onClick} role="button" tabIndex={0}>
@@ -237,35 +320,45 @@ function EventCard({ event, onClick }) {
             <p style={{ margin: 0, fontWeight: 600 }}>{SE_D.USERS.find(u => u.id === event.vendorId)?.company}</p>
             <p style={{ margin: '1px 0 0', color: 'var(--color-muted)', fontSize: 11.5 }}>{v?.name} · {fmtDate(event.date, 'mdy-dots')}</p>
           </div>
+          {showApply && event.status === 'open' ? (
+            <button className="btn btn-coral btn-sm" onClick={(e) => { e.stopPropagation(); onClick && onClick(); }}>Apply</button>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-function NewEventForm({ value = {}, onChange = () => {} }) {
+function NewEventForm({ value = {}, onChange = () => {}, onCreateVenue }) {
   const upd = (k, v) => onChange({ ...value, [k]: v });
   return (
     <div className="col" style={{ gap: 16 }}>
+      {/* Image first per global pattern */}
+      <div className="field"><label className="field-label">Cover image</label>
+        <ImageUpload value={value.image || ''} onChange={(v) => upd('image', v)} label="Upload cover image" size={120} round={false} />
+      </div>
       <div className="field"><label className="field-label">Event name *</label><input className="input" value={value.name || ''} onChange={e => upd('name', e.target.value)} placeholder="e.g. Carter Garden Brunch" /></div>
       <div className="field"><label className="field-label">Description *</label><textarea className="textarea" value={value.desc || ''} onChange={e => upd('desc', e.target.value)} placeholder="Paint the room. What's the palette, scope, vibe?" /></div>
       <div className="grid-2">
-        <div className="field"><label className="field-label">Event date</label><input className="input" type="date" value={value.date || ''} onChange={e => upd('date', e.target.value)} /></div>
-        <div className="field"><label className="field-label">Start time</label><input className="input" type="time" value={value.start || ''} onChange={e => upd('start', e.target.value)} /></div>
+        <div className="field"><label className="field-label">Start date</label><input className="input" type="date" value={value.date || ''} onChange={e => upd('date', e.target.value)} /></div>
+        <div className="field"><label className="field-label">End date <span className="t-muted" style={{ fontWeight: 400 }}>(optional, for multi-day events)</span></label><input className="input" type="date" value={value.endDate || ''} min={value.date || undefined} onChange={e => upd('endDate', e.target.value)} /></div>
       </div>
       <div className="grid-2">
+        <div className="field"><label className="field-label">Start time</label><input className="input" type="time" value={value.start || ''} onChange={e => upd('start', e.target.value)} /></div>
         <div className="field"><label className="field-label">End time</label><input className="input" type="time" value={value.end || ''} onChange={e => upd('end', e.target.value)} /></div>
-        <div className="field"><label className="field-label">Venue</label>
-          <select className="select" value={value.venueId || ''} onChange={e => upd('venueId', e.target.value)}>
-            {SE_D.VENUES.map(v => <option key={v.id} value={v.id}>{v.name} — {v.city}</option>)}
-          </select>
-        </div>
+      </div>
+      <div className="field"><label className="field-label">Venue</label>
+        <select className="select" value={value.venueId || ''} onChange={e => {
+          if (e.target.value === '__new__') { onCreateVenue && onCreateVenue(); return; }
+          upd('venueId', e.target.value);
+        }}>
+          <option value="">— Pick a venue —</option>
+          {SE_D.VENUES.map(v => <option key={v.id} value={v.id}>{v.name} — {v.city}</option>)}
+          <option value="__new__" style={{ fontWeight: 600 }}>+ Create new venue…</option>
+        </select>
       </div>
       <div className="field"><label className="field-label">Venue address</label>
         <AddressInput value={value.address || ''} onChange={(v) => upd('address', v)} placeholder="Confirm or override the venue address" />
-      </div>
-      <div className="field"><label className="field-label">Cover image</label>
-        <ImageUpload value={value.image || ''} onChange={(v) => upd('image', v)} label="Upload cover image" size={120} round={false} />
       </div>
       <div className="field"><label className="field-label">Gig types needed</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -313,16 +406,18 @@ function PageEventsWorker({ setRoute }) {
       <div className="grid-3">
         {events.length === 0 ?
           <div style={{ gridColumn: '1 / -1' }}><Empty icon={SE_I.Calendar} title="No matching events" body="Try clearing your filters or a broader search." /></div>
-          : events.map(e => <EventCard key={e.id} event={e} onClick={() => setRoute('events:' + e.id)} />)}
+          : events.map(e => <EventCard key={e.id} event={e} showApply onClick={() => setRoute('events:' + e.id)} />)}
       </div>
     </div>
   );
 }
 
 /* ----- Event detail (vendor + worker view) ----- */
-function PageEventDetail({ eventId, role, setRoute }) {
-  const e = SE_D.EVENTS.find(x => x.id === eventId);
-  if (!e) return <div className="content"><Empty title="Event not found" /></div>;
+function PageEventDetail({ eventId, role, currentUser, setRoute }) {
+  const base = SE_D.EVENTS.find(x => x.id === eventId);
+  if (!base) return <div className="content"><Empty title="Event not found" /></div>;
+  const [override, setOverride] = SE_us({});
+  const e = { ...base, ...override };
   const v = SE_D.VENUES.find(x => x.id === e.venueId);
   const vendor = SE_D.USERS.find(x => x.id === e.vendorId);
   const gigs = SE_D.GIGS.filter(g => g.eventId === e.id);
@@ -356,7 +451,7 @@ function PageEventDetail({ eventId, role, setRoute }) {
         {role === 'vendor' ? (
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-ghost" onClick={() => { setEditForm({ name: e.name, desc: e.desc, date: e.date }); setEditOpen(true); }}><SE_I.Pencil size={14} />Edit event</button>
-            <button className="btn btn-coral" onClick={() => setRoute && setRoute('gigs')}><SE_I.Plus size={14} />Add gig</button>
+            <button className="btn btn-coral" onClick={() => { window.__rosyAddGigEventId = e.id; setRoute && setRoute('gigs'); }}><SE_I.Plus size={14} />Add gig</button>
           </div>
         ) : null}
       </div>
@@ -435,7 +530,8 @@ function PageEventDetail({ eventId, role, setRoute }) {
               <button className="btn btn-coral btn-sm" onClick={() => { setDecided(d => ({ ...d, [w.id]: 'approved' })); toast.push({ kind: 'success', title: `${w.first} approved`, body: 'They\'ll get an email + push notification.' }); }}>Approve</button>
             </div>
           ))}
-          {SE_D.USERS.filter(u => u.role === 'worker').slice(0, 4).every(w => decided[w.id]) ? <div style={{ padding: 28 }}><Empty icon={SE_I.ClipboardList} title="All applications reviewed" body="Decisions sent to applicants." /></div> : null}
+          {role === 'worker' ? null : <div style={{ padding: '12px 20px', fontSize: 12, color: 'var(--color-muted)', borderTop: '1px solid var(--color-hairline)' }}>Showing sample applicants — real applications appear here as workers apply to your gigs.</div>}
+          {SE_D.USERS.filter(u => u.role === 'worker').slice(0, 4).every(w => decided[w.id]) ? <div style={{ padding: 28 }}><Empty icon={SE_I.ClipboardList} title="All sample applications reviewed" body="Decisions sent to applicants." /></div> : null}
         </div>
       ) : null}
 
@@ -459,7 +555,7 @@ function PageEventDetail({ eventId, role, setRoute }) {
       ) : null}
 
       <Modal open={!!applyGig} onClose={() => setApplyGig(null)} title="Apply for this gig" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" onClick={() => { setApplyGig(null); toast.push({ kind: 'success', title: 'Application sent', body: `You'll hear from ${vendor?.first || 'the vendor'} soon.` }); }}>Confirm application</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const g = applyGig; setApplyGig(null); try { const workerId = SE_D.USERS.find(u => u.role === 'worker')?.id; await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId }); } catch (err) { console.warn(err); toast.push({ kind: 'error', title: 'Apply failed', body: err.message }); return; } toast.push({ kind: 'success', title: 'Application sent', body: `You'll hear from ${vendor?.first || 'the vendor'} soon.` }); }}>Confirm application</button></>}>
         {applyGig ? (
           <div>
             <p style={{ margin: '0 0 16px' }}><GigChip type={applyGig.type} /> {e.name}</p>
@@ -472,7 +568,7 @@ function PageEventDetail({ eventId, role, setRoute }) {
       </Modal>
 
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setEditOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={() => { setEditOpen(false); toast.push({ kind: 'success', title: 'Event updated', body: `${editForm.name} saved.` }); }}>Save changes</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => setEditOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const patch = { name: editForm.name, desc: editForm.desc, date: editForm.date }; setOverride(o => ({ ...o, ...patch })); try { await window.RosyMutate?.events?.update(eventId, patch); } catch (err) { console.warn(err); } setEditOpen(false); toast.push({ kind: 'success', title: 'Event updated', body: `${editForm.name} saved.` }); }}>Save changes</button></>}>
         <div className="col" style={{ gap: 14 }}>
           <div className="field"><label className="field-label">Event name</label><input className="input" value={editForm.name} onChange={(ev) => setEditForm(f => ({ ...f, name: ev.target.value }))} /></div>
           <div className="field"><label className="field-label">Description</label><textarea className="textarea" value={editForm.desc} onChange={(ev) => setEditForm(f => ({ ...f, desc: ev.target.value }))} /></div>

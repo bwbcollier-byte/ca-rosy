@@ -5,26 +5,44 @@ const SX_I = window.Icons;
 const { useState: SX_us } = React;
 
 /* ============ Inbox ============ */
-function PageInbox() {
-  const [active, setActive] = SX_us(SX_D.MESSAGES[0].id);
+function PageInbox({ currentUser }) {
+  const meId = currentUser?.id;
+  const [active, setActive] = SX_us(SX_D.MESSAGES[0]?.id);
   const [draft, setDraft] = SX_us('');
   const [composeOpen, setComposeOpen] = SX_us(false);
   const [callOpen, setCallOpen] = SX_us(null); // 'voice' | 'video' | null
   const [threadMenuOpen, setThreadMenuOpen] = SX_us(false);
+  const [search, setSearch] = SX_us('');
+  const [extraConvs, setExtraConvs] = SX_us([]);
   const fileInputRef = React.useRef(null);
   const toast = useToast();
-  const conv = SX_D.MESSAGES.find(c => c.id === active);
+  const allConvs = [...extraConvs, ...SX_D.MESSAGES];
+  const conv = allConvs.find(c => c.id === active);
+  const visibleConvs = allConvs.filter(c => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return [c.name, c.preview].some(s => (s || '').toLowerCase().includes(q));
+  });
   const [localMessages, setLocalMessages] = SX_us(conv?.messages || []);
   React.useEffect(() => { setLocalMessages(conv?.messages || []); }, [active]);
 
-  const send = () => {
+  const send = async () => {
     if (!draft.trim()) return;
-    setLocalMessages(ms => [...ms, { who: 'me', text: draft, time: 'Just now', day: 'Today' }]);
+    const text = draft;
+    setLocalMessages(ms => [...ms, { senderId: meId, recipientId: conv?.with, text, time: 'Just now', day: 'Today' }]);
     setDraft('');
+    try {
+      await window.RosyMutate?.messages?.send({
+        conversationId: conv?.id,
+        senderId: meId, recipientId: conv?.with, content: text,
+      });
+    } catch (e) { console.warn('message send failed:', e); }
     setTimeout(() => {
-      setLocalMessages(ms => [...ms, { who: 'them', text: 'Got it — talk soon.', time: 'Just now', day: 'Today' }]);
+      setLocalMessages(ms => [...ms, { senderId: conv?.with, recipientId: meId, text: 'Got it — talk soon.', time: 'Just now', day: 'Today' }]);
     }, 900);
   };
+  // Helper: render-time "me/them" decision against the live session user
+  const whoOf = (m) => (m.who === 'me' || m.who === 'them') ? m.who : (m.senderId === meId ? 'me' : 'them');
 
   return (
     <div className="inbox-shell">
@@ -32,12 +50,13 @@ function PageInbox() {
         <div className="inbox-search">
           <div style={{ position: 'relative', flex: 1 }}>
             <SX_I.Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
-            <input className="input" placeholder="Search" style={{ paddingLeft: 32, height: 38 }} />
+            <input className="input" placeholder="Search" style={{ paddingLeft: 32, height: 38 }} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <button className="icon-btn" style={{ width: 38, height: 38 }} onClick={() => setComposeOpen(true)} aria-label="Compose"><SX_I.Pencil size={16} /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {SX_D.MESSAGES.map(c => {
+          {visibleConvs.length === 0 ? <Empty icon={SX_I.Search} title="No matches" body="Try a different search." /> : null}
+          {visibleConvs.map(c => {
             const u = SX_D.USERS.find(x => x.id === c.with);
             return (
               <div key={c.id} className={`inbox-thread ${c.id === active ? 'active' : ''}`} onClick={() => setActive(c.id)}>
@@ -80,11 +99,12 @@ function PageInbox() {
                 return localMessages.map((m, i) => {
                   const showDay = m.day && m.day !== lastDay;
                   lastDay = m.day;
+                  const who = whoOf(m);
                   return (
                     <React.Fragment key={i}>
                       {showDay ? <div className="date-sep">{m.day}</div> : null}
-                      <div className={`msg-bubble ${m.who === 'me' ? 'out' : 'in'}`}>{m.text}</div>
-                      <span className="msg-time" style={{ alignSelf: m.who === 'me' ? 'flex-end' : 'flex-start' }}>{m.time}</span>
+                      <div className={`msg-bubble ${who === 'me' ? 'out' : 'in'}`}>{m.text}</div>
+                      <span className="msg-time" style={{ alignSelf: who === 'me' ? 'flex-end' : 'flex-start' }}>{m.time}</span>
                     </React.Fragment>
                   );
                 });
@@ -118,7 +138,26 @@ function PageInbox() {
           <p style={{ margin: '0 0 14px', fontSize: 13.5, color: 'var(--color-muted)' }}>Pick someone to message:</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 360, overflowY: 'auto' }}>
             {SX_D.USERS.filter(u => u.role !== 'admin').slice(0, 8).map(u => (
-              <button key={u.id} className="btn btn-ghost" style={{ justifyContent: 'flex-start', padding: 10, height: 'auto' }} onClick={() => { setComposeOpen(false); toast.push({ kind: 'success', title: `Conversation started with ${u.first}` }); }}>
+              <button key={u.id} className="btn btn-ghost" style={{ justifyContent: 'flex-start', padding: 10, height: 'auto' }} onClick={async () => {
+                  let conv;
+                  try {
+                    conv = await window.RosyMutate?.conversations?.create({
+                      subject: `Direct message — ${u.name}`,
+                      startedBy: meId,
+                      participants: [meId, u.id].filter(Boolean),
+                    });
+                  } catch (e) { console.warn(e); }
+                  if (!conv) {
+                    const newId = 'm_' + Math.random().toString(36).slice(2, 8);
+                    conv = { id: newId, with: u.id, name: u.name, online: false, unread: 0, preview: 'New conversation', messages: [] };
+                  } else {
+                    conv = { ...conv, with: u.id, name: u.name };
+                  }
+                  setExtraConvs(arr => [conv, ...arr]);
+                  setActive(conv.id);
+                  setComposeOpen(false);
+                  toast.push({ kind: 'success', title: `Conversation started with ${u.first}` });
+                }}>
                 <Avatar name={u.name} size="md" />
                 <div style={{ textAlign: 'left', marginLeft: 4 }}>
                   <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{u.name}</p>
@@ -176,6 +215,44 @@ function MarketingPage({ goToApp, goToAuth, subRoute = 'home', setSubRoute }) {
 }
 
 function MarketingHome({ goToApp, goToAuth, setRoute }) {
+  // Show "Install app" CTA once Chrome / Edge fires beforeinstallprompt, OR detect iOS Safari
+  // where users add to home screen manually.
+  const [installable, setInstallable] = SX_us(!!window.__pwaInstallEvent);
+  const [installed, setInstalled] = SX_us(window.matchMedia('(display-mode: standalone)').matches);
+  const toast = useToast();
+  SX_us; // hook usage already imported via SX_us
+  React.useEffect(() => {
+    const onCan = () => setInstallable(true);
+    const onIn  = () => { setInstallable(false); setInstalled(true); };
+    window.addEventListener('rosy:pwa-installable', onCan);
+    window.addEventListener('rosy:pwa-installed',   onIn);
+    return () => {
+      window.removeEventListener('rosy:pwa-installable', onCan);
+      window.removeEventListener('rosy:pwa-installed',   onIn);
+    };
+  }, []);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const promptInstall = async () => {
+    const ev = window.__pwaInstallEvent;
+    if (ev && typeof ev.prompt === 'function') {
+      try {
+        ev.prompt();
+        const choice = await ev.userChoice;
+        if (choice?.outcome === 'accepted') {
+          toast.push({ kind: 'success', title: 'Installing…', body: 'Look for Rosy on your home screen in a sec.' });
+        }
+      } catch (e) { console.warn('install prompt failed:', e); }
+      window.__pwaInstallEvent = null;
+      setInstallable(false);
+      return;
+    }
+    if (isIOS) {
+      toast.push({ kind: 'info', title: 'Install on iPhone', body: 'Tap the Share icon (square + arrow), then "Add to Home Screen".' });
+    } else {
+      toast.push({ kind: 'info', title: 'Use Chrome or Edge', body: 'Open this site in Chrome or Edge on Android / desktop for one-click install.' });
+    }
+  };
+  const showInstallButton = !installed && (installable || isIOS);
   return (
     <>
       <section className="mk-section">
@@ -186,9 +263,14 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
             </div>
             <h1>Where floral <em>excellence</em> meets efficiency.</h1>
             <p>A skilled crew on every event — booked in minutes, paid in days. Built by florists who got tired of texting from a spreadsheet.</p>
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <button className="btn btn-coral btn-lg" onClick={() => goToAuth('signup')}>Hire a team</button>
               <button className="btn btn-ghost btn-lg" onClick={() => goToAuth('signup')}>Find work</button>
+              {showInstallButton ? (
+                <button className="btn btn-ghost btn-lg" onClick={promptInstall} aria-label="Install Rosy Recruits to your home screen">
+                  <SX_I.Download size={16} />Install app
+                </button>
+              ) : null}
             </div>
             <div className="mk-hero-stats">
               <div className="mk-hero-stat"><span className="num">1,284</span><span className="lbl">active workers</span></div>
@@ -236,8 +318,8 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
       {/* Worker / Vendor split */}
       <section className="mk-section" style={{ paddingTop: 0 }}>
         <div className="grid-2" style={{ gap: 24 }}>
-          <div className="feature-card teal" style={{ overflow: 'hidden', padding: 0 }}>
-            <div style={{ padding: 36 }}>
+          <div className="feature-card teal" style={{ overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: 36, flex: 1 }}>
               <span className="t-eyebrow" style={{ color: 'rgba(255,255,255,0.7)' }}>For workers</span>
               <h3 style={{ margin: '12px 0 12px', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 36, letterSpacing: '-0.02em' }}>Steady, beautiful work.</h3>
               <p style={{ margin: '0 0 20px', fontSize: 15, opacity: 0.85, lineHeight: 1.6 }}>Three studios a week or thirty events a season — set your availability, pick your gigs, get paid on time. Lead roles pay $50/hr.</p>
@@ -245,8 +327,8 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
             </div>
             <img src={SX_D.IMAGES.marketingWorker} alt="" style={{ width: '100%', height: 240, objectFit: 'cover', display: 'block' }} />
           </div>
-          <div className="feature-card ochre" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: 36 }}>
+          <div className="feature-card ochre" style={{ overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: 36, flex: 1 }}>
               <span className="t-eyebrow">For vendors</span>
               <h3 style={{ margin: '12px 0 12px', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 36, letterSpacing: '-0.02em' }}>Crew up. Show up. Look brilliant.</h3>
               <p style={{ margin: '0 0 20px', fontSize: 15, opacity: 0.9, lineHeight: 1.6 }}>Spin up an entire wedding team from your phone. Workers see the gig, you see the applications, both sides get paid through Stripe.</p>
@@ -299,10 +381,10 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
       {/* CTA band */}
       <section style={{ background: 'var(--color-brand-peach)', padding: '72px 32px', textAlign: 'center' }}>
         <h2 className="display-lg" style={{ maxWidth: 800, margin: '0 auto 16px' }}>Run your next event with the right team.</h2>
-        <p style={{ margin: '0 auto 28px', color: 'var(--color-body)', fontSize: 17, maxWidth: 560 }}>Free for vendors to try. No credit card. Post your first gig in 60 seconds.</p>
+        <p style={{ margin: '0 auto 28px', color: 'var(--color-body)', fontSize: 17, maxWidth: 560 }}>Post your first gig in 60 seconds. Card on file required so we can fund worker payouts via Stripe Connect.</p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
           <button className="btn btn-primary btn-lg" onClick={() => goToAuth('signup')}>Get started</button>
-          <button className="btn btn-ghost btn-lg" onClick={() => goToApp()}>See it in action</button>
+          <button className="btn btn-ghost btn-lg" onClick={() => setRoute('gallery')}>See it in action</button>
         </div>
       </section>
     </>
@@ -325,7 +407,7 @@ function FAQItem({ q, a }) {
 /* ============ Auth ============ */
 function AuthPage({ mode = 'login', goToApp, setMode }) {
   const [show, setShow] = SX_us(false);
-  const [email, setEmail] = SX_us(mode === 'signup' ? '' : 'naomi.park@gmail.com');
+  const [email, setEmail] = SX_us(mode === 'signup' ? '' : 'mariana@bloomandfern.com');
   const [pw, setPw] = SX_us(mode === 'signup' ? '' : 'rosyDemo!1');
   const [agree, setAgree] = SX_us(false);
   const [submitting, setSubmitting] = SX_us(false);
@@ -340,14 +422,32 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
   };
   const allPass = Object.values(checks).every(Boolean);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
+    try {
+      if (mode === 'forgot') {
+        if (window.sb) await window.sb.auth.resetPasswordForEmail(email);
+        toast.push({ kind: 'success', title: 'Reset link sent', body: 'Check your inbox if an account exists for that address.' });
+        setSubmitting(false);
+        return;
+      }
+      if (window.sb) {
+        const fn = mode === 'signup' ? window.sb.auth.signUp : window.sb.auth.signInWithPassword;
+        const { data, error } = await fn.call(window.sb.auth, { email, password: pw });
+        if (error) throw error;
+        if (mode === 'signup' && !data?.session) {
+          toast.push({ kind: 'info', title: 'Check your inbox', body: 'Click the link to confirm your email, then log in.' });
+          setSubmitting(false);
+          return;
+        }
+      }
       toast.push({ kind: 'success', title: mode === 'signup' ? 'Welcome to Rosy' : 'Welcome back', body: 'Loading your dashboard…' });
       goToApp();
-    }, 700);
+    } catch (err) {
+      toast.push({ kind: 'error', title: mode === 'signup' ? 'Signup failed' : 'Login failed', body: err.message || 'Try again.' });
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -360,7 +460,7 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
           <div className="mk-logo" style={{ marginBottom: 8 }}><RoseLogo />Rosy<span className="accent"> Recruits</span></div>
           <h2 className="display-md" style={{ fontSize: 32 }}>{mode === 'login' ? 'Welcome back.' : mode === 'forgot' ? 'Reset your password.' : 'Create your account.'}</h2>
           {mode === 'login' ? <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>Log in to manage your events and gigs.</p> :
-            mode === 'signup' ? <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>Free to start. Pick a role on the next step.</p> :
+            mode === 'signup' ? <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>Workers join free. Vendors add a card during onboarding to fund payouts.</p> :
             <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>We'll email a link if there's a matching account.</p>}
 
           <div className="field">
@@ -373,9 +473,9 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
               <label className="field-label">Password</label>
               <div style={{ position: 'relative' }}>
                 <input className="input" type={show ? 'text' : 'password'} value={pw} onChange={e => setPw(e.target.value)} placeholder="••••••••" style={{ paddingRight: 44 }} />
-                <button type="button" onClick={() => setShow(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, padding: 6, cursor: 'pointer', color: 'var(--color-muted)' }}>{show ? <SX_I.EyeOff size={16} /> : <SX_I.Eye size={16} />}</button>
+                <button type="button" aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} onClick={() => setShow(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, padding: 6, cursor: 'pointer', color: 'var(--color-muted)' }}>{show ? <SX_I.EyeOff size={16} /> : <SX_I.Eye size={16} />}</button>
               </div>
-              {mode === 'login' ? <a className="btn-link" style={{ alignSelf: 'flex-end', fontSize: 12.5, cursor: 'pointer' }} onClick={() => setMode('forgot')}>Forgot password?</a> : null}
+              {mode === 'login' ? <button type="button" className="btn-link" style={{ alignSelf: 'flex-end', fontSize: 12.5, cursor: 'pointer', background: 'transparent', border: 0, padding: 0 }} onClick={() => setMode('forgot')}>Forgot password?</button> : null}
             </div>
           ) : null}
 
@@ -413,14 +513,14 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: 'var(--color-muted-soft)', fontSize: 12, fontWeight: 500 }}>
                 <span style={{ flex: 1, height: 1, background: 'var(--color-hairline)' }} />or<span style={{ flex: 1, height: 1, background: 'var(--color-hairline)' }} />
               </div>
-              <GoogleButton onClick={() => { toast.push({ kind: 'success', title: mode === 'signup' ? 'Welcome to Rosy' : 'Welcome back', body: 'Authorised via Google.' }); goToApp(); }} label={mode === 'signup' ? 'Sign up with Google' : 'Continue with Google'} />
+              <GoogleButton onClick={async () => { try { if (window.sb) { const { error } = await window.sb.auth.signInWithOAuth({ provider: 'google' }); if (error) throw error; } } catch (err) { toast.push({ kind: 'warning', title: 'Google sign-in not configured', body: err.message }); return; } toast.push({ kind: 'success', title: mode === 'signup' ? 'Welcome to Rosy' : 'Welcome back', body: 'Authorised via Google.' }); goToApp(); }} label={mode === 'signup' ? 'Sign up with Google' : 'Continue with Google'} />
             </>
           ) : null}
 
           <p style={{ margin: 0, fontSize: 13.5, color: 'var(--color-muted)', textAlign: 'center' }}>
-            {mode === 'login' ? <>Need an account? <a className="btn-link" style={{ cursor: 'pointer' }} onClick={() => setMode('signup')}>Sign up</a></> :
-             mode === 'signup' ? <>Already have an account? <a className="btn-link" style={{ cursor: 'pointer' }} onClick={() => setMode('login')}>Log in</a></> :
-             <a className="btn-link" style={{ cursor: 'pointer' }} onClick={() => setMode('login')}>Back to log in</a>}
+            {mode === 'login' ? <>Need an account? <button type="button" className="btn-link" style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0 }} onClick={() => setMode('signup')}>Sign up</button></> :
+             mode === 'signup' ? <>Already have an account? <button type="button" className="btn-link" style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0 }} onClick={() => setMode('login')}>Log in</button></> :
+             <button type="button" className="btn-link" style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0 }} onClick={() => setMode('login')}>Back to log in</button>}
           </p>
         </form>
       </div>
@@ -469,21 +569,36 @@ function OnboardingPage({ onComplete }) {
 
       {step === 2 ? (
         <div style={{ width: '100%', maxWidth: 720, background: 'var(--color-canvas)', borderRadius: 24, overflow: 'hidden', border: '1px solid var(--color-hairline)' }}>
-          <div style={{ background: role.vendor ? '#F59E0B' : 'var(--rosy-coral)', color: '#fff', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            {role.vendor ? <SX_I.Building2 size={20} /> : <SX_I.HardHat size={20} />}
-            <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.01em' }}>{role.vendor ? 'Vendor Profile' : 'Worker Profile'}</h3>
-          </div>
-          <div style={{ padding: 24, maxHeight: '60vh', overflowY: 'auto' }}>
-            <ProfileForm role={role.vendor ? 'vendor' : 'worker'} />
-          </div>
+          {role.vendor ? (
+            <>
+              <div style={{ background: '#F59E0B', color: '#fff', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <SX_I.Building2 size={20} />
+                <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.01em' }}>Vendor Profile</h3>
+              </div>
+              <div style={{ padding: 24, maxHeight: role.worker ? '40vh' : '60vh', overflowY: 'auto' }}>
+                <ProfileForm role="vendor" />
+              </div>
+            </>
+          ) : null}
+          {role.worker ? (
+            <>
+              <div style={{ background: 'var(--rosy-coral)', color: '#fff', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <SX_I.HardHat size={20} />
+                <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.01em' }}>Worker Profile</h3>
+              </div>
+              <div style={{ padding: 24, maxHeight: role.vendor ? '40vh' : '60vh', overflowY: 'auto' }}>
+                <ProfileForm role="worker" />
+              </div>
+            </>
+          ) : null}
           <div style={{ padding: '16px 24px', background: 'var(--color-surface-soft)', borderTop: '1px solid var(--color-hairline)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}>
               <span className={`checkbox ${tc ? 'checked' : ''}`} onClick={() => { if (!tc) setTcOpen(true); else setTc(false); }}>{tc ? <SX_I.CheckCircle size={12} /> : null}</span>
-              Agree to the <a className="btn-link" style={{ cursor: 'pointer' }} onClick={() => setTcOpen(true)}>terms & conditions</a>
+              Agree to the <button type="button" className="btn-link" style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0 }} onClick={() => setTcOpen(true)}>terms & conditions</button>
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button>
-              <button className="btn btn-coral" disabled={!tc} onClick={() => { setStripeOpen(true); }}>Save changes</button>
+              <button className="btn btn-coral" disabled={!tc} onClick={() => { setStripeOpen(true); }}>Continue</button>
             </div>
           </div>
         </div>
@@ -598,7 +713,7 @@ function ProfileForm({ role }) {
         </div>
       ) : null}
       <div className="field"><label className="field-label">{role === 'vendor' ? 'Business description' : 'Bio'}</label>
-        <textarea className="textarea" defaultValue={role === 'vendor' ? 'Bloom & Fern is a Brooklyn-based floral studio serving weddings and brand events across the tri-state. We specialize in suspended installations and editorial work.' : '8 years in floral events. Brooklyn-based. Strong at suspended installs, calm under pressure, takes direction well.'} />
+        <textarea className="textarea" defaultValue={role === 'vendor' ? 'Bloom & Fern is a Chicago-based floral studio serving weddings and brand events across Chicagoland. We specialize in suspended installations and editorial work.' : '8 years in floral events. Chicago-based. Strong at suspended installs, calm under pressure, takes direction well.'} />
       </div>
     </div>
   );

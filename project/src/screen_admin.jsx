@@ -12,8 +12,14 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
   const [statusTab, setStatusTab] = SP_us('all');
   const [search, setSearch] = SP_us('');
   let txs = SP_D.TRANSACTIONS;
-  if (role === 'vendor') txs = txs.filter(t => t.payer.includes('Bloom') || t.payer.includes('Floral Forge'));
-  if (role === 'worker') txs = txs.filter(t => t.payee === currentUser.name || t.payee === 'Multiple');
+  // Scope payments by the current user. Vendors see invoices for their company;
+  // workers see invoices addressed to them. Falls back to demo names when seed data lacks UUIDs.
+  if (role === 'vendor') {
+    const company = currentUser?.company || '';
+    const name = currentUser?.name || '';
+    txs = txs.filter(t => (company && t.payer === company) || (name && t.payer.includes(name)) || t.payer.includes('Bloom') || t.payer.includes('Floral Forge'));
+  }
+  if (role === 'worker') txs = txs.filter(t => (currentUser?.name && t.payee === currentUser.name) || t.payee === 'Multiple');
 
   const filtered = txs
     .filter(t => statusTab === 'all' || t.status.toLowerCase() === statusTab)
@@ -29,7 +35,7 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
     if (!openId) return;
     const t = txs.find(x => x.id === openId);
     if (t) setOpenTx(t);
-  }, [openId]);
+  }, [openId, role]);
 
   const closeTx = () => {
     setOpenTx(null);
@@ -82,7 +88,7 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
                 <td>
                   <div className="row-actions">
                     {t.status === 'Pending' && role !== 'worker' ?
-                      <button className="btn btn-coral btn-sm" onClick={() => toast.push({ kind: 'success', title: 'Payment released', body: `${fmtMoney(t.amount)} sent to ${t.payee}` })}>Approve</button> : null}
+                      <button className="btn btn-coral btn-sm" onClick={async () => { try { await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'paid'); } catch (e) { console.warn(e); } toast.push({ kind: 'success', title: 'Payment released', body: `${fmtMoney(t.amount)} sent to ${t.payee}` }); }}>Approve</button> : null}
                     {t.status !== 'Paid' && t.status !== 'Disputed' ?
                       <button className="btn btn-ghost btn-sm" onClick={() => setDispute(t)}><SP_I.AlertTriangle size={14} />Dispute</button> : null}
                     <button className="row-action-btn" aria-label="Open invoice" onClick={() => setOpenTx(t)}><SP_I.ExternalLink size={14} /></button>
@@ -142,6 +148,9 @@ function PageDisputes() {
   return (
     <div className="content fade-up">
       <div className="section-heading"><h2>Disputes & overdue</h2></div>
+      {disputed.length === 0 ? (
+        <Empty icon={SP_I.ShieldCheck} title="No active disputes" body="When a payment is contested or overdue, it'll show up here for you to mediate." />
+      ) : (
       <div className="grid-3">
         {disputed.map(t => (
           <div key={t.id} className="card" tabIndex={0} role="button" aria-label={`Open dispute ${t.invoice}`}
@@ -163,9 +172,10 @@ function PageDisputes() {
           </div>
         ))}
       </div>
+      )}
 
       <Modal open={!!mediate} onClose={() => setMediate(null)} title="Mediate dispute" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setMediate(null)}>Close</button><button className="btn btn-ghost-coral" onClick={() => { setMediate(null); toast.push({ kind: 'warning', title: 'Released to worker', body: 'Worker paid in full. Vendor notified.' }); }}>Release to worker</button><button className="btn btn-coral" onClick={() => { setMediate(null); toast.push({ kind: 'success', title: 'Split decision', body: 'Worker paid 75%, vendor refunded 25%.' }); }}>Split 75/25</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => setMediate(null)}>Close</button><button className="btn btn-ghost-coral" onClick={async () => { const t = mediate; setMediate(null); try { await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'partial'); } catch (e) { console.warn(e); } toast.push({ kind: 'success', title: 'Split decision', body: 'Worker paid 75%, vendor refunded 25%.' }); }}>Split 75/25</button><button className="btn btn-coral" onClick={async () => { const t = mediate; setMediate(null); try { await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'paid'); } catch (e) { console.warn(e); } toast.push({ kind: 'success', title: 'Released to worker', body: 'Worker paid in full. Vendor notified.' }); }}>Release to worker</button></>}>
         {mediate ? (
           <div className="col" style={{ gap: 14 }}>
             <KV label="Invoice" value={mediate.invoice} />
@@ -204,6 +214,9 @@ function PageDisputes() {
 function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
   const [search, setSearch] = SP_us('');
   const [statusFilter, setStatusFilter] = SP_us('all');
+  const [roleFilter, setRoleFilter] = SP_us('all');
+  const [ratingFilter, setRatingFilter] = SP_us('any');
+  const [cityFilter, setCityFilter] = SP_us('all');
   const [sortBy, setSortBy] = SP_us('newest');
   const [filterOpen, setFilterOpen] = SP_us(false);
   const [inviteOpen, setInviteOpen] = SP_us(false);
@@ -217,24 +230,45 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
   const toast = useToast();
 
   const merged = SP_D.USERS.map(u => overrides[u.id] ? { ...u, ...overrides[u.id] } : u).filter(u => !deleted[u.id]);
+  // Unique city list (best-effort) for the filter dropdown.
+  const cities = Array.from(new Set(merged.map(u => u.city).filter(Boolean))).sort();
+  const activeFilterCount = (statusFilter !== 'all' ? 1 : 0) + (roleFilter !== 'all' ? 1 : 0) + (ratingFilter !== 'any' ? 1 : 0) + (cityFilter !== 'all' ? 1 : 0);
 
   const all = merged
     .filter(u => filter ? filter(u) : true)
     .filter(u => statusFilter === 'all' || u.status === statusFilter)
+    .filter(u => roleFilter === 'all' || u.role === roleFilter)
+    .filter(u => cityFilter === 'all' || u.city === cityFilter)
+    .filter(u => {
+      if (ratingFilter === 'any') return true;
+      if (ratingFilter === 'unrated') return !u.rating;
+      const min = parseFloat(ratingFilter);
+      return (u.rating || 0) >= min;
+    })
     .filter(u => {
       if (!search.trim()) return true;
       const q = search.toLowerCase();
-      return [u.name, u.email, u.company, u.city].some(s => (s || '').toLowerCase().includes(q));
+      return [u.name, u.email, u.company, u.city, u.role].some(s => (s || '').toLowerCase().includes(q));
     })
     .sort((a, b) => {
       if (sortBy === 'newest') return new Date(b.joined) - new Date(a.joined);
       if (sortBy === 'oldest') return new Date(a.joined) - new Date(b.joined);
       if (sortBy === 'name')   return a.name.localeCompare(b.name);
       if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
+      if (sortBy === 'gigs')   return (b.gigs   || 0) - (a.gigs   || 0);
       return 0;
     });
 
-  const paged = usePaged(all, 10, `${search}|${statusFilter}|${sortBy}|${all.length}`);
+  // Top-of-page analytics strip — pre-scope summary that ignores search but respects role/status.
+  const scopedForStats = merged.filter(u => filter ? filter(u) : true);
+  const stats = {
+    total:    scopedForStats.length,
+    active:   scopedForStats.filter(u => u.status === 'active').length,
+    inactive: scopedForStats.filter(u => u.status === 'inactive').length,
+    avgRating: (() => { const r = scopedForStats.filter(u => u.rating); return r.length ? (r.reduce((s, u) => s + u.rating, 0) / r.length).toFixed(2) : '—'; })(),
+  };
+
+  const paged = usePaged(all, 10, `${search}|${statusFilter}|${roleFilter}|${ratingFilter}|${cityFilter}|${sortBy}|${all.length}`);
   const visible = paged.slice;
   const pickedIds = Object.keys(picked).filter(k => picked[k]);
   const pickedCount = pickedIds.length;
@@ -279,15 +313,22 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
 
   return (
     <div className="content fade-up">
+      {/* Stat strip — matches the four-card layout on Events / Dashboard */}
+      <div className="grid-4" style={{ marginBottom: 20 }}>
+        <StatCard icon={SP_I.Users}        label={`Total ${title.toLowerCase()}`} value={stats.total} />
+        <StatCard icon={SP_I.CheckCircle2} label="Active"   value={stats.active} />
+        <StatCard icon={SP_I.UserX}        label="Inactive" value={stats.inactive} />
+        <StatCard icon={SP_I.Star}         label="Avg rating" value={stats.avgRating} />
+      </div>
       <div className="section-heading">
         <h2>{title}</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative' }}>
             <SP_I.Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
-            <input className="input" placeholder={`Search ${title.toLowerCase()}...`} style={{ paddingLeft: 36, width: 260 }} value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="input" placeholder={`Search by name, email, company, city, role…`} style={{ paddingLeft: 36, width: 320 }} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <SortMenu value={sortBy} onChange={setSortBy} options={[['newest','Newest first'],['oldest','Oldest first'],['name','Name A–Z'],['rating','Highest rated']]} />
-          <button className="btn btn-ghost btn-sm" onClick={() => setFilterOpen(true)}><SP_I.Filter size={14} />Filters{statusFilter !== 'all' ? ' (1)' : ''}</button>
+          <SortMenu value={sortBy} onChange={setSortBy} options={[['newest','Newest first'],['oldest','Oldest first'],['name','Name A–Z'],['rating','Highest rated'],['gigs','Most gigs']]} />
+          <button className="btn btn-ghost btn-sm" onClick={() => setFilterOpen(true)}><SP_I.Filter size={14} />Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</button>
           {role === 'admin' ? <button className="btn btn-coral" onClick={() => setInviteOpen(true)}><SP_I.Plus size={14} />Invite</button> : null}
         </div>
       </div>
@@ -351,8 +392,10 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
 
       <BulkActionBar count={pickedCount} onClear={() => setPicked({})}
         actions={[
+          { label: 'Message',    icon: SP_I.MessageSquare, onClick: () => { toast.push({ kind: 'success', title: `Drafting message to ${pickedCount}`, body: 'Opening Inbox composer…' }); setRoute && setRoute('inbox'); setPicked({}); } },
           { label: 'Activate',   icon: SP_I.CheckCircle2, onClick: () => applyBulk('activate') },
           { label: 'Deactivate', icon: SP_I.UserX,        onClick: () => applyBulk('deactivate') },
+          { label: 'Clear',      icon: SP_I.X,            onClick: () => setPicked({}) },
           { label: 'Delete',     icon: SP_I.Trash2, danger: true, onClick: () => applyBulk('delete') },
         ]} />
 
@@ -367,16 +410,42 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
         initialEdit={editing}
         onSave={(draft) => { setOverrides(o => ({ ...o, [selected.id]: { ...(o[selected.id] || {}), ...draft } })); }} />
 
-      <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter" size="sm"
-        footer={<><button className="btn btn-ghost" onClick={() => { setStatusFilter('all'); }}>Reset</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>
-        <p className="t-eyebrow" style={{ marginBottom: 8 }}>Status</p>
-        <div className="col" style={{ gap: 6 }}>
-          {[['all','All'],['active','Active only'],['inactive','Inactive only']].map(([id, label]) => (
-            <label key={id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', cursor: 'pointer' }}>
-              <span className={`checkbox ${statusFilter === id ? 'checked' : ''}`} onClick={() => setStatusFilter(id)}>{statusFilter === id ? <SP_I.CheckCircle size={12} /> : null}</span>
-              <span>{label}</span>
-            </label>
-          ))}
+      <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter" size="md"
+        footer={<><button className="btn btn-ghost" onClick={() => { setStatusFilter('all'); setRoleFilter('all'); setRatingFilter('any'); setCityFilter('all'); }}>Reset all</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>
+        <div className="col" style={{ gap: 16 }}>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Status</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[['all','All'],['active','Active'],['inactive','Inactive'],['pending','Pending'],['suspended','Suspended']].map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setStatusFilter(id)} className={`chip ${statusFilter === id ? 'on' : ''}`} style={{ border: '1.5px solid', borderColor: statusFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: statusFilter === id ? 'var(--color-ink)' : 'transparent', color: statusFilter === id ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          {title === 'Users' ? (
+            <div>
+              <p className="t-eyebrow" style={{ marginBottom: 8 }}>Role</p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[['all','All'],['vendor','Vendor'],['worker','Worker']].map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => setRoleFilter(id)} className={`chip ${roleFilter === id ? 'on' : ''}`} style={{ border: '1.5px solid', borderColor: roleFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: roleFilter === id ? 'var(--color-ink)' : 'transparent', color: roleFilter === id ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>Minimum rating</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[['any','Any'],['4.9','4.9★+'],['4.7','4.7★+'],['4.5','4.5★+'],['unrated','Unrated']].map(([id, label]) => (
+                <button key={id} type="button" onClick={() => setRatingFilter(id)} className={`chip ${ratingFilter === id ? 'on' : ''}`} style={{ border: '1.5px solid', borderColor: ratingFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: ratingFilter === id ? 'var(--color-ink)' : 'transparent', color: ratingFilter === id ? '#fff' : 'inherit', padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 8 }}>City</p>
+            <select className="select" value={cityFilter} onChange={(e) => setCityFilter(e.target.value)}>
+              <option value="all">All cities ({cities.length})</option>
+              {cities.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
         </div>
       </Modal>
 
@@ -394,9 +463,29 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
 function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave }) {
   const toast = useToast();
   const [editing, setEditing] = SP_us(initialEdit);
-  const [draft, setDraft] = SP_us({ name: user?.name || '', email: user?.email || '', company: user?.company || '', city: user?.city || '' });
+  const blankDraft = { photo: '', name: '', first: '', last: '', email: '', phone: '', company: '', title: '', city: '', state: '', street: '', zip: '', hourlyRate: '', vendorRate: '', skills: '', bio: '', status: 'active' };
+  const userToDraft = (u) => u ? ({
+    photo:       u.photo || '',
+    name:        u.name || '',
+    first:       u.first || (u.name || '').split(' ')[0] || '',
+    last:        u.last  || (u.name || '').split(' ').slice(1).join(' ') || '',
+    email:       u.email || '',
+    phone:       u.phone || '',
+    company:     u.company || '',
+    title:       u.title || '',
+    city:        u.city || '',
+    state:       u.state || '',
+    street:      u.street || '',
+    zip:         u.zip || '',
+    hourlyRate:  u.hourlyRate ?? u.rate ?? '',
+    vendorRate:  u.vendorRate ?? '',
+    skills:      Array.isArray(u.skills) ? u.skills.join(', ') : (u.skills || ''),
+    bio:         u.bio || u.description || '',
+    status:      u.status || 'active',
+  }) : blankDraft;
+  const [draft, setDraft] = SP_us(userToDraft(user));
   React.useEffect(() => {
-    if (user) setDraft({ name: user.name, email: user.email, company: user.company, city: user.city });
+    setDraft(userToDraft(user));
     setEditing(initialEdit);
   }, [user?.id, initialEdit]);
   if (!user) return null;
@@ -409,7 +498,7 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
     <Modal open={!!user} onClose={onClose} title={user.name} size="lg"
       footer={editing
         ? <><button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button><button className="btn btn-coral" onClick={handleSave}>Save changes</button></>
-        : <><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { onClose(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${user.first}` }); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => setEditing(true)}><SP_I.Pencil size={14} />Edit profile</button></>}>
+        : <><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { const first = user.first || (user.name || '').split(' ')[0] || 'them'; onClose(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${first}` }); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => setEditing(true)}><SP_I.Pencil size={14} />Edit profile</button></>}>
       <div style={{ display: 'flex', gap: 24, marginBottom: 20, alignItems: 'flex-start' }}>
         <Avatar name={user.name} size="xl" />
         <div style={{ flex: 1 }}>
@@ -424,12 +513,43 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
       </div>
       {editing ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Name</label><input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></div>
-          <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Email</label><input className="input" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></div>
+          <ImageUpload value={draft.photo} onChange={(v) => setDraft({ ...draft, photo: v })} label="Upload profile photo" size={88} round />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Company</label><input className="input" value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} /></div>
-            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>City</label><input className="input" value={draft.city} onChange={(e) => setDraft({ ...draft, city: e.target.value })} /></div>
+            <div><label className="field-label">First name</label><input className="input" value={draft.first} onChange={(e) => setDraft({ ...draft, first: e.target.value, name: `${e.target.value} ${draft.last}`.trim() })} /></div>
+            <div><label className="field-label">Last name</label><input className="input" value={draft.last} onChange={(e) => setDraft({ ...draft, last: e.target.value, name: `${draft.first} ${e.target.value}`.trim() })} /></div>
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div><label className="field-label">Email</label><input className="input" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></div>
+            <div><label className="field-label">Phone</label><input className="input" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} placeholder="+1 (555) 555-0100" /></div>
+          </div>
+          {user.role !== 'worker' ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div><label className="field-label">Company / studio</label><input className="input" value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} /></div>
+              <div><label className="field-label">Title</label><input className="input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Owner, Lead, Designer…" /></div>
+            </div>
+          ) : (
+            <div><label className="field-label">Title / specialty</label><input className="input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Lead designer, Strike crew…" /></div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
+            <div><label className="field-label">Street</label><input className="input" value={draft.street} onChange={(e) => setDraft({ ...draft, street: e.target.value })} /></div>
+            <div><label className="field-label">City</label><input className="input" value={draft.city} onChange={(e) => setDraft({ ...draft, city: e.target.value })} /></div>
+            <div><label className="field-label">State</label><input className="input" value={draft.state} onChange={(e) => setDraft({ ...draft, state: e.target.value })} placeholder="IL" /></div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: user.role === 'worker' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
+            <div><label className="field-label">ZIP</label><input className="input" value={draft.zip} onChange={(e) => setDraft({ ...draft, zip: e.target.value })} /></div>
+            {user.role === 'worker' ? (<>
+              <div><label className="field-label">Hourly rate ($)</label><input className="input" type="number" min={0} value={draft.hourlyRate} onChange={(e) => setDraft({ ...draft, hourlyRate: e.target.value })} /></div>
+              <div><label className="field-label">Skills (comma-separated)</label><input className="input" value={draft.skills} onChange={(e) => setDraft({ ...draft, skills: e.target.value })} placeholder="Lead, Design, Strike" /></div>
+            </>) : (
+              <div><label className="field-label">Vendor day rate ($)</label><input className="input" type="number" min={0} value={draft.vendorRate} onChange={(e) => setDraft({ ...draft, vendorRate: e.target.value })} /></div>
+            )}
+          </div>
+          <div><label className="field-label">Status</label>
+            <select className="select" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+              <option value="active">Active</option><option value="inactive">Inactive</option><option value="pending">Pending</option><option value="suspended">Suspended</option>
+            </select>
+          </div>
+          <div><label className="field-label">Bio</label><textarea className="textarea" rows={4} value={draft.bio} onChange={(e) => setDraft({ ...draft, bio: e.target.value })} placeholder="A short summary that vendors / workers will see on this profile." /></div>
         </div>
       ) : (
         <>
@@ -441,9 +561,9 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
           </div>
           <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Bio</h4>
           <p style={{ margin: 0, color: 'var(--color-body)', fontSize: 14, lineHeight: 1.55 }}>
-            {user.role === 'worker'
-              ? `${user.first} brings ${user.gigs ?? 0} gigs of experience to ${user.role === 'worker' ? 'high-end floral events' : 'the platform'} — specializing in installations, tablescapes, and on-day execution. Reliable, calm under pressure, takes direction well.`
-              : `${user.company} is a ${user.city}-based floral studio serving the tri-state area. Specialties: weddings, brand activations, editorial work.`}
+            {(() => { const first = user.first || (user.name || '').split(' ')[0] || 'They'; return user.role === 'worker'
+              ? `${first} brings ${user.gigs ?? 0} gigs of experience to high-end floral events — specializing in installations, tablescapes, and on-day execution. Reliable, calm under pressure, takes direction well.`
+              : `${user.company || first} is a ${user.city || 'Chicagoland'}-based floral studio serving the Chicagoland area. Specialties: weddings, brand activations, editorial work.`; })()}
           </p>
         </>
       )}
@@ -458,19 +578,41 @@ function PageVenues() {
   const [viewOpen, setViewOpen] = SP_us(null);
   const [editing, setEditing] = SP_us(null);
   const [deleteId, setDeleteId] = SP_us(null);
-  const [venues, setVenues] = SP_us(SP_D.VENUES.map(v => ({ ...v, address: `${v.name} · ${v.city}`, image: SP_D.IMAGES.events[(parseInt(v.id.slice(1)) - 1) % SP_D.IMAGES.events.length], parking: 'Street parking + nearby lot.', notes: 'Standard load-in via rear dock. Single 30A 120V circuit available.' })));
+  const [venues, setVenues] = SP_us(SP_D.VENUES.map(v => ({ ...v, address: v.address || `${v.name} · ${v.city}`, image: v.image || SP_D.IMAGES.events[(parseInt((v.id.match(/\d+/)?.[0] || '1')) - 1) % SP_D.IMAGES.events.length], parking: v.parking || 'Street parking + nearby lot.', notes: v.notes || 'Standard load-in via rear dock. Single 30A 120V circuit available.' })));
+  React.useEffect(() => {
+    const sync = () => setVenues(SP_D.VENUES.map(v => ({ ...v, address: v.address || `${v.name} · ${v.city}`, image: v.image || SP_D.IMAGES.events[0], parking: v.parking || '', notes: v.notes || '' })));
+    window.addEventListener('rosy:data-changed', sync);
+    return () => window.removeEventListener('rosy:data-changed', sync);
+  }, []);
   const [search, setSearch] = SP_us('');
+  const [sortBy, setSortBy] = SP_us('name');
   const filtered = venues.filter(v => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return [v.name, v.city, v.type].some(s => (s || '').toLowerCase().includes(q));
+  }).sort((a, b) => {
+    if (sortBy === 'city')     return (a.city || '').localeCompare(b.city || '');
+    if (sortBy === 'capacity') return (b.capacity || 0) - (a.capacity || 0);
+    return (a.name || '').localeCompare(b.name || '');
   });
-  const upsert = (v) => {
+  const paged = usePaged(filtered, 9, `${search}|${sortBy}|${filtered.length}`);
+  const visible = paged.slice;
+  const upsert = async (v, isNew) => {
     setVenues(arr => {
       const idx = arr.findIndex(x => x.id === v.id);
       if (idx >= 0) return arr.map(x => x.id === v.id ? v : x);
-      return [...arr, v];
+      return [v, ...arr];
     });
+    try {
+      if (isNew && window.RosyMutate?.venues) {
+        const live = await window.RosyMutate.venues.create(v);
+        if (live && live.id !== v.id) {
+          setVenues(arr => arr.map(x => x.id === v.id ? live : x));
+        }
+      } else if (window.RosyMutate?.venues) {
+        await window.RosyMutate.venues.update(v.id, v);
+      }
+    } catch (e) { console.warn('venue upsert failed:', e); }
   };
   return (
     <div className="content fade-up">
@@ -481,18 +623,19 @@ function PageVenues() {
             <SP_I.Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
             <input className="input" placeholder="Search venues..." style={{ paddingLeft: 36, width: 240 }} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
+          <SortMenu value={sortBy} onChange={setSortBy} options={[['name','Name A–Z'],['city','City A–Z'],['capacity','Largest first']]} />
           <button className="btn btn-coral" onClick={() => { setEditing(null); setAddOpen(true); }}><SP_I.Plus size={14} />Add venue</button>
         </div>
       </div>
       <div className="grid-3">
-        {filtered.length === 0 ? <div style={{ gridColumn: '1 / -1' }}><Empty icon={SP_I.MapPin} title="No matching venues" /></div> :
-         filtered.map(v => (
+        {visible.length === 0 ? <div style={{ gridColumn: '1 / -1' }}><Empty icon={SP_I.MapPin} title="No matching venues" /></div> :
+         visible.map(v => (
           <div key={v.id} className="card" tabIndex={0} role="button" aria-label={`Open ${v.name}`}
             onClick={(e) => { if (e.target.closest('button')) return; setViewOpen(v); }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setViewOpen(v); } }}
             style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
             <div style={{ height: 160, position: 'relative', overflow: 'hidden' }}>
-              <SafeImage src={v.image} placeholderIcon={SP_I.MapPin} placeholderTone={['mint','peach','lavender','ochre'][parseInt(v.id.slice(1)) % 4]} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              <SafeImage src={v.image} placeholderIcon={SP_I.MapPin} placeholderTone={['mint','peach','lavender','ochre'][((v.id || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0)) % 4]} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               <span style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(255,255,255,0.92)', padding: '4px 10px', borderRadius: 9999, fontSize: 11.5, fontWeight: 600 }}>{v.type}</span>
             </div>
             <div style={{ padding: 20, flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -515,12 +658,14 @@ function PageVenues() {
         ))}
       </div>
 
-      <VenueFormModal open={addOpen} onClose={() => setAddOpen(false)} venue={editing} onSave={(v) => { upsert(v); setAddOpen(false); toast.push({ kind: 'success', title: editing ? 'Venue updated' : 'Venue added' }); }} />
+      {paged.total > paged.perPage ? <Pagination page={paged.page} setPage={paged.setPage} total={paged.total} perPage={paged.perPage} label="venues" /> : null}
+
+      <VenueFormModal open={addOpen} onClose={() => setAddOpen(false)} venue={editing} onSave={(v) => { upsert(v, !editing); setAddOpen(false); toast.push({ kind: 'success', title: editing ? 'Venue updated' : 'Venue added' }); }} />
 
       <VenueDetailModal venue={viewOpen} onClose={() => setViewOpen(null)} onEdit={(v) => { setViewOpen(null); setEditing(v); setAddOpen(true); }} />
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} title="Remove venue?" message="This won't affect past events but it'll be hidden from new event creation." confirmLabel="Remove"
-        onConfirm={() => { setVenues(vs => vs.filter(v => v.id !== deleteId)); toast.push({ kind: 'warning', title: 'Venue removed' }); }} />
+        onConfirm={async () => { const id = deleteId; setVenues(vs => vs.filter(v => v.id !== id)); try { await window.RosyMutate?.venues?.delete(id); } catch (e) { console.warn(e); } toast.push({ kind: 'warning', title: 'Venue removed' }); }} />
     </div>
   );
 }
@@ -548,7 +693,7 @@ function VenueFormModal({ open, onClose, venue, onSave }) {
               { key: 'name', label: 'Venue name (or vibe)', placeholder: 'e.g. Greenpoint loft with east-river views' },
               { key: 'guests', label: 'Capacity', placeholder: '200' },
               { key: 'type', label: 'Venue type', placeholder: 'Garden, loft, estate...' },
-              { key: 'city', label: 'City', placeholder: 'Brooklyn, NY' },
+              { key: 'city', label: 'City', placeholder: 'Chicago, IL' },
             ]}
             onFill={(d) => { if (d._raw) upd('notes', d._raw); else Object.entries(d).forEach(([k, v]) => upd(k, v)); }} />
           <button className="btn btn-coral" disabled={!valid} onClick={save}>{venue ? 'Save changes' : 'Save venue'}</button>
@@ -560,7 +705,7 @@ function VenueFormModal({ open, onClose, venue, onSave }) {
         </div>
         <div className="field"><label className="field-label">Name *</label><input className="input" placeholder="e.g. Carter Garden Estate" value={f.name} onChange={e => upd('name', e.target.value)} /></div>
         <div className="grid-2">
-          <div className="field"><label className="field-label">City *</label><input className="input" placeholder="Brooklyn, NY" value={f.city} onChange={e => upd('city', e.target.value)} /></div>
+          <div className="field"><label className="field-label">City *</label><input className="input" placeholder="Chicago, IL" value={f.city} onChange={e => upd('city', e.target.value)} /></div>
           <div className="field"><label className="field-label">Capacity *</label><input className="input" type="number" placeholder="200" value={f.capacity} onChange={e => upd('capacity', e.target.value)} /></div>
         </div>
         <div className="field"><label className="field-label">Address *</label>
@@ -677,10 +822,10 @@ function SettingsProfile({ user }) {
         <div className="field"><label className="field-label">Last name</label><input className="input" defaultValue={user.last} /></div>
         <div className="field"><label className="field-label">Email</label><input className="input" defaultValue={user.email} /></div>
         <div className="field"><label className="field-label">Phone</label><input className="input" defaultValue="+1 (917) 555-0188" /></div>
-        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" defaultValue="Lead floral designer with 8 years of high-end event experience. Brooklyn-based. Specializes in suspended installations and editorial moments." /></div>
+        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" defaultValue="Lead floral designer with 8 years of high-end event experience. Chicago-based. Specializes in suspended installations and editorial moments." /></div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-        <button className="btn btn-coral" onClick={() => toast.push({ kind: 'success', title: 'Profile updated' })}>Save changes</button>
+        <button className="btn btn-coral" onClick={() => toast.push({ kind: 'info', title: 'Saved (preview)', body: 'Profile changes are session-only until backend wiring lands.' })}>Save changes</button>
       </div>
     </div>
   );
@@ -779,7 +924,17 @@ function PageAudit() {
             <SP_I.Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
             <input className="input" placeholder="Search log..." style={{ paddingLeft: 36, width: 220, height: 36 }} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={() => toast.push({ kind: 'success', title: 'Export started', body: 'Audit-log-2026-05.csv will download shortly.' })}>Export CSV</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => {
+            const header = 'when,who,kind,what\n';
+            const rows = filtered.map(r => `"${r.when}","${r.who}","${r.kind}","${r.what.replace(/"/g, '""')}"`).join('\n');
+            const blob = new Blob([header + rows], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            toast.push({ kind: 'success', title: 'CSV downloaded', body: `${filtered.length} entries exported.` });
+          }}>Export CSV</button>
         </div>
       </div>
       <div className="card card-flush">
@@ -801,8 +956,11 @@ function PageAudit() {
 /* ============ Analytics (admin) ============ */
 function PageAnalytics() {
   const [range, setRange] = SP_us('12m');
-  const series = [22, 30, 26, 38, 42, 36, 48, 58, 52, 64, 71, 84];
-  const months = ['Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
+  const allSeries = [12, 14, 18, 16, 20, 22, 25, 22, 30, 26, 38, 42, 36, 48, 58, 52, 64, 71, 84];
+  const allMonths = ['Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
+  const slice = range === 'ytd' ? 5 : range === '12m' ? 12 : allSeries.length;
+  const series = allSeries.slice(-slice);
+  const months = allMonths.slice(-slice);
   const max = Math.max(...series);
   return (
     <div className="content fade-up">
@@ -876,7 +1034,7 @@ function PageSiteContent() {
       <div className="section-heading"><h2>Site content</h2>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => setAddSectionOpen(true)}><SP_I.Plus size={14} />Add section</button>
-          <button className="btn btn-coral btn-sm" onClick={() => toast.push({ kind: 'success', title: 'Saved', body: 'Live on rosyrecruits.com within 60 seconds.' })}>Save changes</button>
+          <button className="btn btn-coral btn-sm" onClick={() => toast.push({ kind: 'info', title: 'Saved (preview)', body: 'Backend wiring coming soon — changes are session-only for now.' })}>Save changes</button>
         </div>
       </div>
       <div className="grid-2">
@@ -971,7 +1129,7 @@ function PageEmails() {
       </Modal>
       {testModalOpen ? (
         <Modal open={testModalOpen} onClose={() => setTestModalOpen(false)} title="Send test email" size="sm"
-          footer={<><button className="btn btn-ghost" onClick={() => setTestModalOpen(false)}>Cancel</button><button className="btn btn-coral" disabled={!testEmail.includes('@')} onClick={() => { setTestModalOpen(false); toast.push({ kind: 'success', title: 'Test email sent', body: `Sent to ${testEmail}` }); setTestEmail(''); }}>Send</button></>}>
+          footer={<><button className="btn btn-ghost" onClick={() => setTestModalOpen(false)}>Cancel</button><button className="btn btn-coral" disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)} onClick={() => { setTestModalOpen(false); toast.push({ kind: 'success', title: 'Test email sent', body: `Sent to ${testEmail}` }); setTestEmail(''); }}>Send</button></>}>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Send to</label>
           <input className="input" placeholder="you@studio.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
         </Modal>
@@ -984,21 +1142,31 @@ function PageGallery() {
   const toast = useToast();
   const [items, setItems] = SP_us(window.RosyStores.gallery);
   const [filter, setFilter] = SP_us('all');
+  const [confirmDeleteId, setConfirmDeleteId] = SP_us(null);
   const fileRef = React.useRef(null);
 
   const updateItem = (id, patch) => {
     setItems(arr => {
-      const next = arr.map(x => x.id === id ? { ...x, ...patch } : x);
+      let next = arr.map(x => x.id === id ? { ...x, ...patch } : x);
+      // Enforce max=1 on single-slot sections by evicting any prior occupant to "unused"
+      if (patch.section) {
+        const sec = window.GALLERY_SECTIONS.find(s => s.id === patch.section);
+        if (sec && sec.max === 1) {
+          next = next.map(x => (x.section === patch.section && x.id !== id) ? { ...x, section: 'unused' } : x);
+          toast.push({ kind: 'info', title: `${sec.label}: previous photo moved to Unused`, body: 'Single-slot section — only one photo at a time.' });
+        }
+      }
       window.RosyStores.gallery = next;
       return next;
     });
   };
-  const removeItem = (id) => {
+  const doRemove = (id) => {
     setItems(arr => {
       const next = arr.filter(x => x.id !== id);
       window.RosyStores.gallery = next;
       return next;
     });
+    setConfirmDeleteId(null);
     toast.push({ kind: 'warning', title: 'Photo removed' });
   };
   const handleFile = (e) => {
@@ -1032,6 +1200,8 @@ function PageGallery() {
           <button key={s.id} className="pill" style={{ background: filter === s.id ? 'var(--color-ink)' : 'var(--color-surface-soft)', color: filter === s.id ? '#fff' : 'var(--color-muted)', cursor: 'pointer', border: 0 }} onClick={() => setFilter(s.id)}>{s.label} ({sectionCounts[s.id]})</button>
         ))}
       </div>
+      <ConfirmDialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)} title="Remove this photo?" message="It will be removed from the gallery — you can re-upload later." confirmLabel="Remove" onConfirm={() => doRemove(confirmDeleteId)} />
+
       {filtered.length === 0 ? <Empty icon={SP_I.Image} title="No photos in this section" body="Drag a photo here or upload from the toolbar." /> : (
         <div className="grid-3">
           {filtered.map(item => {
@@ -1041,7 +1211,7 @@ function PageGallery() {
                 <div style={{ position: 'relative', aspectRatio: '4/5' }}>
                   <EventImage src={item.src} name={section?.label || 'Photo'} size="100%" radius={0}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
-                  <button className="row-action-btn danger" style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)' }} onClick={() => removeItem(item.id)}><SP_I.Trash2 size={14} /></button>
+                  <button className="row-action-btn danger" aria-label="Remove photo" style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)' }} onClick={() => setConfirmDeleteId(item.id)}><SP_I.Trash2 size={14} /></button>
                 </div>
                 <div style={{ padding: 12 }}>
                   <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Assigned to</p>
@@ -1064,7 +1234,7 @@ function PagePlatformSettings() {
     <div className="content fade-up">
       <div className="section-heading">
         <h2>Platform settings</h2>
-        <button className="btn btn-coral" onClick={() => toast.push({ kind: 'success', title: 'Settings saved' })}>Save changes</button>
+        <button className="btn btn-coral" onClick={() => toast.push({ kind: 'info', title: 'Saved (preview)', body: 'Backend wiring coming soon — changes are session-only for now.' })}>Save changes</button>
       </div>
       <div className="grid-2">
         <div className="card">

@@ -201,7 +201,8 @@ function Empty({ icon: Icon = Ic.Sparkles, title, body, cta }) {
 }
 
 /* ---------- Sidebar nav ---------- */
-function Sidebar({ role, route, setRoute, sidebarStyle = 'pill', dark = false, brandColor = 'coral' }) {
+function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, sidebarStyle = 'pill', dark = false, brandColor = 'coral' }) {
+  const closeAfter = (fn) => () => { fn(); onClose && onClose(); };
   const NAV = {
     admin: [
       { section: 'OVERVIEW', items: [
@@ -263,34 +264,37 @@ function Sidebar({ role, route, setRoute, sidebarStyle = 'pill', dark = false, b
   const styleClass = sidebarStyle === 'bar' ? 'style-bar' : sidebarStyle === 'subtle' ? 'style-subtle' : '';
 
   return (
-    <aside className={`sidebar ${styleClass} ${dark ? 'dark' : ''}`}>
-      <div className="sidebar-logo">
-        <RoseLogo />
-        <div className="sidebar-logo-text">Rosy<span className="accent"> Recruits</span></div>
-      </div>
-      {sections.map((sec, i) => (
-        <React.Fragment key={i}>
-          {sec.section ? <div className="sidebar-divider">{sec.section}</div> : null}
-          {sec.items.map(item => (
-            <button key={item.id}
-              className={`nav-item ${route === item.id ? 'active' : ''}`}
-              onClick={() => setRoute(item.id)}>
-              <item.icon className="nav-icon" />
-              <span>{item.label}</span>
-              {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
-            </button>
-          ))}
-        </React.Fragment>
-      ))}
-      <div style={{ flex: 1 }} />
-      <div className="divider" style={{ margin: '12px 0 8px' }} />
-      <button className="nav-item" onClick={() => setRoute('settings')}>
-        <Ic.Settings className="nav-icon" /><span>Settings</span>
-      </button>
-      <button className="nav-item" onClick={() => setRoute('logout')}>
-        <Ic.LogOut className="nav-icon" /><span>Log Out</span>
-      </button>
-    </aside>
+    <>
+      {open ? <div className="sidebar-backdrop" onClick={onClose} /> : null}
+      <aside className={`sidebar ${styleClass} ${dark ? 'dark' : ''} ${open ? 'open' : ''}`}>
+        <div className="sidebar-logo">
+          <RoseLogo />
+          <div className="sidebar-logo-text">Rosy<span className="accent"> Recruits</span></div>
+        </div>
+        {sections.map((sec, i) => (
+          <React.Fragment key={i}>
+            {sec.section ? <div className="sidebar-divider">{sec.section}</div> : null}
+            {sec.items.map(item => (
+              <button key={item.id}
+                className={`nav-item ${route === item.id ? 'active' : ''}`}
+                onClick={closeAfter(() => setRoute(item.id))}>
+                <item.icon className="nav-icon" />
+                <span>{item.label}</span>
+                {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
+              </button>
+            ))}
+          </React.Fragment>
+        ))}
+        <div style={{ flex: 1 }} />
+        <div className="divider" style={{ margin: '12px 0 8px' }} />
+        <button className="nav-item" onClick={closeAfter(() => setRoute('settings'))}>
+          <Ic.Settings className="nav-icon" /><span>Settings</span>
+        </button>
+        <button className="nav-item" onClick={closeAfter(() => onSignOut && onSignOut())}>
+          <Ic.LogOut className="nav-icon" /><span>Log Out</span>
+        </button>
+      </aside>
+    </>
   );
 }
 
@@ -303,33 +307,43 @@ function RoseLogo({ size = 28 }) {
 }
 
 /* ---------- App header ---------- */
-function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRoute, breadcrumbs }) {
+function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRoute, breadcrumbs, onBurger, sessionUser }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const safeUser = currentUser || { name: 'Guest', first: 'Guest' };
+  // Role switcher rules:
+  //   - signed-in admin    → show as a "View as" tool (admins can preview vendor/worker)
+  //   - signed-in non-admin → hide entirely (your role is fixed)
+  //   - anonymous demo     → show (this is the demo entry point)
+  const showRoleSwitch = !sessionUser || sessionUser.role === 'admin';
   return (
     <header className="app-header">
+      {onBurger ? (
+        <button className="app-burger" aria-label="Open menu" onClick={onBurger}>
+          <Ic.Menu size={20} />
+        </button>
+      ) : null}
       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <h1 style={{ margin: 0 }}>{title}</h1>
         <Breadcrumbs items={breadcrumbs} />
       </div>
       <div className="header-spacer" />
-      <RoleSwitch role={role} setRole={setRole} />
+      {showRoleSwitch ? <RoleSwitch role={role} setRole={setRole} viewAs={!!sessionUser} /> : null}
       <button className="icon-btn" aria-label="Notifications" onClick={onBell}>
         <Ic.Bell size={18} />
         <span className="bell-dot" />
       </button>
       <div style={{ position: 'relative' }}>
         <button className="header-avatar" onClick={() => setMenuOpen(o => !o)}>
-          <Avatar name={currentUser.name} size="sm" />
-          <span className="name">{currentUser.first}</span>
+          <Avatar name={safeUser.name} size="sm" />
+          <span className="name">{safeUser.first}</span>
           <Ic.ChevronDown size={14} />
         </button>
         {menuOpen ? (
           <div style={{ position: 'absolute', top: 50, right: 0, width: 220, background: 'var(--color-canvas)', border: '1px solid var(--color-hairline)', borderRadius: 12, boxShadow: 'var(--shadow-modal)', padding: 6, zIndex: 50 }}>
             {[
-              ['View profile',     () => setRoute && setRoute('settings')],
               ['Account settings', () => setRoute && setRoute('settings')],
               ['Take the tour',    () => window.dispatchEvent(new CustomEvent('rosy:start-tour'))],
-              ['Help & support',   () => setRoute && setRoute('notifications')],
+              ['Help & support',   () => window.open('mailto:support@rosyrecruits.com?subject=Help%20with%20Rosy%20Recruits', '_blank', 'noopener')],
               ['Log out',          () => onSignOut()],
             ].map(([label, fn]) => (
               <button key={label} className="nav-item" style={{ fontSize: 13 }} onClick={() => { setMenuOpen(false); fn && fn(); }}>{label}</button>
@@ -341,9 +355,9 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
   );
 }
 
-function RoleSwitch({ role, setRole }) {
+function RoleSwitch({ role, setRole, viewAs = false }) {
   const ROLES = [
-    { id: 'admin',  label: 'Admin' },
+    { id: 'admin',  label: viewAs ? 'Admin' : 'Admin' },
     { id: 'vendor', label: 'Vendor' },
     { id: 'worker', label: 'Worker' },
   ];
@@ -367,14 +381,23 @@ function RoleSwitch({ role, setRole }) {
 }
 
 /* ---------- Notification dropdown ---------- */
-function NotificationPanel({ open, onClose, setRoute }) {
+function NotificationPanel({ open, onClose, setRoute, role = 'admin' }) {
   const [tab, setTab] = useState('all');
   const list = D.NOTIFICATIONS.filter(n => tab === 'all' || n.unread);
   if (!open) return null;
   const openNotif = (n) => {
     onClose && onClose();
     const target = (n.link || '').replace('#', '').split('/').pop() || 'dashboard';
-    const map = { 'e1': 'events:e1', 'disputes': 'disputes', 'my-gigs': 'my-gigs', 'inbox': 'inbox', 'profile': 'settings', 'payments': 'payments' };
+    // Role-aware mapping: my-gigs is worker-only; admin/vendor go to dashboard for that target
+    const workerOnly = role === 'worker';
+    const map = {
+      'e1': 'events:e1',
+      'disputes': role === 'admin' ? 'disputes' : 'dashboard',
+      'my-gigs': workerOnly ? 'my-gigs' : 'dashboard',
+      'inbox': 'inbox',
+      'profile': 'settings',
+      'payments': 'payments',
+    };
     setRoute && setRoute(map[target] || 'notifications');
   };
   return ReactDOM.createPortal(
@@ -421,14 +444,18 @@ function Pagination({ page, setPage, total, perPage = 10, label = 'rows' }) {
   const safePage = Math.min(page, pages);
   const from = total === 0 ? 0 : (safePage - 1) * perPage + 1;
   const to = Math.min(safePage * perPage, total);
+  // Only show prev/next nav when there's more than one page worth of data.
+  const showNav = pages > 1;
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--color-hairline)', alignItems: 'center', fontSize: 12.5, color: 'var(--color-muted)' }}>
       <span>{total === 0 ? `No ${label}` : `Showing ${from}–${to} of ${total} ${label}`}</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button className="btn btn-ghost btn-sm" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}><Ic.ChevronLeft size={14} />Previous</button>
-        <span>Page {safePage} of {pages}</span>
-        <button className="btn btn-ghost btn-sm" disabled={safePage >= pages} onClick={() => setPage(p => Math.min(pages, p + 1))}>Next<Ic.ChevronRight size={14} /></button>
-      </div>
+      {showNav ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn btn-ghost btn-sm" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}><Ic.ChevronLeft size={14} />Previous</button>
+          <span>Page {safePage} of {pages}</span>
+          <button className="btn btn-ghost btn-sm" disabled={safePage >= pages} onClick={() => setPage(p => Math.min(pages, p + 1))}>Next<Ic.ChevronRight size={14} /></button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -569,7 +596,8 @@ function fmtMoney(n) { return `$${n.toLocaleString('en-US', { minimumFractionDig
 function getGreeting(name) {
   const h = new Date().getHours();
   const greet = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
-  return name ? `${greet}, ${name}` : `${greet},`;
+  const safe = (name && name !== 'Guest') ? name : 'there';
+  return `${greet}, ${safe}`;
 }
 
 Object.assign(window, {

@@ -2,19 +2,58 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Rosy Recruits — Where Floral Excellence Meets Efficiency</title>
+  <meta name="description" content="Post your first gig in 60 seconds. Vendors crew up, workers find work, Stripe handles the money. Built in Chicago for floral event teams across Chicagoland." />
+  <meta name="theme-color" content="#E8473F" />
   <link rel="stylesheet" href="project/styles.css" />
   <link rel="icon" type="image/avif" href="project/assets/logo.avif" />
+  <link rel="apple-touch-icon" href="project/assets/logo.avif" />
+  <link rel="manifest" href="manifest.json" />
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" crossorigin="anonymous"></script>
+  <script>
+    // Dev-only cache-buster: append ?v=<now> to every type="text/babel" src
+    // so the in-browser Babel transformer always fetches fresh JSX during development.
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('script[type="text/babel"][src]').forEach(s => {
+        const sep = s.src.includes('?') ? '&' : '?';
+        s.src = s.src + sep + 'v=' + Date.now();
+      });
+    }, { capture: true });
+
+    // Capture the PWA install prompt the moment Chrome fires it, stash it on window so
+    // the "Install app" button in marketing_pages.jsx can fire it later.
+    window.__pwaInstallEvent = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.__pwaInstallEvent = e;
+      window.dispatchEvent(new CustomEvent('rosy:pwa-installable'));
+    });
+    window.addEventListener('appinstalled', () => {
+      window.__pwaInstallEvent = null;
+      window.dispatchEvent(new CustomEvent('rosy:pwa-installed'));
+    });
+
+    // Register the service worker (offline shell + install support).
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('SW registration failed:', err));
+      });
+    }
+  </script>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="text/babel" src="project/src/icons.jsx" data-presets="react"></script>
   <script type="text/babel" src="project/src/data.jsx" data-presets="react"></script>
+  <script type="text/babel" src="project/src/supabase_client.jsx" data-presets="react"></script>
   <script type="text/babel" src="project/src/components.jsx" data-presets="react"></script>
   <script type="text/babel" src="project/src/screen_dashboards.jsx" data-presets="react"></script>
   <script type="text/babel" src="project/src/screen_events.jsx" data-presets="react"></script>

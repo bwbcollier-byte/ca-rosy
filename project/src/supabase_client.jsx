@@ -1,0 +1,874 @@
+/* Supabase hydrator — fetches all rr_* tables on boot and replaces window.RosyData
+   with live data, keeping the same shape the screens expect. Falls back to seed
+   data on error so the app always renders. Configure via window.SUPABASE_CONFIG. */
+
+window.SUPABASE_CONFIG = {
+  url: 'https://oerfmtjpwrefxuitsphl.supabase.co',
+  anonKey: 'sb_publishable_MnjwRR18cHX8t4VXxMY6sA_ADZ5SCd8',
+};
+
+(function initClient() {
+  if (!window.supabase || !window.supabase.createClient) {
+    console.warn('Supabase JS not loaded — staying on seed data.');
+    return;
+  }
+  window.sb = window.supabase.createClient(
+    window.SUPABASE_CONFIG.url,
+    window.SUPABASE_CONFIG.anonKey,
+    { auth: { persistSession: false } }
+  );
+})();
+
+/* ---------- helpers ---------- */
+function timeAgo(iso) {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  const s = Math.round(ms / 1000);
+  if (s < 60)        return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60)        return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24)        return `${h}h ago`;
+  const d = Math.round(h / 24);
+  if (d < 30)        return `${d}d ago`;
+  const mo = Math.round(d / 30);
+  return `${mo}mo ago`;
+}
+
+function dayLabel(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  const y = new Date(today); y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString())     return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+function timeLabel(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+function statusForUI(s) {
+  // Map DB enums to the seed's UI-facing labels
+  if (s === 'filled')  return 'confirmed';
+  return s;
+}
+
+function paymentStatusForUI(s) {
+  if (!s) return 'Pending';
+  if (s === 'late')      return 'Late';
+  if (s === 'disputed')  return 'Disputed';
+  if (s === 'paid')      return 'Paid';
+  if (s === 'pending')   return 'Pending';
+  if (s === 'not_due')   return 'Not Due';
+  if (s === 'processing')return 'Processing';
+  if (s === 'refunded')  return 'Refunded';
+  if (s === 'partial')   return 'Partial';
+  return capitalize(s);
+}
+
+/* ---------- single-table fetchers (parallelizable) ---------- */
+async function fetchAll(table, options = {}) {
+  const { select = '*', orderBy } = options;
+  let q = window.sb.from(table).select(select);
+  if (orderBy) q = q.order(orderBy.col, { ascending: orderBy.asc !== false });
+  const { data, error } = await q;
+  if (error) { console.warn(`[supabase] ${table} fetch error:`, error.message); return []; }
+  return data || [];
+}
+
+/* ---------- transforms ---------- */
+function buildUsers(profiles, vendors, workers) {
+  const vById = Object.fromEntries(vendors.map(v => [v.id, v]));
+  const wById = Object.fromEntries(workers.map(w => [w.id, w]));
+  return profiles.map(p => {
+    const v = vById[p.id];
+    const w = wById[p.id];
+    const name = `${p.first_name || ''} ${p.last_name || ''}`.trim() || (p.email || '').split('@')[0];
+    return {
+      id:      p.id,
+      name,
+      first:   p.first_name || name.split(' ')[0],
+      last:    p.last_name  || '',
+      email:   p.email,
+      role:    p.role,
+      company: v?.company_name || p.title || (p.role === 'admin' ? 'Rosy Recruits' : 'Freelancer'),
+      status:  p.status || 'active',
+      joined:  (p.created_at || '').slice(0, 10),
+      city:    p.city ? `${p.city}, ${p.state || ''}`.replace(/, $/, '') : null,
+      rating:  v?.rating || w?.rating || null,
+      gigs:    v?.gigs_completed || w?.gigs_completed || null,
+    };
+  });
+}
+
+function buildVenues(rows, fallbackImages) {
+  return rows.map((v, i) => ({
+    id:       v.id,
+    name:     v.name,
+    city:     v.city ? `${v.city}, ${v.state || ''}`.replace(/, $/, '') : '',
+    capacity: 200, // not in schema; sensible default for the UI
+    type:     v.event_types?.[0] ? capitalize(v.event_types[0]) : 'Venue',
+    address:  v.address || '',
+    image:    v.image_url || fallbackImages[i % fallbackImages.length],
+  }));
+}
+
+function buildEvents(rows, gigs, fallbackImages) {
+  const byEvent = {};
+  gigs.forEach(g => {
+    const e = byEvent[g.event_id] || (byEvent[g.event_id] = { count: 0, filled: 0, types: new Set() });
+    e.count  += 1;
+    e.filled += g.spots_filled || 0;
+    if (g.gig_type) e.types.add(g.gig_type);
+  });
+  return rows.map((e, i) => {
+    const stats = byEvent[e.id] || { count: 0, filled: 0, types: new Set() };
+    return {
+      id:          e.id,
+      name:        e.title,
+      date:        e.event_date,
+      start:       (e.start_time || '').slice(0, 5),
+      end:         (e.end_time   || '').slice(0, 5),
+      venueId:     e.venue_id,
+      vendorId:    e.vendor_id,
+      image:       e.image_url || fallbackImages[i % fallbackImages.length],
+      desc:        e.description || '',
+      status:      e.status,
+      types:       (e.gig_types && e.gig_types.length) ? e.gig_types : Array.from(stats.types),
+      gigCount:    stats.count,
+      filledCount: stats.filled,
+    };
+  });
+}
+
+function buildGigs(rows, applications) {
+  // assignedTo = worker_ids of confirmed/completed applications for this gig
+  const byGig = {};
+  applications.forEach(a => {
+    if (a.status === 'confirmed' || a.status === 'completed') {
+      (byGig[a.gig_id] || (byGig[a.gig_id] = [])).push(a.worker_id);
+    }
+  });
+  return rows.map(g => ({
+    id:          g.id,
+    eventId:     g.event_id,
+    type:        g.gig_type,
+    date:        g.gig_date,
+    start:       (g.start_time || '').slice(0, 5),
+    end:         (g.end_time   || '').slice(0, 5),
+    spots:       g.spots_total,
+    spotsFilled: g.spots_filled,
+    rate:        Number(g.hourly_rate),
+    priority:    capitalize(g.priority || 'medium'),
+    status:      statusForUI(g.status),
+    assignedTo:  byGig[g.id] || [],
+    description: g.description || '',
+  }));
+}
+
+function buildTransactions(applications, usersById) {
+  return applications
+    .filter(a => a.amount_due != null || a.payment_status)
+    .map(a => {
+      const worker = usersById[a.worker_id];
+      const vendor = usersById[a.vendor_id];
+      return {
+        id:      a.id,
+        invoice: a.request_code || a.id.slice(0, 8),
+        payer:   vendor?.company || vendor?.name || 'Vendor',
+        payee:   worker?.name || 'Worker',
+        amount:  Number(a.amount_due || a.estimated_amount || 0),
+        status:  paymentStatusForUI(a.payment_status),
+        date:    (a.paid_at || a.completed_at || a.confirmed_at || a.applied_at || '').slice(0, 10),
+        note:    a.cancellation_reason || null,
+      };
+    });
+}
+
+function buildNotifications(rows) {
+  return rows.map(n => ({
+    id:      n.id,
+    type:    n.type,
+    title:   n.title,
+    body:    n.body,
+    time:    timeAgo(n.created_at),
+    link:    n.link || '',
+    unread:  !n.read,
+    _userId: n.user_id,                        // kept for per-user filtering in NotificationCenter
+  }));
+}
+
+function buildMessages(conversations, messages, usersById) {
+  // Stash sender_id + recipient_id raw on each message so the Inbox screen
+  // can compute who="me"/"them" against the live session user at render time.
+  const msgsByConv = {};
+  messages.forEach(m => {
+    (msgsByConv[m.conversation_id] || (msgsByConv[m.conversation_id] = [])).push(m);
+  });
+  Object.values(msgsByConv).forEach(arr =>
+    arr.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+  );
+
+  return conversations.map(c => {
+    const ms = msgsByConv[c.id] || [];
+    // Default "with" = first participant that isn't the conversation starter
+    const otherId = (c.participants || []).find(p => p !== c.started_by) || c.started_by;
+    const other = usersById[otherId] || {};
+    const last = ms[ms.length - 1];
+    return {
+      id:           c.id,
+      with:         otherId,
+      participants: c.participants || [],
+      startedBy:    c.started_by,
+      name:         other.name || c.subject || 'Conversation',
+      online:       false,
+      unread:       ms.filter(m => !m.read_at).length,
+      preview:      last?.content || '',
+      messages:     ms.map(m => ({
+        senderId:    m.sender_id,
+        recipientId: m.recipient_id,
+        text:        m.content || '',
+        time:        timeLabel(m.created_at),
+        day:         dayLabel(m.created_at),
+      })),
+    };
+  });
+}
+
+function buildFaqs(rows) {
+  return rows.map(f => ({ q: f.question, a: f.answer }));
+}
+
+function buildTestimonials(rows) {
+  return rows.map(t => ({
+    id: t.id, quote: t.quote, who: t.reviewer_name,
+    role: t.reviewer_role || t.reviewer_company || '',
+  }));
+}
+
+/* ---------- the boot ---------- */
+window.bootRosyFromSupabase = async function bootRosyFromSupabase() {
+  if (!window.sb) return null;
+  const t0 = performance.now();
+  try {
+    const [
+      profiles, vendors, workers, venues, events, gigs,
+      applications, notifications, conversations, messages,
+      faqs, testimonials,
+    ] = await Promise.all([
+      fetchAll('rr_profiles',         { orderBy: { col: 'created_at', asc: false } }),
+      fetchAll('rr_vendor_profiles'),
+      fetchAll('rr_worker_profiles'),
+      fetchAll('rr_venues',           { orderBy: { col: 'name' } }),
+      fetchAll('rr_events',           { orderBy: { col: 'event_date' } }),
+      fetchAll('rr_gigs',             { orderBy: { col: 'gig_date' } }),
+      fetchAll('rr_gig_applications', { orderBy: { col: 'created_at', asc: false } }),
+      fetchAll('rr_notifications',    { orderBy: { col: 'created_at', asc: false } }),
+      fetchAll('rr_conversations',    { orderBy: { col: 'last_message_at', asc: false } }),
+      fetchAll('rr_messages',         { orderBy: { col: 'created_at' } }),
+      fetchAll('rr_faqs',             { orderBy: { col: 'sort_order' } }),
+      fetchAll('rr_testimonials',     { orderBy: { col: 'sort_order' } }),
+    ]);
+
+    if (profiles.length === 0) {
+      console.warn('[supabase] No profiles returned — staying on seed.');
+      return null;
+    }
+
+    const USERS = buildUsers(profiles, vendors, workers);
+    const usersById = Object.fromEntries(USERS.map(u => [u.id, u]));
+
+    const seed = window.RosyData || {};
+    const live = {
+      USERS,
+      VENUES:        buildVenues(venues, seed.IMAGES?.events || []),
+      EVENTS:        buildEvents(events, gigs, seed.IMAGES?.events || []),
+      GIGS:          buildGigs(gigs, applications),
+      GIG_TYPES:     seed.GIG_TYPES,                              // static
+      TRANSACTIONS:  buildTransactions(applications, usersById),
+      NOTIFICATIONS: buildNotifications(notifications),
+      MESSAGES:      buildMessages(conversations, messages, usersById),
+      IMAGES:        seed.IMAGES,                                 // static
+      TESTIMONIALS:  testimonials.length ? buildTestimonials(testimonials) : seed.TESTIMONIALS,
+      FAQS:          faqs.length          ? buildFaqs(faqs)          : seed.FAQS,
+    };
+
+    // Mutate existing window.RosyData rather than replace, so files that captured
+    // `const SP_D = window.RosyData` at module load still see the live data.
+    Object.assign(window.RosyData, live);
+    window.__rosyDataSource = 'supabase';
+    console.info(`[supabase] hydrated in ${Math.round(performance.now() - t0)}ms — ${USERS.length} users, ${live.EVENTS.length} events, ${live.GIGS.length} gigs.`);
+    return live;
+  } catch (e) {
+    console.warn('[supabase] hydration failed, falling back to seed:', e.message);
+    window.__rosyDataSource = 'seed';
+    return null;
+  }
+};
+
+Object.assign(window, { bootRosyFromSupabase: window.bootRosyFromSupabase });
+
+/* ======================================================================
+   RosyMutate — UI-shape ↔ DB-shape mutation helpers.
+   Each helper writes to Supabase, mutates window.RosyData in place so
+   other screens stay in sync, and falls back to local-only when offline.
+   Returns the (live) UI-shape record on success.
+   ====================================================================== */
+
+const isLive = () => !!window.sb && window.__rosyDataSource === 'supabase';
+
+function genId(prefix) { return prefix + '_' + Math.random().toString(36).slice(2, 10); }
+
+// Replace-or-append in an array by id (in-place)
+function upsertById(arr, item) {
+  const i = arr.findIndex(x => x.id === item.id);
+  if (i >= 0) arr[i] = item; else arr.unshift(item);
+}
+function removeById(arr, id) {
+  const i = arr.findIndex(x => x.id === id);
+  if (i >= 0) arr.splice(i, 1);
+}
+
+// Map UI event ↔ DB rr_events
+function eventUiToDb(p) {
+  return {
+    title:        p.name,
+    description:  p.desc,
+    event_date:   p.date,
+    start_time:   p.start || null,
+    end_time:     p.end   || null,
+    venue_id:     p.venueId || null,
+    vendor_id:    p.vendorId,
+    location:     p.location || null,
+    image_url:    p.image || null,
+    status:       p.status || 'open',
+    gig_types:    p.types || [],
+    is_public:    p.is_public ?? true,
+  };
+}
+function eventDbToUi(row, fallbackImages = []) {
+  return {
+    id:          row.id,
+    name:        row.title,
+    date:        row.event_date,
+    start:       (row.start_time || '').slice(0, 5),
+    end:         (row.end_time   || '').slice(0, 5),
+    venueId:     row.venue_id,
+    vendorId:    row.vendor_id,
+    image:       row.image_url || fallbackImages[0] || '',
+    desc:        row.description || '',
+    status:      row.status,
+    types:       row.gig_types || [],
+    gigCount:    0,
+    filledCount: 0,
+  };
+}
+
+function gigUiToDb(p) {
+  return {
+    event_id:     p.eventId,
+    vendor_id:    p.vendorId,
+    title:        p.title || (`${p.type} crew`),
+    description:  p.description || '',
+    gig_type:     p.type,
+    gig_date:     p.date,
+    start_time:   p.start || null,
+    end_time:     p.end   || null,
+    hourly_rate:  Number(p.rate || 0),
+    spots_total:  Number(p.spots || 1),
+    spots_filled: Number(p.spotsFilled || 0),
+    status:       p.status === 'confirmed' ? 'filled' : (p.status || 'open'),
+    priority:     (p.priority || 'medium').toLowerCase(),
+    is_public:    p.is_public ?? true,
+  };
+}
+function gigDbToUi(row) {
+  return {
+    id:          row.id,
+    eventId:     row.event_id,
+    type:        row.gig_type,
+    date:        row.gig_date,
+    start:       (row.start_time || '').slice(0, 5),
+    end:         (row.end_time   || '').slice(0, 5),
+    spots:       row.spots_total,
+    spotsFilled: row.spots_filled,
+    rate:        Number(row.hourly_rate),
+    priority:    capitalize(row.priority || 'medium'),
+    status:      statusForUI(row.status),
+    assignedTo:  [],
+    description: row.description || '',
+  };
+}
+
+function venueUiToDb(p) {
+  return {
+    name:        p.name,
+    description: p.notes || p.description || null,
+    address:     p.address || null,
+    city:        p.city ? p.city.split(',')[0].trim() : null,
+    state:       p.city && p.city.includes(',') ? p.city.split(',')[1].trim() : null,
+    zip:         p.zip || null,
+    country:     p.country || 'US',
+    image_url:   p.image || null,
+    event_types: Array.isArray(p.event_types) ? p.event_types : (p.type ? [p.type.toLowerCase()] : []),
+    status:      'open',
+  };
+}
+function venueDbToUi(row, fallbackImages = []) {
+  return {
+    id:       row.id,
+    name:     row.name,
+    city:     row.city ? `${row.city}, ${row.state || ''}`.replace(/, $/, '') : '',
+    capacity: 200,
+    type:     row.event_types?.[0] ? capitalize(row.event_types[0]) : 'Venue',
+    address:  row.address || '',
+    image:    row.image_url || fallbackImages[0] || '',
+    notes:    row.description || '',
+  };
+}
+
+function notifyChange() {
+  try { window.dispatchEvent(new CustomEvent('rosy:data-changed')); } catch (e) {}
+}
+
+window.RosyMutate = {
+  events: {
+    async create(patch) {
+      const tempId = genId('e');
+      const optimistic = { id: tempId, gigCount: 0, filledCount: 0, ...patch };
+      window.RosyData.EVENTS.unshift(optimistic);
+      notifyChange();
+      if (!isLive()) return optimistic;
+      const { data, error } = await window.sb.from('rr_events').insert(eventUiToDb(patch)).select().single();
+      if (error) { removeById(window.RosyData.EVENTS, tempId); notifyChange(); throw error; }
+      const live = { ...eventDbToUi(data, window.RosyData.IMAGES?.events), gigCount: 0, filledCount: 0 };
+      removeById(window.RosyData.EVENTS, tempId);
+      window.RosyData.EVENTS.unshift(live);
+      notifyChange();
+      return live;
+    },
+    async update(id, patch) {
+      const before = window.RosyData.EVENTS.find(e => e.id === id);
+      if (before) Object.assign(before, patch);
+      notifyChange();
+      if (!isLive()) return before;
+      const dbPatch = {};
+      const map = { name: 'title', desc: 'description', date: 'event_date', start: 'start_time', end: 'end_time', venueId: 'venue_id', image: 'image_url', status: 'status', types: 'gig_types', location: 'location', is_public: 'is_public' };
+      Object.entries(patch).forEach(([k, v]) => { if (map[k]) dbPatch[map[k]] = v; });
+      const { error } = await window.sb.from('rr_events').update(dbPatch).eq('id', id);
+      if (error) throw error;
+      return before;
+    },
+    async delete(id) {
+      const before = window.RosyData.EVENTS.find(e => e.id === id);
+      removeById(window.RosyData.EVENTS, id);
+      notifyChange();
+      if (!isLive()) return true;
+      const { error } = await window.sb.from('rr_events').delete().eq('id', id);
+      if (error) { if (before) window.RosyData.EVENTS.unshift(before); notifyChange(); throw error; }
+      return true;
+    },
+  },
+
+  gigs: {
+    async create(patch) {
+      const tempId = genId('g');
+      const optimistic = { id: tempId, assignedTo: [], spotsFilled: 0, ...patch };
+      window.RosyData.GIGS.unshift(optimistic);
+      notifyChange();
+      if (!isLive()) return optimistic;
+      const { data, error } = await window.sb.from('rr_gigs').insert(gigUiToDb(patch)).select().single();
+      if (error) { removeById(window.RosyData.GIGS, tempId); notifyChange(); throw error; }
+      const live = gigDbToUi(data);
+      removeById(window.RosyData.GIGS, tempId);
+      window.RosyData.GIGS.unshift(live);
+      notifyChange();
+      return live;
+    },
+    async update(id, patch) {
+      const before = window.RosyData.GIGS.find(g => g.id === id);
+      if (before) Object.assign(before, patch);
+      notifyChange();
+      if (!isLive()) return before;
+      const dbPatch = {};
+      const map = { type: 'gig_type', date: 'gig_date', start: 'start_time', end: 'end_time', rate: 'hourly_rate', spots: 'spots_total', spotsFilled: 'spots_filled', priority: null, status: null, description: 'description' };
+      Object.entries(patch).forEach(([k, v]) => {
+        if (k === 'priority') dbPatch.priority = (v || 'medium').toLowerCase();
+        else if (k === 'status') dbPatch.status = v === 'confirmed' ? 'filled' : v;
+        else if (map[k]) dbPatch[map[k]] = (k === 'rate' || k === 'spots' || k === 'spotsFilled') ? Number(v) : v;
+      });
+      const { error } = await window.sb.from('rr_gigs').update(dbPatch).eq('id', id);
+      if (error) throw error;
+      return before;
+    },
+    async delete(id) {
+      const before = window.RosyData.GIGS.find(g => g.id === id);
+      removeById(window.RosyData.GIGS, id);
+      notifyChange();
+      if (!isLive()) return true;
+      const { error } = await window.sb.from('rr_gigs').delete().eq('id', id);
+      if (error) { if (before) window.RosyData.GIGS.unshift(before); notifyChange(); throw error; }
+      return true;
+    },
+  },
+
+  venues: {
+    async create(patch) {
+      const tempId = genId('v');
+      const optimistic = { id: tempId, ...patch };
+      window.RosyData.VENUES.unshift(optimistic);
+      notifyChange();
+      if (!isLive()) return optimistic;
+      const { data, error } = await window.sb.from('rr_venues').insert(venueUiToDb(patch)).select().single();
+      if (error) { removeById(window.RosyData.VENUES, tempId); notifyChange(); throw error; }
+      const live = venueDbToUi(data, window.RosyData.IMAGES?.events);
+      removeById(window.RosyData.VENUES, tempId);
+      window.RosyData.VENUES.unshift(live);
+      notifyChange();
+      return live;
+    },
+    async update(id, patch) {
+      const before = window.RosyData.VENUES.find(v => v.id === id);
+      if (before) Object.assign(before, patch);
+      notifyChange();
+      if (!isLive()) return before;
+      const { error } = await window.sb.from('rr_venues').update(venueUiToDb(patch)).eq('id', id);
+      if (error) throw error;
+      return before;
+    },
+    async delete(id) {
+      const before = window.RosyData.VENUES.find(v => v.id === id);
+      removeById(window.RosyData.VENUES, id);
+      notifyChange();
+      if (!isLive()) return true;
+      const { error } = await window.sb.from('rr_venues').delete().eq('id', id);
+      if (error) { if (before) window.RosyData.VENUES.unshift(before); notifyChange(); throw error; }
+      return true;
+    },
+  },
+
+  applications: {
+    async apply({ gigId, workerId }) {
+      // Worker creates an application for a gig. Returns optimistic record locally + persists to DB.
+      const gig = window.RosyData.GIGS.find(g => g.id === gigId);
+      const worker = window.RosyData.USERS.find(u => u.id === workerId);
+      const vendorId = window.RosyData.EVENTS.find(e => e.id === gig?.eventId)?.vendorId;
+      const tempId = genId('r');
+      const optimistic = {
+        id: tempId,
+        invoice: tempId.slice(0, 8).toUpperCase(),
+        payer: window.RosyData.USERS.find(u => u.id === vendorId)?.company || 'Vendor',
+        payee: worker?.name || 'You',
+        amount: 0,
+        status: 'Applied',
+        date: new Date().toISOString().slice(0, 10),
+      };
+      window.RosyData.TRANSACTIONS.unshift(optimistic);
+      notifyChange();
+      if (!isLive()) return optimistic;
+      const { data, error } = await window.sb.from('rr_gig_applications').insert({
+        gig_id:    gigId,
+        worker_id: workerId,
+        vendor_id: vendorId,
+        status:    'applied',
+        applied_at: new Date().toISOString(),
+        skill:     gig?.type || null,
+      }).select().single();
+      if (error) { removeById(window.RosyData.TRANSACTIONS, tempId); notifyChange(); throw error; }
+      // Swap temp id with real id
+      const i = window.RosyData.TRANSACTIONS.findIndex(t => t.id === tempId);
+      if (i >= 0) window.RosyData.TRANSACTIONS[i] = { ...optimistic, id: data.id, invoice: data.request_code || data.id.slice(0, 8).toUpperCase() };
+      notifyChange();
+      return { ...optimistic, id: data.id };
+    },
+    async withdraw({ gigId, workerId }) {
+      // Cancel applications for this worker on this gig.
+      const before = window.RosyData.TRANSACTIONS
+        .filter(t => t._gigId === gigId && t._workerId === workerId);
+      // Local optimistic delete (best-effort by application linkage)
+      if (!isLive()) return true;
+      const { error } = await window.sb.from('rr_gig_applications')
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+        .eq('gig_id', gigId).eq('worker_id', workerId).eq('status', 'applied');
+      if (error) console.warn('[withdraw]', error.message);
+      return true;
+    },
+    async markComplete({ id, hoursWorked, notes }) {
+      // Worker submits hours; vendor will approve later.
+      const before = window.RosyData.TRANSACTIONS.find(t => t.id === id);
+      if (before) before.status = 'Completed';
+      notifyChange();
+      if (!isLive()) return before;
+      const { error } = await window.sb.from('rr_gig_applications').update({
+        status: 'completed',
+        worker_completed: true,
+        completed_at: new Date().toISOString(),
+        hours_worked: hoursWorked != null ? Number(hoursWorked) : undefined,
+        worker_notes: notes || null,
+      }).eq('id', id);
+      if (error) throw error;
+      return before;
+    },
+    async setStatus(id, status) {
+      // status: 'confirmed' | 'completed' | 'rejected' | 'cancelled' | 'paid'
+      const before = window.RosyData.TRANSACTIONS.find(t => t.id === id);
+      if (before) before.status = capitalize(status);
+      notifyChange();
+      if (!isLive()) return before;
+      const patch = { status };
+      if (status === 'confirmed') patch.confirmed_at = new Date().toISOString();
+      if (status === 'completed') patch.completed_at = new Date().toISOString();
+      if (status === 'paid')      { patch.payment_status = 'paid'; patch.paid_at = new Date().toISOString(); }
+      const { error } = await window.sb.from('rr_gig_applications').update(patch).eq('id', id);
+      if (error) throw error;
+      return before;
+    },
+    async setPaymentStatus(id, paymentStatus) {
+      const before = window.RosyData.TRANSACTIONS.find(t => t.id === id);
+      if (before) before.status = paymentStatusForUI(paymentStatus);
+      notifyChange();
+      if (!isLive()) return before;
+      const patch = { payment_status: paymentStatus };
+      if (paymentStatus === 'paid') patch.paid_at = new Date().toISOString();
+      const { error } = await window.sb.from('rr_gig_applications').update(patch).eq('id', id);
+      if (error) throw error;
+      return before;
+    },
+  },
+
+  messages: {
+    async send({ conversationId, senderId, recipientId, content }) {
+      if (!isLive()) return { id: genId('m'), text: content, who: 'me', time: 'Just now', day: 'Today' };
+      const { data, error } = await window.sb.from('rr_messages').insert({
+        conversation_id: conversationId,
+        sender_id:       senderId,
+        recipient_id:    recipientId,
+        content,
+      }).select().single();
+      if (error) throw error;
+      // Also bump conversation last_message_at
+      window.sb.from('rr_conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId).then(() => {});
+      return { id: data.id, text: data.content, who: 'me', time: 'Just now', day: 'Today' };
+    },
+  },
+
+  conversations: {
+    async create({ subject, startedBy, participants, eventId, gigAppId }) {
+      const tempId = genId('c');
+      const optimistic = { id: tempId, with: participants[0], name: subject, online: false, unread: 0, preview: '', messages: [] };
+      window.RosyData.MESSAGES.unshift(optimistic);
+      notifyChange();
+      if (!isLive()) return optimistic;
+      const { data, error } = await window.sb.from('rr_conversations').insert({
+        subject, started_by: startedBy, participants,
+        event_id: eventId || null, gig_app_id: gigAppId || null,
+        is_visible: true, last_message_at: new Date().toISOString(),
+      }).select().single();
+      if (error) { removeById(window.RosyData.MESSAGES, tempId); notifyChange(); throw error; }
+      const live = { id: data.id, with: participants[0], name: subject, online: false, unread: 0, preview: '', messages: [] };
+      removeById(window.RosyData.MESSAGES, tempId);
+      window.RosyData.MESSAGES.unshift(live);
+      notifyChange();
+      return live;
+    },
+  },
+
+  ratings: {
+    async create({ raterId, ratedId, gigAppId, raterRole, score, comment }) {
+      if (!isLive()) return { id: genId('rt'), score };
+      const { data, error } = await window.sb.from('rr_ratings').insert({
+        rater_id: raterId,
+        rated_id: ratedId,
+        gig_app_id: gigAppId,
+        rater_role: raterRole,
+        score: Number(score),
+        comment: comment || null,
+        is_public: true,
+      }).select().single();
+      if (error) throw error;
+      return data;
+    },
+  },
+
+  notifications: {
+    async markRead(id) {
+      const n = window.RosyData.NOTIFICATIONS.find(x => x.id === id);
+      if (n) n.unread = false;
+      notifyChange();
+      if (!isLive()) return;
+      const { error } = await window.sb.from('rr_notifications').update({ read: true, read_at: new Date().toISOString() }).eq('id', id);
+      if (error) console.warn('[RosyMutate.notifications.markRead]', error.message);
+    },
+    async markAllRead(userId) {
+      window.RosyData.NOTIFICATIONS.forEach(n => { n.unread = false; });
+      notifyChange();
+      if (!isLive()) return;
+      const q = window.sb.from('rr_notifications').update({ read: true, read_at: new Date().toISOString() }).eq('read', false);
+      const { error } = userId ? await q.eq('user_id', userId) : await q;
+      if (error) console.warn('[RosyMutate.notifications.markAllRead]', error.message);
+    },
+  },
+};
+
+Object.assign(window, { RosyMutate: window.RosyMutate });
+
+/* ======================================================================
+   Realtime — subscribe to postgres_changes on the live tables and mirror
+   them into window.RosyData so other tabs see edits instantly.
+   ====================================================================== */
+
+let __realtimeChannel = null;
+let __selfOriginIds = new Set(); // ids the current tab just wrote — skip echo
+
+function rememberSelf(id) {
+  if (!id) return;
+  __selfOriginIds.add(id);
+  setTimeout(() => __selfOriginIds.delete(id), 4000); // expire after a few seconds
+}
+
+// Patch RosyMutate ops to register their own writes so the realtime echo doesn't double-apply.
+['events','gigs','venues','conversations'].forEach(group => {
+  const ops = window.RosyMutate[group];
+  if (!ops) return;
+  ['create','update','delete'].forEach(op => {
+    const orig = ops[op];
+    if (typeof orig !== 'function') return;
+    ops[op] = async function (...args) {
+      const out = await orig.apply(this, args);
+      if (out && out.id) rememberSelf(out.id);
+      else if (typeof args[0] === 'string') rememberSelf(args[0]); // delete(id)
+      return out;
+    };
+  });
+});
+
+function applyEventChange(payload) {
+  const { eventType, new: row, old } = payload;
+  const arr = window.RosyData.EVENTS;
+  if (eventType === 'DELETE') { removeById(arr, old.id); }
+  else {
+    if (__selfOriginIds.has(row.id)) return false; // skip echo of our own write
+    const ui = eventDbToUi(row, window.RosyData.IMAGES?.events || []);
+    const existing = arr.find(e => e.id === row.id);
+    if (existing) Object.assign(existing, ui);
+    else arr.unshift({ ...ui, gigCount: 0, filledCount: 0 });
+  }
+  return true;
+}
+function applyGigChange(payload) {
+  const { eventType, new: row, old } = payload;
+  const arr = window.RosyData.GIGS;
+  if (eventType === 'DELETE') { removeById(arr, old.id); }
+  else {
+    if (__selfOriginIds.has(row.id)) return false;
+    const ui = gigDbToUi(row);
+    const existing = arr.find(g => g.id === row.id);
+    if (existing) Object.assign(existing, ui);
+    else arr.unshift(ui);
+  }
+  return true;
+}
+function applyVenueChange(payload) {
+  const { eventType, new: row, old } = payload;
+  const arr = window.RosyData.VENUES;
+  if (eventType === 'DELETE') { removeById(arr, old.id); }
+  else {
+    if (__selfOriginIds.has(row.id)) return false;
+    const ui = venueDbToUi(row, window.RosyData.IMAGES?.events || []);
+    const existing = arr.find(v => v.id === row.id);
+    if (existing) Object.assign(existing, ui);
+    else arr.unshift(ui);
+  }
+  return true;
+}
+function applyApplicationChange(payload) {
+  const { eventType, new: row, old } = payload;
+  const arr = window.RosyData.TRANSACTIONS;
+  if (eventType === 'DELETE') { removeById(arr, old.id); return true; }
+  if (__selfOriginIds.has(row.id)) return false;
+  const usersById = Object.fromEntries(window.RosyData.USERS.map(u => [u.id, u]));
+  const worker = usersById[row.worker_id];
+  const vendor = usersById[row.vendor_id];
+  const ui = {
+    id:      row.id,
+    invoice: row.request_code || row.id.slice(0, 8).toUpperCase(),
+    payer:   vendor?.company || vendor?.name || 'Vendor',
+    payee:   worker?.name || 'Worker',
+    amount:  Number(row.amount_due || row.estimated_amount || 0),
+    status:  paymentStatusForUI(row.payment_status),
+    date:    (row.paid_at || row.completed_at || row.confirmed_at || row.applied_at || '').slice(0, 10),
+    note:    row.cancellation_reason || null,
+  };
+  const existing = arr.find(t => t.id === row.id);
+  if (existing) Object.assign(existing, ui);
+  else arr.unshift(ui);
+  // Also bump the gig's spotsFilled if status moved to 'confirmed'
+  if (eventType !== 'DELETE' && row.status === 'confirmed') {
+    const gig = window.RosyData.GIGS.find(g => g.id === row.gig_id);
+    if (gig && !gig.assignedTo.includes(row.worker_id)) {
+      gig.assignedTo = [...gig.assignedTo, row.worker_id];
+      gig.spotsFilled = Math.min((gig.spotsFilled || 0) + 1, gig.spots || 99);
+    }
+  }
+  return true;
+}
+function applyMessageChange(payload) {
+  const { eventType, new: row } = payload;
+  if (eventType === 'DELETE') return false;
+  if (__selfOriginIds.has(row.id)) return false;
+  const conv = window.RosyData.MESSAGES.find(c => c.id === row.conversation_id);
+  if (!conv) return false;
+  conv.messages = [...(conv.messages || []), {
+    who:  row.sender_id === conv.with ? 'them' : 'me',
+    text: row.content || '',
+    time: timeLabel(row.created_at),
+    day:  dayLabel(row.created_at),
+  }];
+  conv.preview = row.content || conv.preview;
+  return true;
+}
+function applyNotificationChange(payload) {
+  const { eventType, new: row } = payload;
+  const arr = window.RosyData.NOTIFICATIONS;
+  if (eventType === 'DELETE') { removeById(arr, payload.old.id); return true; }
+  if (__selfOriginIds.has(row.id)) return false;
+  const ui = { id: row.id, type: row.type, title: row.title, body: row.body, time: timeAgo(row.created_at), link: row.link || '', unread: !row.read };
+  const existing = arr.find(n => n.id === row.id);
+  if (existing) Object.assign(existing, ui);
+  else arr.unshift(ui);
+  return true;
+}
+
+window.subscribeRealtime = function subscribeRealtime() {
+  if (!window.sb || __realtimeChannel) return __realtimeChannel;
+  const ch = window.sb.channel('rr-prototype', { config: { broadcast: { self: false } } });
+  const tables = [
+    ['rr_events',           applyEventChange],
+    ['rr_gigs',             applyGigChange],
+    ['rr_venues',           applyVenueChange],
+    ['rr_gig_applications', applyApplicationChange],
+    ['rr_messages',         applyMessageChange],
+    ['rr_notifications',    applyNotificationChange],
+  ];
+  tables.forEach(([table, handler]) => {
+    ch.on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+      try {
+        const changed = handler(payload);
+        if (changed) notifyChange();
+      } catch (e) { console.warn(`[realtime ${table}]`, e); }
+    });
+  });
+  ch.subscribe((status) => {
+    if (status === 'SUBSCRIBED') console.info('[realtime] connected — listening on 6 tables');
+    else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') console.warn('[realtime] status:', status);
+  });
+  __realtimeChannel = ch;
+  return ch;
+};
+
+Object.assign(window, { subscribeRealtime: window.subscribeRealtime });
