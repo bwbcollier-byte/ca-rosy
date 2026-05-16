@@ -188,19 +188,19 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
   return (
     <div className="content fade-up">
       <div className="section-heading"><h2>Notifications</h2></div>
-      <div className="card" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '14px 16px', marginBottom: 16 }}>
-        <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 200, maxWidth: 360 }}>
+      <div className="card notif-filter-row" style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 14px', marginBottom: 16 }}>
+        <div style={{ position: 'relative', flex: '1 1 0', minWidth: 0 }}>
           <X_I.Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
-          <input className="input" placeholder="Search notifications…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 34, height: 38, width: '100%' }} />
+          <input className="input" placeholder="Search notifications…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 32, height: 38, width: '100%' }} />
         </div>
-        <select className="select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ height: 38, flex: '0 0 auto' }}>
+        <select className="select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ height: 38, flex: '0 0 auto', minWidth: 140 }}>
           {typeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select>
         <div className="tabs" style={{ flex: '0 0 auto' }}>
           <button className={tab === 'all' ? 'on' : ''} onClick={() => setTab('all')}>All ({items.length})</button>
           <button className={tab === 'unread' ? 'on' : ''} onClick={() => setTab('unread')}>Unread ({unreadCount})</button>
         </div>
-        <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} disabled={!unreadCount} onClick={markAll}>Mark all read</button>
+        <button className="btn btn-ghost btn-sm" style={{ flex: '0 0 auto' }} disabled={!unreadCount} onClick={markAll}>Mark all read</button>
       </div>
       <div className="card card-flush">
         {filtered.length === 0 ? <Empty icon={X_I.Bell} title="You're all caught up" body="No new notifications." /> :

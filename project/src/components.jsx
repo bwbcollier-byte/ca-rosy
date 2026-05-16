@@ -661,7 +661,8 @@ function fmtMoney(n) { return `$${n.toLocaleString('en-US', { minimumFractionDig
 function getGreeting(name) {
   const h = new Date().getHours();
   const greet = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
-  const safe = (name && name !== 'Guest') ? name : 'there';
+  const cap = (s) => (s || '').replace(/\b\w/g, c => c.toUpperCase());
+  const safe = (name && name !== 'Guest') ? cap(name) : 'there';
   return `${greet}, ${safe}`;
 }
 
