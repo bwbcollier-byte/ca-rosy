@@ -647,27 +647,120 @@ function OnboardingPage({ onComplete }) {
 function TCModal({ open, onClose, onAgree, role }) {
   const [signed, setSigned] = SX_us(false);
   const [readAck, setReadAck] = SX_us(false);
-  React.useEffect(() => { if (!open) { setSigned(false); setReadAck(false); } }, [open]);
+  // Worker W-9 / TIN form state
+  const [wName, setWName] = SX_us('');
+  const [wBusiness, setWBusiness] = SX_us('');
+  const [wClass, setWClass] = SX_us('');
+  const [wClassOther, setWClassOther] = SX_us('');
+  const [wExempt, setWExempt] = SX_us('');
+  const [wFatca, setWFatca] = SX_us('');
+  const [wSsn, setWSsn] = SX_us('');
+  const [wEin, setWEin] = SX_us('');
+  React.useEffect(() => {
+    if (!open) {
+      setSigned(false); setReadAck(false);
+      setWName(''); setWBusiness(''); setWClass(''); setWClassOther(''); setWExempt(''); setWFatca(''); setWSsn(''); setWEin('');
+    }
+  }, [open]);
+
+  const workerValid = wName.trim() && wClass && (wSsn.trim() || wEin.trim());
+  const valid = role === 'vendor'
+    ? (signed && readAck)
+    : (signed && readAck && workerValid);
+
   return (
-    <Modal open={open} onClose={onClose} title="Terms & conditions" size="lg"
-      footer={
-        <>
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-coral" disabled={!signed || !readAck} onClick={onAgree}>I agree</button>
-        </>
-      }>
-      <p>You agree to act in good faith, show up to gigs you've committed to, deliver work to the standard described, and pay or be paid through Stripe Connect.</p>
-      <p>Rosy Recruits operates as a neutral marketplace. We don't employ workers or contract with vendors directly. Each engagement is between you and your counterparty.</p>
-      <p>Disputes are mediated through Rosy support within 48 hours. Repeated no-shows result in account suspension. ID verification is required for Design and Lead roles.</p>
-      <p>Workers receive 92% of the gig rate; vendors pay a 6% platform fee on top. Stripe Connect fees are 2.9% + $0.30 per payout, deducted before transfer.</p>
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', fontSize: 14, cursor: 'pointer' }}>
+    <Modal open={open} onClose={onClose} title={role === 'vendor' ? 'Rosy Recruits — Vendor Terms & Conditions' : 'Rosy Recruits — Worker Terms & Conditions'} size="lg"
+      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-coral" disabled={!valid} onClick={onAgree}>I agree</button></>}>
+      {role === 'vendor' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13.5, lineHeight: 1.6 }}>
+          <p style={{ margin: 0 }}>Welcome! Please review the terms below. By clicking "I Agree", you confirm that you understand and accept all terms.</p>
+          <div><strong>1. Purpose</strong> — Rosy Recruits provides vetted, trained temporary Workers for events and labor. All Workers must be booked and used through the Rosy Recruits App only.</div>
+          <div>
+            <strong>2. Worker Types & Rates</strong>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, fontSize: 13 }}>
+              <thead><tr style={{ background: 'var(--color-surface-soft)' }}><th style={{ padding: '8px 10px', textAlign: 'left' }}>Worker Type</th><th style={{ padding: '8px 10px', textAlign: 'left' }}>Rate</th><th style={{ padding: '8px 10px', textAlign: 'left' }}>Minimum Hours</th></tr></thead>
+              <tbody>
+                <tr><td style={{ padding: '8px 10px', borderTop: '1px solid var(--color-hairline)' }}>Assist</td><td style={{ padding: '8px 10px', borderTop: '1px solid var(--color-hairline)' }}>$26/hr</td><td style={{ padding: '8px 10px', borderTop: '1px solid var(--color-hairline)' }}>4 hours</td></tr>
+                <tr><td style={{ padding: '8px 10px', borderTop: '1px solid var(--color-hairline)' }}>Design / Tech / Lead</td><td style={{ padding: '8px 10px', borderTop: '1px solid var(--color-hairline)' }}>$35/hr</td><td style={{ padding: '8px 10px', borderTop: '1px solid var(--color-hairline)' }}>4 hours</td></tr>
+                <tr><td style={{ padding: '8px 10px', borderTop: '1px solid var(--color-hairline)' }}>Strikers</td><td style={{ padding: '8px 10px', borderTop: '1px solid var(--color-hairline)' }}>$45/hr</td><td style={{ padding: '8px 10px', borderTop: '1px solid var(--color-hairline)' }}>2 hours</td></tr>
+              </tbody>
+            </table>
+            <p style={{ margin: '8px 0 0', color: 'var(--color-muted)' }}>Time beyond minimum is billed in 15-minute increments. Only actual hours worked will be charged.</p>
+          </div>
+          <div><strong>3. Payment</strong> — Workers mark shifts complete in the app. You have 24 hours to review and approve. If no approval, charges for hours worked are automatically applied to your credit card. A pre-authorization hold (estimated total + 25%) may be applied before scheduled shifts.</div>
+          <div><strong>4. Cancellations</strong> — No Worker assigned: delete freely, no charge. Worker assigned: 2+ weeks before event 50% of total service + fees. Less than 2 weeks: 100% of total service + fees.</div>
+          <div><strong>5. Non-Poaching</strong> — You may not hire or engage Workers outside the Rosy Recruits App. If a Worker leaves Company and approaches you within 12 months, you may not hire them. Violations automatically incur penalties: Standard Worker $3,500, Rosy Guide $10,000.</div>
+          <div><strong>6. Independent Contractors</strong> — All Workers are independent contractors. You are not their employer.</div>
+          <div><strong>7. Liability & Insurance</strong> — Company is not responsible for damages caused by Workers outside its control. You must maintain insurance and provide proper packing/protection for materials.</div>
+          <div><strong>8. Confidentiality</strong> — Do not share Company's platform, rates, or Worker data with anyone outside your organization.</div>
+          <div><strong>9. Agreement Duration</strong> — Effective until either party gives 30 days' notice. All balances and penalties are due on termination.</div>
+          <div><strong>10. Governing Law</strong> — Governed by the laws of the State of [Your State].</div>
+          <div><strong>11. Digital Acknowledgment</strong> — By clicking "I Agree", you confirm that: (1) you have read and understand these terms, (2) you accept and agree to comply with all rules, (3) your digital acknowledgment is legally binding.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13.5, lineHeight: 1.55 }}>
+          <p style={{ margin: 0 }}>Welcome! Please review the terms below. By clicking "I Agree", you confirm that you understand and accept all terms.</p>
+          <div><strong>1. Purpose</strong> — Rosy Recruits provides vetted, trained temporary Workers for events and labor. All Workers must be booked and used through the Rosy Recruits App only.</div>
+          <div><strong>2. Worker Types & Rates</strong> — Assist $26/hr, Design/Tech/Lead $35/hr, Strikers $45/hr. Time beyond minimum is billed in 15-minute increments.</div>
+          <div><strong>3. Payment</strong> — Workers mark shifts complete in the app; vendors have 24 hours to approve. Stripe Connect releases your pay within 48 hours of approval.</div>
+          <div><strong>4. Cancellations</strong> — If you cancel within 48 hours of a booked shift, you may incur a fee and your rating will be affected. Repeated no-shows result in account suspension.</div>
+          <div><strong>5. Non-Poaching</strong> — You may not solicit Vendor work outside the Rosy Recruits App. Violations carry a $3,500 penalty.</div>
+          <div><strong>6. Independent Contractor</strong> — You are an independent contractor, not an employee of Rosy Recruits or any Vendor. You're responsible for your own taxes — that's why we collect the W-9 information below.</div>
+          <div><strong>7. Confidentiality & Digital Acknowledgment</strong> — Do not share Vendor materials with anyone outside the engagement. By clicking "I Agree" you confirm that you have read and accept these terms.</div>
+
+          <div style={{ borderTop: '1.5px solid var(--color-hairline)', paddingTop: 16 }}>
+            <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, letterSpacing: '-0.01em' }}>Request for Taxpayer Identification Number and Certification</h3>
+            <p style={{ margin: '8px 0 16px', color: 'var(--color-muted)' }}>The IRS requires this from every U.S.-based independent contractor. We use it for 1099-NEC reporting when you earn more than $600 in a calendar year.</p>
+            <div className="grid-2" style={{ gap: 14 }}>
+              <div className="field"><label className="field-label">Name *</label><input className="input" value={wName} onChange={e => setWName(e.target.value)} placeholder="Full legal name (as on tax return)" /></div>
+              <div className="field"><label className="field-label">Business name (if different)</label><input className="input" value={wBusiness} onChange={e => setWBusiness(e.target.value)} placeholder="DBA / entity name" /></div>
+            </div>
+            <div className="grid-2" style={{ gap: 14, marginTop: 12 }}>
+              <div className="field"><label className="field-label">Exempt payee code (if any)</label><input className="input" value={wExempt} onChange={e => setWExempt(e.target.value)} placeholder="Most individuals leave blank" /></div>
+              <div className="field"><label className="field-label">FATCA exemption code (if any)</label><input className="input" value={wFatca} onChange={e => setWFatca(e.target.value)} placeholder="Most individuals leave blank" /></div>
+            </div>
+            <p style={{ margin: '14px 0 6px', fontSize: 13, fontWeight: 600 }}>Check the appropriate box for federal tax classification of the entity / individual whose name is entered on line 1.</p>
+            <div className="grid-2" style={{ gap: 14 }}>
+              <div className="field"><label className="field-label">Tax classification *</label>
+                <select className="select" value={wClass} onChange={e => setWClass(e.target.value)}>
+                  <option value="">— Select —</option>
+                  <option value="individual">Individual / sole proprietor / single-member LLC</option>
+                  <option value="c_corp">C corporation</option>
+                  <option value="s_corp">S corporation</option>
+                  <option value="partnership">Partnership</option>
+                  <option value="trust">Trust / estate</option>
+                  <option value="llc">Limited liability company</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="field"><label className="field-label">Other (if "Other" selected)</label><input className="input" value={wClassOther} onChange={e => setWClassOther(e.target.value)} disabled={wClass !== 'other'} placeholder="Describe" /></div>
+            </div>
+            <p style={{ margin: '14px 0 6px', fontSize: 13, fontWeight: 600 }}>Enter your TIN in the appropriate box. The TIN must match the name on line 1 to avoid backup withholding. For individuals, this is your SSN.</p>
+            <div className="grid-2" style={{ gap: 14 }}>
+              <div className="field"><label className="field-label">Social security number</label><input className="input" value={wSsn} onChange={e => setWSsn(e.target.value)} placeholder="XXX-XX-XXXX" inputMode="numeric" /></div>
+              <div className="field"><label className="field-label">(or) Employer identification number</label><input className="input" value={wEin} onChange={e => setWEin(e.target.value)} placeholder="XX-XXXXXXX" inputMode="numeric" /></div>
+            </div>
+            <div style={{ marginTop: 16, padding: 12, background: 'var(--color-surface-soft)', borderRadius: 12, fontSize: 12.5, color: 'var(--color-muted)' }}>
+              <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-body-strong)', marginBottom: 6 }}>Under penalties of perjury, I certify that:</p>
+              <ol style={{ margin: 0, paddingLeft: 18 }}>
+                <li>The number shown on this form is my correct taxpayer identification number (or I am waiting for a number to be issued).</li>
+                <li>I am not subject to backup withholding because: (a) I am exempt from backup withholding, or (b) I have not been notified by the IRS that I am subject to backup withholding, or (c) the IRS has notified me that I am no longer subject to backup withholding.</li>
+                <li>I am a U.S. citizen or other U.S. person (defined below).</li>
+                <li>The FATCA code(s) entered on this form (if any) indicating that I am exempt from FATCA reporting is correct.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '16px 0 12px', fontSize: 14, cursor: 'pointer' }}>
         <CheckBox checked={readAck} onChange={setReadAck} />
-        <span>I've read and understand these terms in full.</span>
+        <span>I've read and understand these terms{role === 'worker' ? ' and certify that the W-9 information above is correct' : ''}.</span>
       </label>
       <div style={{ marginTop: 8 }}>
         <SignaturePad onChange={setSigned} />
       </div>
-      {!signed || !readAck ? <p style={{ margin: '12px 0 0', fontSize: 12.5, color: 'var(--color-muted)', textAlign: 'center' }}>{!readAck ? 'Check the box and ' : ''}sign above to continue.</p> : null}
+      {!valid ? <p style={{ margin: '12px 0 0', fontSize: 12.5, color: 'var(--color-muted)', textAlign: 'center' }}>{role === 'worker' && !workerValid ? 'Fill in your name, tax classification, and SSN or EIN above. ' : ''}{!readAck ? 'Check the box and ' : ''}sign above to continue.</p> : null}
     </Modal>
   );
 }
