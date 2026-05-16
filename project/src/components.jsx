@@ -246,7 +246,7 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, curr
   // Hide badge when the route is the one you're already viewing.
   const badgeFor = (id) => (route === id ? 0 : (counts[id] || 0));
 
-  const closeAfter = (id, fn) => () => { markVisited(id); fn(); onClose && onClose(); };
+  const closeAfter = (id, fn) => () => { if (id) markVisited(id); fn(); onClose && onClose(); };
 
   const NAV = {
     admin: [
@@ -336,10 +336,10 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, curr
         ))}
         <div style={{ flex: 1 }} />
         <div className="divider" style={{ margin: '12px 0 8px' }} />
-        <button className="nav-item" onClick={closeAfter(() => setRoute('settings'))}>
+        <button className="nav-item" onClick={closeAfter('settings', () => setRoute('settings'))}>
           <Ic.Settings className="nav-icon" /><span>Settings</span>
         </button>
-        <button className="nav-item" onClick={closeAfter(() => onSignOut && onSignOut())}>
+        <button className="nav-item" onClick={closeAfter(null, () => onSignOut && onSignOut())}>
           <Ic.LogOut className="nav-icon" /><span>Log Out</span>
         </button>
       </aside>
