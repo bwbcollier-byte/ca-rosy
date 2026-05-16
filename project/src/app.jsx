@@ -56,6 +56,26 @@ function App() {
   A_ue(() => {
     if (sessionUserFromData && sessionUserFromData.role && sessionUserFromData.role !== role) setRole(sessionUserFromData.role);
   }, [sessionUserId, sessionUserFromData?.role]);
+
+  // Onboarding gate for OAuth (Google) sign-ins: when a fresh session lands us
+  // straight on /app/dashboard, check whether the user has a completed profile.
+  // If not, bounce them to /onboarding to pick role + finish their profile.
+  A_ue(() => {
+    if (!sessionUserId || !window.sb) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Fast path: a profile exists in already-loaded data → done.
+        if (sessionUserFromData && sessionUserFromData.role) return;
+        const { data } = await window.sb.from('rr_profiles').select('id, onboarding_complete, role').eq('id', sessionUserId).maybeSingle();
+        if (cancelled) return;
+        if (!data || !data.onboarding_complete || !data.role) {
+          setMode('onboarding');
+        }
+      } catch (e) { console.warn('post-auth onboarding gate failed:', e); }
+    })();
+    return () => { cancelled = true; };
+  }, [sessionUserId]);
   // Hard-lock: a signed-in user's role can NEVER be changed by the demo role-switcher.
   // setRoleSafe is what the header passes; it silently ignores changes when signed in.
   const setRoleSafe = (newRole) => {
