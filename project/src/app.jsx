@@ -32,7 +32,18 @@ function App() {
   const [session, setSession] = A_us(null);
   A_ue(() => {
     if (!window.sb) return;
-    window.sb.auth.getSession().then(({ data }) => setSession(data?.session || null));
+    window.sb.auth.getSession().then(({ data }) => {
+      const sess = data?.session || null;
+      setSession(sess);
+      // If a session exists and the user is sitting on marketing (no explicit
+      // hash route), send them straight to their dashboard. Honour explicit
+      // hash routes like #auth (so logout's redirect still works).
+      if (sess) {
+        const h = window.location.hash.replace(/^#/, '');
+        const explicit = h.startsWith('app') || h.startsWith('onboarding') || h.startsWith('auth');
+        if (!explicit) { setMode('app'); window.location.hash = 'app/dashboard'; }
+      }
+    });
     const { data: sub } = window.sb.auth.onAuthStateChange((_evt, sess) => setSession(sess));
     return () => sub?.subscription?.unsubscribe?.();
   }, []);
