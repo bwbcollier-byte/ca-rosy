@@ -415,8 +415,8 @@ function FAQItem({ q, a }) {
 /* ============ Auth ============ */
 function AuthPage({ mode = 'login', goToApp, setMode }) {
   const [show, setShow] = SX_us(false);
-  const [email, setEmail] = SX_us(mode === 'signup' ? '' : 'mariana@bloomandfern.com');
-  const [pw, setPw] = SX_us(mode === 'signup' ? '' : 'rosyDemo!1');
+  const [email, setEmail] = SX_us('');
+  const [pw, setPw] = SX_us('');
   const [agree, setAgree] = SX_us(false);
   const [submitting, setSubmitting] = SX_us(false);
   const toast = useToast();

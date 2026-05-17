@@ -32,19 +32,39 @@ function App() {
   const [session, setSession] = A_us(null);
   A_ue(() => {
     if (!window.sb) return;
+    // Decide where a signed-in user should land: dashboard if onboarded,
+    // onboarding form otherwise. Called on both initial getSession() and on
+    // future onAuthStateChange (covers OAuth return flow).
+    const routeForSession = async (sess) => {
+      if (!sess?.user?.id) return;
+      const uid = sess.user.id;
+      const h = window.location.hash.replace(/^#/, '');
+      // If user explicitly typed an app/onboarding/auth route, honour it.
+      const explicit = h.startsWith('app') || h.startsWith('onboarding') || h.startsWith('auth');
+      try {
+        const { data } = await window.sb.from('rr_profiles').select('onboarding_complete, role').eq('id', uid).maybeSingle();
+        const onboarded = !!(data?.onboarding_complete && data?.role);
+        if (onboarded) {
+          if (!explicit) { setMode('app'); window.location.hash = 'app/dashboard'; }
+        } else {
+          setMode('onboarding');
+        }
+      } catch (e) {
+        console.warn('routeForSession failed:', e);
+        if (!explicit) { setMode('app'); window.location.hash = 'app/dashboard'; }
+      }
+    };
     window.sb.auth.getSession().then(({ data }) => {
       const sess = data?.session || null;
       setSession(sess);
-      // If a session exists and the user is sitting on marketing (no explicit
-      // hash route), send them straight to their dashboard. Honour explicit
-      // hash routes like #auth (so logout's redirect still works).
-      if (sess) {
-        const h = window.location.hash.replace(/^#/, '');
-        const explicit = h.startsWith('app') || h.startsWith('onboarding') || h.startsWith('auth');
-        if (!explicit) { setMode('app'); window.location.hash = 'app/dashboard'; }
-      }
+      if (sess) routeForSession(sess);
     });
-    const { data: sub } = window.sb.auth.onAuthStateChange((_evt, sess) => setSession(sess));
+    const { data: sub } = window.sb.auth.onAuthStateChange((evt, sess) => {
+      setSession(sess);
+      // SIGNED_IN fires after OAuth return — route them properly even if the
+      // OAuth handshake clobbered our redirectTo hash.
+      if (evt === 'SIGNED_IN' && sess) routeForSession(sess);
+    });
     return () => sub?.subscription?.unsubscribe?.();
   }, []);
   const [tweaks] = useTweaks();
