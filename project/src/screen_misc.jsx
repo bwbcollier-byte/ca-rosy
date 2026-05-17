@@ -277,13 +277,13 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
         <div className="mk-hero">
           <div>
             <div className="mk-strip" style={{ marginBottom: 20 }}>
-              <SX_I.Sparkles size={14} />New: Stripe instant payouts in 5 cities
+              <SX_I.Sparkles size={14} />{(window.RosyContent ? window.RosyContent('home','hero_strip','New: Stripe instant payouts in 5 cities') : 'New: Stripe instant payouts in 5 cities')}
             </div>
-            <h1>Where floral <em>excellence</em> meets efficiency.</h1>
-            <p>A skilled crew on every event — booked in minutes, paid in days. Built by florists who got tired of texting from a spreadsheet.</p>
+            <h1 dangerouslySetInnerHTML={{ __html: (window.RosyContent ? window.RosyContent('home','hero_heading','Where floral <em>excellence</em> meets efficiency.') : 'Where floral <em>excellence</em> meets efficiency.') }} />
+            <p>{(window.RosyContent ? window.RosyContent('home','hero_sub','A skilled crew on every event — booked in minutes, paid in days. Built by florists who got tired of texting from a spreadsheet.') : 'A skilled crew on every event — booked in minutes, paid in days. Built by florists who got tired of texting from a spreadsheet.')}</p>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <button className="btn btn-coral btn-lg" onClick={() => goToAuth('signup')}>Hire a team</button>
-              <button className="btn btn-ghost btn-lg" onClick={() => goToAuth('signup')}>Find work</button>
+              <button className="btn btn-coral btn-lg" onClick={() => goToAuth('signup')}>{(window.RosyContent ? window.RosyContent('home','cta_primary','Hire a team') : 'Hire a team')}</button>
+              <button className="btn btn-ghost btn-lg" onClick={() => goToAuth('signup')}>{(window.RosyContent ? window.RosyContent('home','cta_secondary','Find work') : 'Find work')}</button>
               {showInstallButton ? (
                 <button className="btn btn-ghost btn-lg" onClick={promptInstall} aria-label="Install Rosy Recruits to your home screen">
                   <SX_I.Download size={16} />Install app
@@ -291,9 +291,9 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
               ) : null}
             </div>
             <div className="mk-hero-stats">
-              <div className="mk-hero-stat"><span className="num">1,284</span><span className="lbl">active workers</span></div>
-              <div className="mk-hero-stat"><span className="num">412</span><span className="lbl">vendor studios</span></div>
-              <div className="mk-hero-stat"><span className="num">$284k</span><span className="lbl">paid this month</span></div>
+              <div className="mk-hero-stat"><span className="num">{(window.RosyContent ? window.RosyContent('home','hero_stat1_num','1,284') : '1,284')}</span><span className="lbl">{(window.RosyContent ? window.RosyContent('home','hero_stat1_lbl','active workers') : 'active workers')}</span></div>
+              <div className="mk-hero-stat"><span className="num">{(window.RosyContent ? window.RosyContent('home','hero_stat2_num','412') : '412')}</span><span className="lbl">{(window.RosyContent ? window.RosyContent('home','hero_stat2_lbl','vendor studios') : 'vendor studios')}</span></div>
+              <div className="mk-hero-stat"><span className="num">{(window.RosyContent ? window.RosyContent('home','hero_stat3_num','$284k') : '$284k')}</span><span className="lbl">{(window.RosyContent ? window.RosyContent('home','hero_stat3_lbl','paid this month') : 'paid this month')}</span></div>
             </div>
           </div>
           <div className="mk-hero-art">

@@ -31,11 +31,263 @@ const F_I = window.Icons;
     'dispute-filed':        { name: 'Both — dispute filed', title: 'Dispute filed', body: 'A dispute was filed on invoice {{invoice}}. Respond within 48h.', live: true, lastEdited: '2026-05-15' },
     'welcome':              { name: 'Welcome notification', title: 'Welcome to Rosy Recruits!', body: 'Take the tour to see how everything works.', live: true, lastEdited: '2026-05-15' },
   };
+  const legalDisclaimer = 'Draft — replace before launch with attorney review.';
   const legalDocs = {
-    'terms-of-service': { name: 'Terms of Service', updatedAt: '2026-05-15', body: '# Terms of Service\n\nLast updated: May 15, 2026\n\nWelcome to Rosy Recruits. By using the platform you agree to the following terms…\n\n## 1. Accounts\n\n## 2. Payments\n\n## 3. Conduct\n\n## 4. Liability\n\n## 5. Termination\n' },
-    'privacy-policy':   { name: 'Privacy Policy',   updatedAt: '2026-05-15', body: '# Privacy Policy\n\nLast updated: May 15, 2026\n\nWe collect the minimum necessary to operate the platform…\n' },
-    'worker-agreement': { name: 'Worker Agreement', updatedAt: '2026-05-15', body: '# Worker Agreement\n\nLast updated: May 15, 2026\n\nWorkers on Rosy Recruits are independent contractors…\n' },
-    'vendor-agreement': { name: 'Vendor Agreement', updatedAt: '2026-05-15', body: '# Vendor Agreement\n\nLast updated: May 15, 2026\n\nVendors agree to release funds promptly on completed gigs…\n' },
+    'terms-of-service': { name: 'Terms of Service', updatedAt: '2026-05-18', disclaimer: legalDisclaimer, body: `# Terms of Service
+
+**Effective Date:** {{effective_date}}
+
+These Terms of Service ("Terms") govern your access to and use of the Rosy Recruits platform, including our website, mobile applications, and related services (collectively, the "Services") operated by Rosy Recruits, Inc., a Delaware corporation with its principal place of business in Chicago, Illinois ("Rosy Recruits," "we," "us," or "our"). By creating an account or using the Services you agree to be bound by these Terms.
+
+## 1. Eligibility & Account Ownership
+
+You must be at least 18 years old and able to form a legally binding contract to use the Services. By registering, you represent that all information you provide is true, accurate, and complete, and you agree to keep it current. You are responsible for safeguarding your password and for all activity that occurs under your account. Accounts are personal to the individual or legal entity that created them and may not be transferred, sold, or assigned without our prior written consent.
+
+If you create an account on behalf of an organization (for example a floral studio), you represent that you have authority to bind that organization to these Terms, and "you" refers to both you individually and the organization.
+
+## 2. The Marketplace
+
+Rosy Recruits operates a neutral, two-sided marketplace that connects floral-event vendors with independent workers ("Workers"). We are **not** a party to any contract for services formed between a vendor and a Worker. We do not employ Workers, we do not direct or control the manner in which work is performed, and we make no representations about the suitability, qualifications, or conduct of any user beyond the identity- and background-verification steps disclosed in our Help Center.
+
+Vendors are solely responsible for: (a) the work performed at their events; (b) site safety; (c) compliance with all applicable labor, wage, tax, and licensing laws; and (d) any insurance reasonably required for the work. Workers are solely responsible for performing the agreed services in a professional manner and for their own tax obligations.
+
+## 3. User Conduct
+
+You agree not to: (a) use the Services for any unlawful purpose; (b) post false, misleading, defamatory, or infringing content; (c) harass, threaten, or discriminate against any user; (d) circumvent the platform to avoid fees (including, without limitation, soliciting Workers or Vendors to transact off-platform for gigs introduced through Rosy Recruits within twelve (12) months of the introduction); (e) interfere with the technical operation of the Services; (f) scrape, copy, or reverse-engineer any part of the Services; or (g) misrepresent your identity, qualifications, or affiliation.
+
+We reserve the right, but have no obligation, to monitor activity on the Services and to remove or modify any content that violates these Terms.
+
+## 4. Payments, Stripe Connect & Fees
+
+Payment processing on the Services is provided by Stripe, Inc. and is subject to the [Stripe Connected Account Agreement](https://stripe.com/connect-account/legal). By agreeing to these Terms (or by continuing to use the Services), you agree to be bound by the Stripe Services Agreement, as the same may be modified by Stripe from time to time. As a condition of using payment processing through Stripe, you authorize Rosy Recruits to obtain account information about you from Stripe, and to share information with Stripe as necessary to operate the Services.
+
+Vendors fund gigs at the time of posting via Stripe. Funds are held by Stripe in escrow until released to Workers following vendor approval of hours, or after the auto-approval window (24 hours after submitted hours) expires. Platform fees (4–8% of the gig amount, depending on plan) and Stripe processing fees (2.9% + $0.30) are deducted before payout. We may change fees on 30 days' written notice.
+
+Workers acknowledge that funds are not earned until services have been performed and hours have been approved, and that payout timing depends on Stripe's standard banking schedule.
+
+## 5. Refunds, Chargebacks & Tax Reporting
+
+Because the Services involve performed services rather than goods, refund eligibility is limited and is handled through the dispute process below. Workers who earn $600 or more in a calendar year will receive an IRS Form 1099-NEC, which Rosy Recruits will issue by January 31 of the following year using information you provided in your W-9.
+
+## 6. Disputes Between Users
+
+Either party may file a dispute within fourteen (14) days of the gig date by submitting the dispute form in the Services. We will review evidence from both sides and issue a non-binding mediation decision typically within forty-eight (48) hours. Possible outcomes include hours adjustment, partial or full refund, full payment release, account strike, or suspension. Either party may appeal a decision once.
+
+Our mediation is a service convenience, not a substitute for legal process, and our decisions do not preclude either party from pursuing other remedies available at law.
+
+## 7. Intellectual Property
+
+The Services, including all software, designs, logos, text, and other content owned or licensed by Rosy Recruits, are protected by intellectual-property laws and are owned by Rosy Recruits or its licensors. We grant you a limited, non-exclusive, non-transferable, revocable license to use the Services for their intended purpose.
+
+You retain ownership of content you upload (portfolios, photographs, profile copy) and grant Rosy Recruits a worldwide, non-exclusive, royalty-free license to host, store, reproduce, modify, display, and distribute that content solely to operate, market, and improve the Services. You represent that you own or have all necessary rights to the content you upload.
+
+## 8. Indemnification
+
+You agree to defend, indemnify, and hold harmless Rosy Recruits, its officers, directors, employees, and agents from and against any claim, demand, loss, liability, damage, or expense (including reasonable attorneys' fees) arising out of or related to: (a) your use of the Services; (b) your breach of these Terms; (c) any contract or interaction between you and another user; (d) your violation of any applicable law; or (e) content you submit through the Services.
+
+## 9. Disclaimers & Limitation of Liability
+
+THE SERVICES ARE PROVIDED ON AN "AS IS" AND "AS AVAILABLE" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. ROSY RECRUITS DOES NOT WARRANT THAT THE SERVICES WILL BE UNINTERRUPTED, SECURE, OR ERROR-FREE.
+
+TO THE FULLEST EXTENT PERMITTED BY LAW, ROSY RECRUITS'S TOTAL LIABILITY ARISING OUT OF OR RELATING TO THESE TERMS OR THE SERVICES IS LIMITED TO THE GREATER OF (A) THE AMOUNTS PAID BY YOU TO US IN THE TWELVE MONTHS PRECEDING THE CLAIM, OR (B) ONE HUNDRED U.S. DOLLARS ($100). IN NO EVENT WILL WE BE LIABLE FOR INDIRECT, INCIDENTAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES (INCLUDING LOST PROFITS, LOST REVENUE, OR PERSONAL INJURY AT AN EVENT).
+
+## 10. Termination
+
+You may stop using the Services at any time. We may suspend or terminate your access at our discretion for any breach of these Terms, suspected fraud, or behavior that puts other users at risk. Upon termination, any funds owed to you will be released, less any disputed amounts, within sixty (60) days. Sections 4–11 survive termination.
+
+## 11. Governing Law & Arbitration
+
+These Terms are governed by the laws of the State of Illinois, without regard to its conflict-of-laws principles. Any dispute arising out of or relating to these Terms or the Services that is not resolved through mediation under Section 6 shall be resolved by **binding individual arbitration** administered by JAMS in Cook County, Illinois, in accordance with the JAMS Streamlined Arbitration Rules and Procedures, and judgment on the award may be entered in any court of competent jurisdiction. **YOU AND ROSY RECRUITS EACH WAIVE THE RIGHT TO A TRIAL BY JURY AND THE RIGHT TO PARTICIPATE IN A CLASS ACTION.** You may opt out of arbitration within thirty (30) days of first accepting these Terms by emailing legal@rosyrecruits.com with the subject "Arbitration Opt-Out."
+
+## 12. Changes to These Terms
+
+We may update these Terms from time to time. If we make material changes, we will notify you by email or through the Services at least 14 days before they take effect. Continued use after the effective date constitutes acceptance.
+
+## 13. Contact
+
+Questions about these Terms? Email **legal@rosyrecruits.com** or write to Rosy Recruits, Inc., Attn: Legal, 238 N Halsted St, Chicago, IL 60661.
+` },
+    'privacy-policy': { name: 'Privacy Policy', updatedAt: '2026-05-18', disclaimer: legalDisclaimer, body: `# Privacy Policy
+
+**Effective Date:** {{effective_date}}
+
+Rosy Recruits, Inc. ("Rosy Recruits," "we," "us," or "our") respects your privacy. This Privacy Policy describes how we collect, use, share, and protect your personal information when you use the Rosy Recruits platform, website, and related services (the "Services"). By using the Services you agree to the practices described here.
+
+## 1. Information We Collect
+
+**Information you provide.** Account details (name, email, phone, mailing address, profile photo), business information (studio name, website, EIN), identity-verification documents (government ID, selfie, W-9), payment details (bank account or card information collected by our payments processor), gig content (event descriptions, photos, ratings, messages), and any communications you send to us.
+
+**Information collected automatically.** Device identifiers, IP address, browser type, operating system, referring URLs, pages visited, timestamps, crash reports, and cookies or similar technologies. We use cookies for authentication, fraud prevention, analytics, and to remember preferences.
+
+**Information from third parties.** Identity-verification results from our verification partner (e.g., Persona), payout and risk signals from Stripe, fraud signals from anti-abuse providers, and information from social logins if you elect to use them.
+
+## 2. How We Use Information
+
+We use personal information to: (a) create and operate accounts; (b) match Vendors with Workers and process gigs and payments; (c) verify identity and prevent fraud, money laundering, and abuse; (d) mediate disputes; (e) comply with tax, accounting, and other legal obligations (including issuing 1099-NEC forms); (f) communicate with you about your account, transactions, security alerts, and (with your consent or where permitted) marketing; (g) improve, secure, and personalize the Services; and (h) enforce our Terms and protect our rights, property, and users.
+
+## 3. Legal Bases (EEA / UK Users)
+
+Where applicable law requires a legal basis, we rely on: contractual necessity (to provide the Services), legitimate interests (to operate, secure, and improve the Services), legal obligation (tax, anti-fraud, compliance), and consent (for certain marketing communications and optional cookies).
+
+## 4. How We Share Information
+
+We share personal information with:
+
+- **Service providers** under contract — hosting (Vercel, Supabase), payments (Stripe), email (Postmark), analytics (PostHog), customer support tooling, and identity verification (Persona).
+- **Other users** — to operate the marketplace (Workers see Vendor postings; Vendors see Worker profiles, ratings, and contact information after confirming a gig).
+- **Authorities or third parties** when required by law, subpoena, court order, or to investigate potential violations of our Terms or to protect the safety, rights, or property of any person.
+- **In a corporate transaction** — to a successor in a merger, acquisition, financing, reorganization, or sale of all or part of our business.
+
+We **do not** sell personal information for monetary consideration, and we do not share personal information for cross-context behavioral advertising.
+
+## 5. Cookies & Tracking
+
+We use first-party cookies for authentication and platform security, and limited third-party analytics cookies (PostHog) to understand product usage. You can control cookies through your browser settings; disabling some cookies may break parts of the Services.
+
+## 6. Your Choices & Rights
+
+You can: (a) update your profile in Settings; (b) request a download of your data via Settings → Privacy → Export; (c) request deletion of your data (subject to legal-retention obligations such as IRS rules); (d) opt out of marketing emails via the unsubscribe link in any marketing email or in Settings; and (e) opt out of certain cookies through your browser.
+
+**California residents** have additional rights under the CCPA/CPRA, including the right to know, delete, correct, and limit use of sensitive personal information, and the right to non-discrimination for exercising these rights. **EEA/UK residents** have rights under the GDPR / UK GDPR, including the rights of access, rectification, erasure, restriction, portability, and objection, and the right to lodge a complaint with a supervisory authority.
+
+To exercise any of these rights, email **legal@rosyrecruits.com** with the subject "Privacy Request." We will verify your request and respond within the timeframes required by law.
+
+## 7. Data Retention
+
+We retain personal information for as long as your account is active and as needed to provide the Services. Financial and tax records are retained for at least seven (7) years to comply with IRS rules. Dispute and abuse records are retained for at least three (3) years.
+
+## 8. Security
+
+We use industry-standard administrative, technical, and physical safeguards to protect personal information, including TLS 1.3 in transit, AES-256 at rest, role-based access controls, least-privilege secrets management, and regular security review. No system is perfectly secure, and you use the Services at your own risk.
+
+## 9. Children's Privacy
+
+The Services are not directed to children under 16, and we do not knowingly collect personal information from anyone under 16. If you believe a child has provided us with personal information, contact us immediately and we will delete it.
+
+## 10. International Transfers
+
+Rosy Recruits is based in the United States. By using the Services, you understand that your information will be transferred to and processed in the United States and other countries that may have different data-protection laws.
+
+## 11. Changes to This Policy
+
+We may update this Privacy Policy from time to time. Material changes will be announced via email or in the Services at least 14 days before they take effect.
+
+## 12. Contact
+
+Questions about this Privacy Policy? Email **legal@rosyrecruits.com** or write to Rosy Recruits, Inc., Attn: Privacy, 238 N Halsted St, Chicago, IL 60661.
+` },
+    'worker-agreement': { name: 'Worker Agreement', updatedAt: '2026-05-18', disclaimer: legalDisclaimer, body: `# Worker Agreement
+
+**Effective Date:** {{effective_date}}
+
+This Worker Agreement ("Agreement") is entered into between you ("Worker," "you," or "your") and Rosy Recruits, Inc. ("Rosy Recruits," "we," or "us") and governs your use of the Rosy Recruits platform as a service provider to floral-event vendors ("Vendors"). It supplements, and does not replace, our Terms of Service.
+
+## 1. Independent Contractor Status
+
+You are an independent contractor — not an employee, partner, agent, joint venturer, or franchisee — of either Rosy Recruits or any Vendor that engages you through the Services. Nothing in this Agreement creates an employment relationship. You are responsible for: (a) the manner and means by which you perform services; (b) supplying your own tools and reliable transportation; (c) paying all federal, state, and local taxes on your earnings (including self-employment tax); (d) maintaining any licenses or certifications required by law; and (e) obtaining your own health, disability, and liability insurance.
+
+Neither Rosy Recruits nor any Vendor will withhold any taxes, contribute to Social Security or Medicare on your behalf, or provide unemployment, workers' compensation, retirement, health, or other employee benefits in respect of your work on gigs sourced through the Services.
+
+## 2. Eligibility & Verification
+
+To register as a Worker, you must: (a) be at least 18 years old; (b) be legally authorized to work in the United States; (c) complete identity verification through our verification partner; (d) submit a valid IRS Form W-9; and (e) maintain accurate profile information including services offered, rates, and availability. Lead and Design Workers may be subject to portfolio review; all Workers may be re-verified periodically.
+
+## 3. Gig Workflow
+
+You may browse and apply to gigs that match your services and availability. Once you accept a confirmed booking, you commit to perform the services described on the dates and at the locations specified. You agree to: (a) arrive on time and ready to work; (b) follow reasonable instructions from the Vendor regarding the result of the work (not the manner of performance, which remains in your control); (c) report submitted hours honestly; (d) communicate proactively about delays or problems; and (e) treat Vendor crews, venue staff, and guests with professionalism.
+
+## 4. Payment
+
+Payment for completed gigs is made through Stripe Connect after the Vendor approves your submitted hours, or after the 24-hour auto-approval window expires. Rosy Recruits is not the source of payment; we facilitate the transaction on behalf of the Vendor.
+
+You acknowledge that hourly rates posted on gigs are gross amounts; you are responsible for your own income tax. Workers who earn $600 or more in a calendar year will receive IRS Form 1099-NEC by January 31 of the following year.
+
+## 5. No-Shows & Conduct
+
+A no-show or last-minute cancellation (less than 24 hours before call time) may result in a strike on your account. Three strikes within a 12-month period may result in suspension. Verified instances of theft, harassment, intoxication on site, falsifying hours, or other serious misconduct will result in immediate termination of your account and may be reported to law enforcement.
+
+## 6. Off-Platform Solicitation
+
+You agree not to solicit, accept, or fulfill engagements from Vendors you met through the Services outside of the platform for a period of twelve (12) months following the introduction. This is a material term — violations may result in account termination and may be enforced by injunctive relief or liquidated damages equal to twice the platform fees that would have been due.
+
+## 7. Insurance & Indemnification
+
+You are responsible for any insurance you deem appropriate for your work. You agree to indemnify and hold harmless Rosy Recruits and the Vendor for any claims, damages, or losses arising out of your acts or omissions while performing services, including personal injury, property damage, or breach of confidentiality.
+
+## 8. Confidentiality
+
+Vendor client lists, event details, guest information, design concepts, and pricing are confidential. You agree to use such information solely to perform the gig and not to disclose it to any third party.
+
+## 9. Termination
+
+You may terminate this Agreement at any time by closing your Rosy Recruits account. We may terminate this Agreement if you breach it or our Terms of Service. Sections 1, 6, 7, 8, 10, and 11 survive termination.
+
+## 10. Governing Law & Arbitration
+
+This Agreement is governed by Illinois law. Disputes are subject to the binding individual arbitration and class-action waiver described in our Terms of Service.
+
+## 11. Contact
+
+Questions about this Worker Agreement? Email **legal@rosyrecruits.com**.
+` },
+    'vendor-agreement': { name: 'Vendor Agreement', updatedAt: '2026-05-18', disclaimer: legalDisclaimer, body: `# Vendor Agreement
+
+**Effective Date:** {{effective_date}}
+
+This Vendor Agreement ("Agreement") is entered into between you (the "Vendor," "you," or "your") and Rosy Recruits, Inc. ("Rosy Recruits," "we," or "us") and governs your use of the Rosy Recruits platform to engage independent floral-event workers ("Workers"). It supplements our Terms of Service.
+
+## 1. Account & Account Owner
+
+To register as a Vendor you must be at least 18 years old and authorized to bind the studio, agency, or business you represent. The individual who registers is the "Account Owner" and is responsible for actions taken on the account. Multi-user team accounts are available on certain plans; permissions are managed in Settings.
+
+## 2. Your Role as an Independent Engager
+
+You engage Workers as independent contractors of your studio, not as employees of Rosy Recruits. You are responsible for: (a) accurately describing each gig (scope, call time, location, rate, expectations); (b) reasonable supervision of the work product (but not the manner of performance); (c) compliance with all applicable wage-and-hour, anti-discrimination, safety, and other labor laws; (d) obtaining property, general liability, and any other insurance required by your venue or jurisdiction; and (e) ensuring a safe work environment at every event.
+
+If any worker classification rule of the jurisdiction in which an event occurs would deem a Worker your employee, you accept responsibility for any associated employer obligations.
+
+## 3. Posting & Funding Gigs
+
+When you post a gig, you authorize Rosy Recruits to: (a) calculate the total funding required (rate × hours × spots + platform fee + Stripe fees); (b) charge that amount to your Stripe payment method; and (c) hold the funds in escrow until released to Workers per Section 4.
+
+You agree to post in good faith. You will not post fictitious gigs to harvest Worker contact information or to misrepresent rates.
+
+## 4. Approving Hours & Releasing Payment
+
+After each gig, Workers submit hours via the platform. You agree to review and approve (or reasonably dispute) submitted hours within twenty-four (24) hours. If you do not respond within that window, submitted hours are auto-approved and funds are released to the Worker. You may not withhold payment for reasons unrelated to the work performed.
+
+## 5. Platform Fees & Plans
+
+Vendor platform fees are 4–8% of the gig amount depending on plan, plus standard Stripe processing fees. Plan pricing is described on our Pricing page and may be changed on 30 days' notice. Subscription plans are billed monthly or annually in advance, are non-refundable on cancellation, and renew automatically until cancelled.
+
+## 6. Disputes
+
+You may file a dispute within fourteen (14) days of a gig for reasons such as no-show, hours mismatch, quality of work, or misconduct. Disputes are mediated as described in our Terms of Service.
+
+## 7. Off-Platform Solicitation
+
+For twelve (12) months following an introduction to a Worker through the Services, you agree not to engage that Worker outside the platform for gigs Rosy Recruits could reasonably have processed. This is a material term — violations may result in account termination and liquidated damages equal to twice the platform fees that would have been due.
+
+## 8. Worker Information
+
+Worker profiles, ratings, contact details, and W-9 information accessible through the Services are provided solely for your use in operating gigs on the platform. You may not export, resell, scrape, or use this information for any other purpose. Aggregate statistics may be displayed publicly without your further consent.
+
+## 9. Indemnification & Limitation of Liability
+
+You agree to indemnify and hold harmless Rosy Recruits for any claim arising from a gig you posted, including worker-classification claims, wage claims, injury at the event, or any failure to provide a safe and lawful work environment. Limits of liability are as set forth in the Terms of Service.
+
+## 10. Termination
+
+Either party may terminate this Agreement at any time. We may suspend or terminate your account for breach of these terms, repeated disputes resolved against you, or evidence of fraud. On termination, any funds in escrow not subject to an active dispute will be released within sixty (60) days; subscription fees already paid are not refunded.
+
+## 11. Governing Law & Arbitration
+
+This Agreement is governed by Illinois law. Disputes are subject to the binding individual arbitration and class-action waiver described in our Terms of Service.
+
+## 12. Contact
+
+Questions about this Vendor Agreement? Email **legal@rosyrecruits.com**.
+` },
   };
   const gallery = [
     { id: 'g1', src: 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=600&q=80', section: 'hero' },
@@ -45,7 +297,64 @@ const F_I = window.Icons;
     { id: 'g5', src: 'https://images.unsplash.com/photo-1455659817273-f96807779a8a?w=600&q=80', section: 'gallery' },
     { id: 'g6', src: 'https://images.unsplash.com/photo-1416379590848-77df60bf64ec?w=600&q=80', section: 'gallery' },
   ];
-  window.RosyStores = { emailTemplates: emails, notificationTemplates, legalDocs, gallery };
+  // Site content store: page → blockId → value. Persists to localStorage and best-effort to rr_site_content.
+  let siteContent = {};
+  try {
+    const raw = localStorage.getItem('rosy.siteContent');
+    if (raw) siteContent = JSON.parse(raw) || {};
+  } catch (e) { /* ignore */ }
+
+  // Admin invites — populated in admin team page if rr_admin_invites table absent.
+  let adminInvites = [];
+  try {
+    const raw = localStorage.getItem('rosy.adminInvites');
+    if (raw) adminInvites = JSON.parse(raw) || [];
+  } catch (e) { /* ignore */ }
+
+  // Saved profiles (vendor shortlists): { ownerId: [userId, userId...] }
+  let savedProfiles = {};
+  try {
+    const raw = localStorage.getItem('rosy.savedProfiles');
+    if (raw) savedProfiles = JSON.parse(raw) || {};
+  } catch (e) { /* ignore */ }
+
+  window.RosyStores = { emailTemplates: emails, notificationTemplates, legalDocs, gallery, siteContent, adminInvites, savedProfiles };
+
+  // Helper: persist a site-content block (localStorage + best-effort Supabase row).
+  window.RosySaveSiteContent = async (page, blockId, value) => {
+    window.RosyStores.siteContent[page] = window.RosyStores.siteContent[page] || {};
+    window.RosyStores.siteContent[page][blockId] = value;
+    try { localStorage.setItem('rosy.siteContent', JSON.stringify(window.RosyStores.siteContent)); } catch (e) {}
+    try {
+      if (window.sb) {
+        await window.sb.from('rr_site_content').upsert({ page, block_id: blockId, value, updated_at: new Date().toISOString() }, { onConflict: 'page,block_id' });
+      }
+    } catch (e) { console.warn('rr_site_content upsert failed (table may not exist):', e?.message || e); }
+  };
+  // Helper: read a site-content block with hardcoded fallback.
+  window.RosyContent = (page, blockId, fallback) => {
+    const v = window.RosyStores?.siteContent?.[page]?.[blockId];
+    return (v === undefined || v === null || v === '') ? fallback : v;
+  };
+  // Helper: persist saved-profiles list (localStorage + best-effort Supabase).
+  window.RosySaveSavedProfiles = async (ownerId) => {
+    try { localStorage.setItem('rosy.savedProfiles', JSON.stringify(window.RosyStores.savedProfiles)); } catch (e) {}
+  };
+  // Best-effort hydrate site-content from Supabase on boot.
+  (async () => {
+    try {
+      if (window.sb) {
+        const { data, error } = await window.sb.from('rr_site_content').select('page,block_id,value');
+        if (!error && Array.isArray(data)) {
+          data.forEach(row => {
+            window.RosyStores.siteContent[row.page] = window.RosyStores.siteContent[row.page] || {};
+            window.RosyStores.siteContent[row.page][row.block_id] = row.value;
+          });
+          window.dispatchEvent(new CustomEvent('rosy:site-content-changed'));
+        }
+      }
+    } catch (e) { /* table missing — no-op */ }
+  })();
 })();
 
 const GALLERY_SECTIONS = [

@@ -70,6 +70,23 @@ const PRESETS = [
 ];
 
 /* ============ Admin Assistants page ============ */
+// Invite-permission groups (simplified, one toggle per area — separate from
+// the granular PERMISSION_GROUPS used in the per-admin permission editor).
+const INVITE_PERMISSION_GROUPS = [
+  { id: 'users',         label: 'Users' },
+  { id: 'events',        label: 'Events & Gigs' },
+  { id: 'payments',      label: 'Payments' },
+  { id: 'disputes',      label: 'Disputes' },
+  { id: 'site_content',  label: 'Site Content' },
+  { id: 'email_templates', label: 'Email Templates' },
+  { id: 'settings',      label: 'Settings' },
+  { id: 'analytics',     label: 'Analytics' },
+];
+const DEFAULT_INVITE_PERMS = {
+  users: true, events: true, payments: false, disputes: false,
+  site_content: false, email_templates: false, settings: false, analytics: true,
+};
+
 function PageAdminAssistants() {
   const toast = useToast();
   const [team, setTeam] = AX_us([
@@ -78,10 +95,51 @@ function PageAdminAssistants() {
     { id: 'a3', name: 'Devon Park',      email: 'devon@rosyrecruits.com', preset: 'support',   perms: DEFAULT_PERMS.support,   status: 'active', last: '1 hour ago' },
     { id: 'a4', name: 'Lila Thompson',   email: 'lila@rosyrecruits.com',  preset: 'assistant', perms: DEFAULT_PERMS.assistant, status: 'invited', last: 'Invited 2 days ago' },
   ]);
-  const [editing, setEditing] = AX_us(null);
+  const [editing, setEditing] = AX_us(null);      // permissions editor (gear)
+  const [viewing, setViewing] = AX_us(null);      // read-only detail drawer (card click)
   const [inviteOpen, setInviteOpen] = AX_us(false);
+  const [invitePerms, setInvitePerms] = AX_us({ ...DEFAULT_INVITE_PERMS });
+  const [inviteForm, setInviteForm] = AX_us({ email: '', preset: 'assistant', note: '' });
 
   const update = (id, patch) => setTeam(arr => arr.map(m => m.id === id ? { ...m, ...patch } : m));
+
+  const sendInvite = async () => {
+    if (!inviteForm.email.trim()) { toast.push({ kind: 'warning', title: 'Email required' }); return; }
+    const record = {
+      id: 'inv_' + Date.now(),
+      email: inviteForm.email.trim(),
+      preset: inviteForm.preset,
+      permissions: invitePerms,
+      note: inviteForm.note,
+      invited_by: window.RosyData?.USERS?.find(u => u.role === 'admin')?.id || null,
+      created_at: new Date().toISOString(),
+      status: 'pending',
+    };
+    // Optimistic: append to local team as invited
+    setTeam(t => [...t, {
+      id: record.id, name: record.email.split('@')[0].replace(/\./g, ' ').replace(/(^|\s)\w/g, m => m.toUpperCase()),
+      email: record.email, preset: record.preset, perms: DEFAULT_PERMS[record.preset] || DEFAULT_PERMS.assistant,
+      status: 'invited', last: 'Just invited', invitePerms: record.permissions,
+    }]);
+    // Best-effort persist
+    try {
+      if (window.sb) {
+        const { error } = await window.sb.from('rr_admin_invites').insert(record);
+        if (error) throw error;
+      } else {
+        throw new Error('no supabase');
+      }
+    } catch (e) {
+      // Fallback: localStorage
+      window.RosyStores.adminInvites = window.RosyStores.adminInvites || [];
+      window.RosyStores.adminInvites.push(record);
+      try { localStorage.setItem('rosy.adminInvites', JSON.stringify(window.RosyStores.adminInvites)); } catch (_) {}
+    }
+    setInviteOpen(false);
+    setInviteForm({ email: '', preset: 'assistant', note: '' });
+    setInvitePerms({ ...DEFAULT_INVITE_PERMS });
+    toast.push({ kind: 'success', title: 'Invite sent', body: `${record.email} will get an email shortly.` });
+  };
 
   return (
     <div className="content fade-up">
@@ -106,19 +164,21 @@ function PageAdminAssistants() {
               const grantedCount = Object.values(m.perms).filter(Boolean).length;
               const totalCount = Object.keys(m.perms).length;
               return (
-                <tr key={m.id} style={{ cursor: 'pointer' }} onClick={() => setEditing(m)}>
-                  <td>
+                <tr key={m.id}>
+                  {/* Member card area opens the read-only detail drawer */}
+                  <td onClick={() => setViewing(m)} style={{ cursor: 'pointer' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <Avatar name={m.name} size="md" />
                       <div><p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>{m.name}</p><p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{m.email}</p></div>
                     </div>
                   </td>
-                  <td><RolePresetBadge preset={m.preset} /></td>
-                  <td style={{ fontSize: 13 }}>{grantedCount} / {totalCount} permissions</td>
-                  <td style={{ fontSize: 13, color: 'var(--color-muted)' }}>{m.last}</td>
-                  <td><Badge kind={m.status === 'active' ? 'Active' : 'Pending'}>{m.status === 'active' ? 'Active' : 'Invited'}</Badge></td>
+                  <td onClick={() => setViewing(m)} style={{ cursor: 'pointer' }}><RolePresetBadge preset={m.preset} /></td>
+                  <td onClick={() => setViewing(m)} style={{ cursor: 'pointer', fontSize: 13 }}>{grantedCount} / {totalCount} permissions</td>
+                  <td onClick={() => setViewing(m)} style={{ cursor: 'pointer', fontSize: 13, color: 'var(--color-muted)' }}>{m.last}</td>
+                  <td onClick={() => setViewing(m)} style={{ cursor: 'pointer' }}><Badge kind={m.status === 'active' ? 'Active' : 'Pending'}>{m.status === 'active' ? 'Active' : 'Invited'}</Badge></td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <div className="row-actions">
+                      {/* Cog = permissions editor */}
                       <button className="row-action-btn" onClick={() => setEditing(m)} title="Manage permissions"><AX_I.Sliders size={14} /></button>
                       {m.preset !== 'owner' ? <button className="row-action-btn danger" onClick={() => { setTeam(t => t.filter(x => x.id !== m.id)); toast.push({ kind: 'warning', title: 'Admin removed' }); }}><AX_I.Trash2 size={14} /></button> : null}
                     </div>
@@ -132,16 +192,58 @@ function PageAdminAssistants() {
 
       <PermissionsModal admin={editing} onClose={() => setEditing(null)} onSave={(patch) => { update(editing.id, patch); setEditing(null); toast.push({ kind: 'success', title: 'Permissions updated' }); }} />
 
+      {/* Read-only detail drawer for card-click */}
+      {viewing ? (
+        <Slideover open={!!viewing} onClose={() => setViewing(null)} title={viewing.name}
+          footer={<><button className="btn btn-ghost" onClick={() => setViewing(null)}>Close</button><button className="btn btn-coral" onClick={() => { const m = viewing; setViewing(null); setEditing(m); }}><AX_I.Sliders size={14} />Manage permissions</button></>}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 18 }}>
+            <Avatar name={viewing.name} size="xl" />
+            <div>
+              <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22 }}>{viewing.name}</h3>
+              <p style={{ margin: '4px 0 0', color: 'var(--color-muted)', fontSize: 13.5 }}>{viewing.email}</p>
+              <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                <Badge kind={viewing.status === 'active' ? 'Active' : 'Pending'}>{viewing.status === 'active' ? 'Active' : 'Invited'}</Badge>
+                <RolePresetBadge preset={viewing.preset} />
+              </div>
+            </div>
+          </div>
+          <div className="grid-2" style={{ gap: 12 }}>
+            <KV label="Email" value={viewing.email} />
+            <KV label="Last seen" value={viewing.last} />
+            <KV label="Role preset" value={viewing.preset} />
+            <KV label="Permissions" value={`${Object.values(viewing.perms).filter(Boolean).length} / ${Object.keys(viewing.perms).length}`} />
+          </div>
+          <div style={{ marginTop: 18 }}>
+            <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>Granted permissions</h4>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {Object.entries(viewing.perms).filter(([, v]) => v).map(([k]) => <span key={k} className="pill" style={{ fontSize: 11 }}>{k.replace('.', ' · ')}</span>)}
+            </div>
+          </div>
+        </Slideover>
+      ) : null}
+
       <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite admin team member" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setInviteOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={() => { setInviteOpen(false); toast.push({ kind: 'success', title: 'Invite sent' }); }}>Send invite</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => setInviteOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={sendInvite}>Send invite</button></>}>
         <div className="col" style={{ gap: 14 }}>
-          <div className="field"><label className="field-label">Email</label><input className="input" placeholder="they@rosyrecruits.com" /></div>
+          <div className="field"><label className="field-label">Email</label><input className="input" placeholder="they@rosyrecruits.com" value={inviteForm.email} onChange={(e) => setInviteForm(f => ({ ...f, email: e.target.value }))} /></div>
           <div className="field"><label className="field-label">Starting role</label>
-            <select className="select" defaultValue="assistant">
+            <select className="select" value={inviteForm.preset} onChange={(e) => setInviteForm(f => ({ ...f, preset: e.target.value }))}>
               {PRESETS.filter(p => p.id !== 'custom').map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </div>
-          <div className="field"><label className="field-label">Personal note (optional)</label><textarea className="textarea" placeholder="Hey — want to help me run the dispute queue this quarter?" /></div>
+          <div className="field">
+            <label className="field-label">Permissions</label>
+            <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--color-muted)' }}>Toggle the areas this admin can access. You can fine-tune after they accept.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+              {INVITE_PERMISSION_GROUPS.map(g => (
+                <label key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--color-surface-soft)', borderRadius: 10, cursor: 'pointer' }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 500 }}>{g.label}</span>
+                  <span className={`toggle ${invitePerms[g.id] ? 'on' : ''}`} onClick={(e) => { e.preventDefault(); setInvitePerms(p => ({ ...p, [g.id]: !p[g.id] })); }} />
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="field"><label className="field-label">Personal note (optional)</label><textarea className="textarea" placeholder="Hey — want to help me run the dispute queue this quarter?" value={inviteForm.note} onChange={(e) => setInviteForm(f => ({ ...f, note: e.target.value }))} /></div>
         </div>
       </Modal>
     </div>

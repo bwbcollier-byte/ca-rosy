@@ -3,7 +3,18 @@
 
 const MP_D = window.RosyData;
 const MP_I = window.Icons;
-const { useState: MP_us } = React;
+const { useState: MP_us, useEffect: MP_ue } = React;
+// Helper — gracefully falls back if RosyContent isn't loaded yet.
+const C = (page, blockId, fallback) => (window.RosyContent ? window.RosyContent(page, blockId, fallback) : fallback);
+// Hook: re-render this component whenever site content is saved in admin.
+function useSiteContentTick() {
+  const [, setTick] = MP_us(0);
+  MP_ue(() => {
+    const bump = () => setTick(t => t + 1);
+    window.addEventListener('rosy:site-content-changed', bump);
+    return () => window.removeEventListener('rosy:site-content-changed', bump);
+  }, []);
+}
 
 /* ---------- Shared shell ---------- */
 function MarketingShell({ route, setRoute, goToAuth, children }) {
@@ -145,21 +156,22 @@ function MkHero({ eyebrow, title, sub, cta, ctaLabel, accent = 'peach' }) {
 
 /* ============ For vendors ============ */
 function MkVendorsPage({ goToAuth }) {
+  useSiteContentTick();
   return (
     <>
       <MkHero accent="ochre"
-        eyebrow="For vendors"
-        title="Crew up. Show up. Look brilliant."
-        sub="Spin up an entire wedding team from your phone. Workers see the gig, you approve the applications, both sides get paid through Stripe Connect."
+        eyebrow={C('vendors', 'eyebrow', 'For vendors')}
+        title={C('vendors', 'hero_title', 'Crew up. Show up. Look brilliant.')}
+        sub={C('vendors', 'hero_sub', 'Spin up an entire wedding team from your phone. Workers see the gig, you approve the applications, both sides get paid through Stripe Connect.')}
         cta={() => goToAuth('signup')}
-        ctaLabel="Start hiring — it's free" />
+        ctaLabel={C('vendors', 'cta_label', "Start hiring — it's free")} />
 
       <section className="mk-section">
         <div className="grid-3">
           {[
-            { color: 'peach',    icon: MP_I.CalendarCheck, h: 'Post in 60 seconds', p: 'Type, date, hourly rate, spots. We push it to qualified workers in your zip code within minutes.' },
-            { color: 'lavender', icon: MP_I.ShieldCheck,   h: 'Verified only',      p: 'Every Lead and Design role is portfolio-reviewed and ID-verified. Strike and Assist are background-checked.' },
-            { color: 'coral',    icon: MP_I.DollarSign,    h: 'One bill, one check', p: 'Fund the gig once. Rosy splits payouts across your team. No 1099s, no chasing receipts.' },
+            { color: 'peach',    icon: MP_I.CalendarCheck, h: C('vendors','feature1_title','Post in 60 seconds'), p: C('vendors','feature1_body','Type, date, hourly rate, spots. We push it to qualified workers in your zip code within minutes.') },
+            { color: 'lavender', icon: MP_I.ShieldCheck,   h: C('vendors','feature2_title','Verified only'),      p: C('vendors','feature2_body','Every Lead and Design role is portfolio-reviewed and ID-verified. Strike and Assist are background-checked.') },
+            { color: 'coral',    icon: MP_I.DollarSign,    h: C('vendors','feature3_title','One bill, one check'),p: C('vendors','feature3_body','Fund the gig once. Rosy splits payouts across your team. No 1099s, no chasing receipts.') },
           ].map(c => (
             <div key={c.h} className={`feature-card ${c.color}`}>
               <c.icon size={28} />
@@ -171,7 +183,7 @@ function MkVendorsPage({ goToAuth }) {
       </section>
 
       <section className="mk-section" style={{ paddingTop: 0 }}>
-        <h2 className="display-lg" style={{ maxWidth: 720, marginBottom: 32 }}>The studio dashboard you've been faking with spreadsheets.</h2>
+        <h2 className="display-lg" style={{ maxWidth: 720, marginBottom: 32 }}>{C('vendors','section_title',"The studio dashboard you've been faking with spreadsheets.")}</h2>
         <div className="grid-2" style={{ gap: 32, alignItems: 'center' }}>
           <div className="col" style={{ gap: 16 }}>
             {[
@@ -199,17 +211,18 @@ function MkVendorsPage({ goToAuth }) {
 
 /* ============ For workers ============ */
 function MkWorkersPage({ goToAuth }) {
+  useSiteContentTick();
   return (
     <>
       <MkHero accent="mint"
-        eyebrow="For workers"
-        title="Steady, beautiful work."
-        sub="Three studios a week or thirty events a season — set your availability, pick your gigs, get paid on time. Lead roles pay $50/hr."
+        eyebrow={C('workers','eyebrow','For workers')}
+        title={C('workers','hero_title','Steady, beautiful work.')}
+        sub={C('workers','hero_sub','Three studios a week or thirty events a season — set your availability, pick your gigs, get paid on time. Lead roles pay $50/hr.')}
         cta={() => goToAuth('signup')}
-        ctaLabel="Join as a worker" />
+        ctaLabel={C('workers','cta_label','Join as a worker')} />
 
       <section className="mk-section">
-        <h2 className="display-lg" style={{ maxWidth: 720, marginBottom: 32 }}>What you actually take home.</h2>
+        <h2 className="display-lg" style={{ maxWidth: 720, marginBottom: 32 }}>{C('workers','rates_title','What you actually take home.')}</h2>
         <div className="grid-4">
           {[
             { type: 'Lead',   hourly: 50, color: 'var(--gig-design-bg)' },
@@ -232,7 +245,7 @@ function MkWorkersPage({ goToAuth }) {
             <img src={MP_D.IMAGES.marketingWorker} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <div className="col" style={{ gap: 16 }}>
-            <h2 className="display-md">Why workers stay.</h2>
+            <h2 className="display-md">{C('workers','why_title','Why workers stay.')}</h2>
             {[
               ['Set your own availability','Block the days you don\'t want to work. We won\'t show you gigs on those days.'],
               ['Get paid Tuesdays','Stripe Connect releases your earnings within 48 hours of approved hours.'],
@@ -255,6 +268,7 @@ function MkWorkersPage({ goToAuth }) {
 
 /* ============ Gallery ============ */
 function MkGalleryPage() {
+  useSiteContentTick();
   const [active, setActive] = MP_us(null);
   const heights = [320, 260, 380, 280, 340, 300, 360, 240, 380, 300, 260, 340];
   const tiles = [...MP_D.IMAGES.gallery, ...MP_D.IMAGES.events];
@@ -262,9 +276,9 @@ function MkGalleryPage() {
     <>
       <section style={{ background: 'var(--color-canvas)', padding: '72px 32px 32px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <span className="t-eyebrow">Gallery</span>
-          <h1 className="display-xl" style={{ margin: '14px 0 16px' }}>Work made by Rosy crews.</h1>
-          <p style={{ margin: 0, fontSize: 18, color: 'var(--color-body)', maxWidth: 620 }}>A few rooms, weddings, and editorial moments built end-to-end by teams booked through the platform.</p>
+          <span className="t-eyebrow">{C('gallery','eyebrow','Gallery')}</span>
+          <h1 className="display-xl" style={{ margin: '14px 0 16px' }}>{C('gallery','title','Work made by Rosy crews.')}</h1>
+          <p style={{ margin: 0, fontSize: 18, color: 'var(--color-body)', maxWidth: 620 }}>{C('gallery','sub','A few rooms, weddings, and editorial moments built end-to-end by teams booked through the platform.')}</p>
         </div>
       </section>
       <section style={{ maxWidth: 1200, margin: '0 auto', padding: '32px' }}>
@@ -345,12 +359,13 @@ function MkPricingPage({ goToAuth }) {
 
 /* ============ FAQ ============ */
 function MkFAQPage({ goToAuth, setRoute }) {
+  useSiteContentTick();
   const groups = [
     { h: 'Getting started', items: MP_D.FAQS },
     { h: 'Payments & taxes', items: [
-      { q: 'When do workers get paid?', a: 'Within 48 hours of vendor-approved hours, via Stripe Connect direct deposit.' },
-      { q: 'Are 1099s automatic?', a: 'Yes. If you earn more than $600 in a calendar year, Rosy generates and mails your 1099-NEC by Jan 31.' },
-      { q: 'What does the vendor fee cover?', a: 'Stripe fees, escrow, dispute mediation, identity verification, and platform development.' },
+      { q: C('faq','faq1_q','When do workers get paid?'), a: C('faq','faq1_a','Within 48 hours of vendor-approved hours, via Stripe Connect direct deposit.') },
+      { q: C('faq','faq2_q','Are 1099s automatic?'),      a: C('faq','faq2_a','Yes. If you earn more than $600 in a calendar year, Rosy generates and mails your 1099-NEC by Jan 31.') },
+      { q: C('faq','faq3_q','What does the vendor fee cover?'), a: C('faq','faq3_a','Stripe fees, escrow, dispute mediation, identity verification, and platform development.') },
     ]},
     { h: 'Worker disputes', items: [
       { q: 'A vendor disputed my hours — what happens?', a: 'You\'ll get a notification with the vendor\'s evidence. You have 48 hours to respond. Rosy mediates.' },
@@ -361,9 +376,9 @@ function MkFAQPage({ goToAuth, setRoute }) {
     <>
       <section style={{ padding: '72px 32px 0' }}>
         <div style={{ maxWidth: 900, margin: '0 auto', textAlign: 'center' }}>
-          <span className="t-eyebrow">FAQ</span>
-          <h1 className="display-xl" style={{ margin: '14px 0 14px' }}>Answers, before you ask.</h1>
-          <p style={{ margin: '0 auto', fontSize: 18, color: 'var(--color-body)', maxWidth: 620 }}>Still need help? <a className="btn-link" onClick={() => setRoute('contact')} style={{ cursor: 'pointer' }}>Talk to a real person.</a></p>
+          <span className="t-eyebrow">{C('faq','eyebrow','FAQ')}</span>
+          <h1 className="display-xl" style={{ margin: '14px 0 14px' }}>{C('faq','title','Answers, before you ask.')}</h1>
+          <p style={{ margin: '0 auto', fontSize: 18, color: 'var(--color-body)', maxWidth: 620 }}>{C('faq','sub','Still need help?')} <a className="btn-link" onClick={() => setRoute('contact')} style={{ cursor: 'pointer' }}>Talk to a real person.</a></p>
         </div>
       </section>
       <section style={{ maxWidth: 800, margin: '0 auto', padding: '48px 32px 96px' }}>
@@ -382,18 +397,19 @@ function MkFAQPage({ goToAuth, setRoute }) {
 
 /* ============ About ============ */
 function MkAboutPage({ goToAuth }) {
+  useSiteContentTick();
   return (
     <>
       <MkHero accent="lavender"
-        eyebrow="About"
-        title="Built by florists. For florists."
-        sub="Rosy started as a private group text between three Chicago studios passing workers back and forth. It got out of hand. Then it got organized." />
+        eyebrow={C('about','eyebrow','About')}
+        title={C('about','hero_title','Built by florists. For florists.')}
+        sub={C('about','hero_sub','Rosy started as a private group text between three Chicago studios passing workers back and forth. It got out of hand. Then it got organized.')} />
       <section className="mk-section" style={{ paddingTop: 64 }}>
         <div className="grid-2" style={{ gap: 48, alignItems: 'flex-start' }}>
           <div className="col" style={{ gap: 20 }}>
-            <h2 className="display-md">Why we built this.</h2>
-            <p style={{ fontSize: 16, color: 'var(--color-body)', lineHeight: 1.65 }}>Floral event work is local, seasonal, and ferociously busy. Every studio knows the same forty freelancers. Every freelancer knows the same fifteen studios. The matching happens over Sunday-night group texts, paper invoices that get lost, and Venmo requests that nobody chases.</p>
-            <p style={{ fontSize: 16, color: 'var(--color-body)', lineHeight: 1.65 }}>Rosy organizes that informal economy into a real marketplace — with verified workers, escrowed payments, ratings that survive, and tax docs that actually arrive. Same community. Less chaos.</p>
+            <h2 className="display-md">{C('about','why_title','Why we built this.')}</h2>
+            <p style={{ fontSize: 16, color: 'var(--color-body)', lineHeight: 1.65 }}>{C('about','why_body1','Floral event work is local, seasonal, and ferociously busy. Every studio knows the same forty freelancers. Every freelancer knows the same fifteen studios. The matching happens over Sunday-night group texts, paper invoices that get lost, and Venmo requests that nobody chases.')}</p>
+            <p style={{ fontSize: 16, color: 'var(--color-body)', lineHeight: 1.65 }}>{C('about','why_body2','Rosy organizes that informal economy into a real marketplace — with verified workers, escrowed payments, ratings that survive, and tax docs that actually arrive. Same community. Less chaos.')}</p>
           </div>
           <div style={{ aspectRatio: '4/5', borderRadius: 24, overflow: 'hidden' }}>
             <img src={MP_D.IMAGES.marketingAbout} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -491,6 +507,7 @@ function MkPressPage({ setRoute }) {
 
 /* ============ Contact ============ */
 function MkContactPage() {
+  useSiteContentTick();
   const toast = useToast();
   const [form, setForm] = MP_us({ name: '', email: '', topic: 'sales', body: '' });
   const submit = (e) => { e.preventDefault(); toast.push({ kind: 'success', title: 'Message sent', body: 'We\'ll be back to you within one business day.' }); setForm({ name: '', email: '', topic: 'sales', body: '' }); };
@@ -498,9 +515,9 @@ function MkContactPage() {
     <>
       <section style={{ padding: '72px 32px 0' }}>
         <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center' }}>
-          <span className="t-eyebrow">Contact</span>
-          <h1 className="display-xl" style={{ margin: '14px 0 14px' }}>Talk to us.</h1>
-          <p style={{ margin: 0, fontSize: 18, color: 'var(--color-body)' }}>Sales, support, press, careers — one inbox.</p>
+          <span className="t-eyebrow">{C('contact','eyebrow','Contact')}</span>
+          <h1 className="display-xl" style={{ margin: '14px 0 14px' }}>{C('contact','title','Talk to us.')}</h1>
+          <p style={{ margin: 0, fontSize: 18, color: 'var(--color-body)' }}>{C('contact','sub','Sales, support, press, careers — one inbox.')}</p>
         </div>
       </section>
       <section className="mk-section" style={{ paddingTop: 48 }}>

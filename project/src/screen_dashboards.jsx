@@ -82,6 +82,28 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
         });
       }
     } catch (e) { console.warn('dev notif persist failed:', e); }
+    // Best-effort route to Airtable RI Developer Tasks
+    // TODO: wire PAT from Vercel env (set window.__AIRTABLE_PAT in index.html or via env injection).
+    try {
+      const token = window.__AIRTABLE_PAT;
+      if (token) {
+        // Tasks table id in app6biS7yjV6XzFVG. Replace with actual ID if known —
+        // table name also works in the Airtable REST API path.
+        const TABLE_ID = window.__AIRTABLE_TASKS_TABLE_ID || 'Tasks';
+        const priority = severity === 'high' ? '🔴 High' : severity === 'medium' ? '🟡 Medium' : '🟢 Low';
+        await fetch(`https://api.airtable.com/v0/app6biS7yjV6XzFVG/${encodeURIComponent(TABLE_ID)}`, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              Title: entry.title,
+              Notes: entry.body + (screenshot ? `\n\nScreenshot (data URL truncated): ${String(screenshot).slice(0, 120)}…` : ''),
+              Priority: priority,
+            },
+          }),
+        });
+      }
+    } catch (e) { console.warn('Airtable dev-issue route failed:', e); }
     toast.push({ kind: 'success', title: 'Issue reported', body: 'Logged in your notifications. The team will review.' });
     onClose();
   };
@@ -128,11 +150,54 @@ function getDateStrip() {
   return `${months[first.getMonth()]} ${ordinal(first.getDate())} ${first.getFullYear()} – ${months[last.getMonth()]} ${ordinal(last.getDate())} ${last.getFullYear()}`;
 }
 
+/* Dashboard-level one-time PWA install prompt (dismissible, persists in localStorage).
+   Shows on first dashboard load when Chrome's beforeinstallprompt has fired, OR on iOS.
+   iOS users get a "Share -> Add to Home Screen" toast instead of the install dialog. */
+function DashboardInstallPrompt() {
+  const toast = useToast();
+  const dismissed = (() => { try { return !!localStorage.getItem('rosy.installPromptDismissed'); } catch (e) { return false; } })();
+  const installed = window.matchMedia('(display-mode: standalone)').matches;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const [show, setShow] = SD_us(!dismissed && !installed && (!!window.__pwaInstallEvent || isIOS));
+  SD_ue(() => {
+    const onCan = () => { if (!dismissed && !installed) setShow(true); };
+    window.addEventListener('rosy:pwa-installable', onCan);
+    return () => window.removeEventListener('rosy:pwa-installable', onCan);
+  }, []);
+  const dismiss = () => { try { localStorage.setItem('rosy.installPromptDismissed', '1'); } catch (e) {} setShow(false); };
+  const accept = async () => {
+    if (window.__pwaInstallEvent) {
+      try { window.__pwaInstallEvent.prompt(); await window.__pwaInstallEvent.userChoice; } catch (e) {}
+      window.__pwaInstallEvent = null;
+    } else if (isIOS) {
+      toast.push({ kind: 'info', title: 'Install on iPhone', body: 'Tap Share → Add to Home Screen.' });
+    }
+    dismiss();
+  };
+  if (!show) return null;
+  return (
+    <div className="card" style={{ background: 'var(--rosy-teal-soft)', border: '1px solid var(--rosy-teal-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <SD_I.Download size={20} style={{ color: 'var(--rosy-teal-dark)', flex: 'none' }} />
+        <div>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Install Rosy Recruits on your home screen</p>
+          <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-muted)' }}>{isIOS ? 'Tap Share → Add to Home Screen for one-tap access.' : 'One tap from your phone to open the app.'}</p>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn btn-ghost btn-sm" onClick={dismiss}>Not now</button>
+        <button className="btn btn-coral btn-sm" onClick={accept}>Install</button>
+      </div>
+    </div>
+  );
+}
+
 function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
   useDataTick();
   const dateStrip = getDateStrip();
   return (
     <div className="content fade-up">
+      <DashboardInstallPrompt />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
       </div>
@@ -158,6 +223,7 @@ function DashboardVendor({ user, setRoute, statStrip, statAnim }) {
   const dateStrip = getDateStrip();
   // Read window.RosyData fresh on every render (Supabase hydrates after first paint)
   const D = window.RosyData || SD_D;
+  // Install prompt rendered just below as part of the dashboard content
   const myEvents = user?.id ? (D.EVENTS || []).filter(e => e.vendorId === user.id) : (D.EVENTS || []);
   const openEvents = myEvents.filter(e => e.status === 'open');
   const myEventIds = new Set(myEvents.map(e => e.id));
@@ -170,6 +236,7 @@ function DashboardVendor({ user, setRoute, statStrip, statAnim }) {
   const monthSpend = myTx.filter(t => t.status === 'Paid').reduce((s, t) => s + t.amount, 0);
   return (
     <div className="content fade-up">
+      <DashboardInstallPrompt />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -215,6 +282,7 @@ function DashboardWorker({ user, setRoute, statStrip, statAnim }) {
   const rating = user?.rating || (myTx.length ? 4.85 : '—');
   return (
     <div className="content fade-up">
+      <DashboardInstallPrompt />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

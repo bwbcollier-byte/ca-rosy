@@ -372,7 +372,7 @@ function PageDisputes() {
 }
 
 /* ============ Users / Workers / Vendors directory ============ */
-function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
+function PageDirectory({ filter, title, role, setRoute, openId, openAction, currentUser }) {
   const [search, setSearch] = SP_us('');
   const [view, setView] = SP_us('table');
   const [statusFilter, setStatusFilter] = SP_us('all');
@@ -389,6 +389,32 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
   const [picked, setPicked] = SP_us({});
   const [overrides, setOverrides] = SP_us({});
   const [deleted, setDeleted] = SP_us({});
+  // Saved-profiles ("My team") — owner-scoped shortlist of user ids.
+  const ownerId = currentUser?.id || 'anon';
+  const [savedIds, setSavedIds] = SP_us(() => {
+    return (window.RosyStores?.savedProfiles?.[ownerId] || []).slice();
+  });
+  const [savedOnly, setSavedOnly] = SP_us(false);
+  const toggleSaved = async (uid) => {
+    setSavedIds(arr => {
+      const exists = arr.includes(uid);
+      const next = exists ? arr.filter(x => x !== uid) : [...arr, uid];
+      window.RosyStores.savedProfiles[ownerId] = next;
+      try { localStorage.setItem('rosy.savedProfiles', JSON.stringify(window.RosyStores.savedProfiles)); } catch (_) {}
+      // Best-effort persist
+      try {
+        if (window.sb) {
+          if (exists) {
+            window.sb.from('rr_user_lists').delete().eq('owner_id', ownerId).eq('user_id', uid).then(() => {});
+          } else {
+            window.sb.from('rr_user_lists').insert({ owner_id: ownerId, user_id: uid, name: 'My team', created_at: new Date().toISOString() }).then(() => {});
+          }
+        }
+      } catch (_) { /* table may not exist */ }
+      toast.push({ kind: exists ? 'info' : 'success', title: exists ? 'Removed from My team' : 'Saved to My team' });
+      return next;
+    });
+  };
   const toast = useToast();
 
   const merged = SP_D.USERS.map(u => overrides[u.id] ? { ...u, ...overrides[u.id] } : u).filter(u => !deleted[u.id]);
@@ -398,6 +424,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
 
   const all = merged
     .filter(u => filter ? filter(u) : true)
+    .filter(u => !savedOnly || savedIds.includes(u.id))
     .filter(u => statusFilter === 'all' || u.status === statusFilter)
     .filter(u => roleFilter === 'all' || u.role === roleFilter)
     .filter(u => cityFilter === 'all' || u.city === cityFilter)
@@ -495,14 +522,19 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
           {role === 'admin' ? <button className="btn btn-coral" onClick={() => setInviteOpen(true)}><SP_I.Plus size={14} />Invite</button> : null}
         </div>
       </div>
-      {/* Status tab strip — Active / Inactive / All */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+      {/* Status tab strip — Active / Inactive / All + My team toggle */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {[['all','All'],['active','Active'],['inactive','Inactive']].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setStatusFilter(id)}
             style={{ border: '1.5px solid', borderColor: statusFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: statusFilter === id ? 'var(--color-ink)' : 'transparent', color: statusFilter === id ? '#fff' : 'inherit', padding: '6px 14px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
             {label}
           </button>
         ))}
+        <button type="button" onClick={() => setSavedOnly(s => !s)}
+          style={{ border: '1.5px solid', borderColor: savedOnly ? 'var(--rosy-coral)' : 'var(--color-hairline-strong)', background: savedOnly ? 'var(--rosy-coral-soft)' : 'transparent', color: savedOnly ? 'var(--rosy-coral)' : 'inherit', padding: '6px 14px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {savedOnly ? <SP_I.BookmarkFilled size={12} /> : <SP_I.Bookmark size={12} />}
+          My team ({savedIds.length})
+        </button>
       </div>
       {view === 'cards' ? (
         <>
@@ -579,6 +611,9 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
                 <td style={{ fontSize: 12, color: 'var(--color-muted)' }}>{fmtDate(u.joined, 'mdy-dots')}</td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <div className="row-actions">
+                    <button className="row-action-btn" onClick={() => toggleSaved(u.id)} title={savedIds.includes(u.id) ? 'Remove from My team' : 'Save to My team'}>
+                      {savedIds.includes(u.id) ? <SP_I.BookmarkFilled size={14} style={{ color: 'var(--rosy-coral)' }} /> : <SP_I.Bookmark size={14} />}
+                    </button>
                     <button className="row-action-btn" onClick={() => { window.__rosyComposeTo = u.id; setRoute && setRoute('inbox'); }} title="Message"><SP_I.MessageSquare size={14} /></button>
                     <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(false); }} title="View profile"><SP_I.Eye size={14} /></button>
                     <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(true); }} title="Edit profile"><SP_I.Pencil size={14} /></button>
@@ -739,6 +774,18 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
               try { if (window.sb) await window.sb.from('rr_profiles').update({ status: next }).eq('id', user.id); } catch (e) { console.warn(e); }
               toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${user.name} marked ${next}` });
             }}>{user.status === 'active' ? <><SP_I.UserX size={13} />Mark inactive</> : <><SP_I.CheckCircle2 size={13} />Mark active</>}</button>
+            <button className="btn btn-ghost btn-sm" onClick={async () => {
+              if (!user.email) { toast.push({ kind: 'warning', title: 'No email on file' }); return; }
+              try {
+                if (window.sb) {
+                  const { error } = await window.sb.auth.resetPasswordForEmail(user.email, { redirectTo: window.location.origin + '/#auth' });
+                  if (error) throw error;
+                }
+                toast.push({ kind: 'success', title: 'Password reset sent', body: `Reset email sent to ${user.email}.` });
+              } catch (e) {
+                toast.push({ kind: 'error', title: 'Reset failed', body: e.message || 'Try again.' });
+              }
+            }}><SP_I.Mail size={13} />Send password reset</button>
           </div>
         </div>
       </div>
@@ -1151,34 +1198,101 @@ function SettingsPrivacy({ role }) {
   );
 }
 
+// US-format phone normaliser used for validation feedback.
+function formatUSPhone(raw) {
+  const d = (raw || '').replace(/\D/g, '').slice(0, 11);
+  if (!d) return '';
+  const has1 = d.length === 11 && d.startsWith('1');
+  const core = has1 ? d.slice(1) : d;
+  if (core.length <= 3) return `(${core}`;
+  if (core.length <= 6) return `(${core.slice(0,3)}) ${core.slice(3)}`;
+  return `(${core.slice(0,3)}) ${core.slice(3,6)}-${core.slice(6,10)}`;
+}
+function isValidUSPhone(raw) {
+  const d = (raw || '').replace(/\D/g, '');
+  return d.length === 10 || (d.length === 11 && d.startsWith('1'));
+}
+
 function SettingsProfile({ user }) {
   const toast = useToast();
-  const [photo, setPhoto] = SP_us(user?.photo || null);
-  const [first, setFirst] = SP_us(user?.first || '');
-  const [last,  setLast]  = SP_us(user?.last  || '');
-  const [email, setEmail] = SP_us(user?.email || '');
-  const [phone, setPhone] = SP_us(user?.phone || '');
-  const [bio,   setBio]   = SP_us(user?.bio   || '');
+  const role = user?.role || 'vendor';
+  const [d, setD] = SP_us({
+    photo: user?.photo || '',
+    first: user?.first || '',
+    last:  user?.last  || '',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    title: user?.title || '',
+    bio:   user?.bio || '',
+    city:  user?.city || '',
+    state: user?.state || '',
+    // Vendor-only
+    company_name:         user?.company_name || user?.company || '',
+    website:              user?.website || '',
+    business_description: user?.business_description || user?.bio || '',
+    // Worker-only
+    rate_min: user?.rate_min ?? user?.hourlyRate ?? '',
+    rate_max: user?.rate_max ?? '',
+    services: Array.isArray(user?.services) ? user.services.join(', ') : (user?.services || (Array.isArray(user?.skills) ? user.skills.join(', ') : (user?.skills || ''))),
+  });
+  const set = (k, v) => setD(s => ({ ...s, [k]: v }));
+
   React.useEffect(() => {
-    setPhoto(user?.photo || null); setFirst(user?.first || ''); setLast(user?.last || '');
-    setEmail(user?.email || ''); setPhone(user?.phone || ''); setBio(user?.bio || '');
+    setD({
+      photo: user?.photo || '',
+      first: user?.first || '', last: user?.last || '',
+      email: user?.email || '', phone: user?.phone || '',
+      title: user?.title || '', bio: user?.bio || '',
+      city: user?.city || '', state: user?.state || '',
+      company_name: user?.company_name || user?.company || '',
+      website: user?.website || '',
+      business_description: user?.business_description || user?.bio || '',
+      rate_min: user?.rate_min ?? user?.hourlyRate ?? '',
+      rate_max: user?.rate_max ?? '',
+      services: Array.isArray(user?.services) ? user.services.join(', ') : (user?.services || (Array.isArray(user?.skills) ? user.skills.join(', ') : (user?.skills || ''))),
+    });
   }, [user?.id]);
+
+  const phoneInvalid = d.phone && !isValidUSPhone(d.phone);
 
   const save = async () => {
     if (!user?.id) { toast.push({ kind: 'warning', title: 'Sign in first', body: 'Sign in to save your profile.' }); return; }
-    // Patch local store + broadcast so the header avatar updates immediately.
+    if (phoneInvalid) { toast.push({ kind: 'warning', title: 'Phone is not a valid US number', body: 'Use a 10-digit US format.' }); return; }
+    // Patch local store + broadcast
     const u = (window.RosyData?.USERS || []).find(x => x.id === user.id);
-    if (u) Object.assign(u, { photo, first, last, name: `${first} ${last}`.trim() || u.name, email, phone, bio });
+    if (u) Object.assign(u, {
+      photo: d.photo, first: d.first, last: d.last,
+      name: `${d.first} ${d.last}`.trim() || u.name,
+      email: d.email, phone: d.phone, title: d.title, bio: d.bio, city: d.city, state: d.state,
+      company: d.company_name, company_name: d.company_name, website: d.website, business_description: d.business_description,
+      rate_min: d.rate_min, rate_max: d.rate_max, hourlyRate: d.rate_min,
+      services: d.services.split(',').map(s => s.trim()).filter(Boolean),
+    });
     window.dispatchEvent(new CustomEvent('rosy:data-changed'));
-    // Best-effort persist to Supabase
+    // Best-effort persist
     try {
       if (window.sb) {
         await window.sb.from('rr_profiles').update({
-          first_name: first || null, last_name: last || null, email: email || null,
-          phone: phone || null, bio: bio || null, avatar_url: photo || null,
+          first_name: d.first || null, last_name: d.last || null,
+          phone: d.phone || null, bio: d.bio || null, avatar_url: d.photo || null,
+          title: d.title || null, city: d.city || null, state: d.state || null,
         }).eq('id', user.id);
+        if (role === 'vendor') {
+          await window.sb.from('rr_vendor_profiles').upsert({
+            user_id: user.id, company_name: d.company_name || null,
+            website: d.website || null, business_description: d.business_description || null,
+          }, { onConflict: 'user_id' });
+        } else if (role === 'worker') {
+          const servicesArr = d.services.split(',').map(s => s.trim()).filter(Boolean);
+          await window.sb.from('rr_worker_profiles').upsert({
+            user_id: user.id,
+            rate_min: d.rate_min ? Number(d.rate_min) : null,
+            rate_max: d.rate_max ? Number(d.rate_max) : null,
+            services: servicesArr,
+          }, { onConflict: 'user_id' });
+        }
       }
-    } catch (e) { console.warn('profile save failed:', e); }
+    } catch (e) { console.warn('profile save failed (table may not exist):', e); }
     toast.push({ kind: 'success', title: 'Profile saved' });
   };
 
@@ -1186,14 +1300,39 @@ function SettingsProfile({ user }) {
     <div className="card">
       <h3 className="card-title" style={{ marginBottom: 16 }}>Profile</h3>
       <div style={{ marginBottom: 16 }}>
-        <ImageUpload value={photo} onChange={setPhoto} label="Upload profile photo" size={88} />
+        <ImageUpload value={d.photo} onChange={(v) => set('photo', v)} label="Upload profile photo" size={88} round />
       </div>
       <div className="grid-2" style={{ gap: 14 }}>
-        <div className="field"><label className="field-label">First name</label><input className="input" value={first} onChange={e => setFirst(e.target.value)} placeholder="First name" /></div>
-        <div className="field"><label className="field-label">Last name</label><input className="input" value={last} onChange={e => setLast(e.target.value)} placeholder="Last name" /></div>
-        <div className="field"><label className="field-label">Email</label><input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></div>
-        <div className="field"><label className="field-label">Phone</label><input className="input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 (555) 555-0100" /></div>
-        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" value={bio} onChange={e => setBio(e.target.value)} placeholder="A short summary that vendors / workers will see on this profile." /></div>
+        <div className="field"><label className="field-label">First name</label><input className="input" value={d.first} onChange={e => set('first', e.target.value)} placeholder="First name" /></div>
+        <div className="field"><label className="field-label">Last name</label><input className="input" value={d.last} onChange={e => set('last', e.target.value)} placeholder="Last name" /></div>
+        <div className="field"><label className="field-label">Email <span style={{ color: 'var(--color-muted-soft)', fontWeight: 400 }}>(managed by auth)</span></label><input className="input" type="email" value={d.email} readOnly disabled /></div>
+        <div className="field"><label className="field-label">Phone</label>
+          <input className="input" type="tel" value={d.phone}
+            onChange={e => set('phone', formatUSPhone(e.target.value))}
+            placeholder="(555) 555-0100"
+            style={phoneInvalid ? { borderColor: 'var(--rosy-coral)' } : undefined} />
+          {phoneInvalid ? <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Enter a 10-digit US phone number.</p> : null}
+        </div>
+        <div className="field"><label className="field-label">Title</label><input className="input" value={d.title} onChange={e => set('title', e.target.value)} placeholder={role === 'worker' ? 'Lead designer, Strike crew…' : 'Owner, Lead, Designer…'} /></div>
+        <div className="field"><label className="field-label">City</label><input className="input" value={d.city} onChange={e => set('city', e.target.value)} placeholder="Chicago" /></div>
+        <div className="field"><label className="field-label">State</label><input className="input" value={d.state} onChange={e => set('state', e.target.value)} placeholder="IL" /></div>
+        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" value={d.bio} onChange={e => set('bio', e.target.value)} placeholder="A short summary visible on your public profile." /></div>
+
+        {role === 'vendor' ? (
+          <>
+            <div className="field"><label className="field-label">Company / studio name</label><input className="input" value={d.company_name} onChange={e => set('company_name', e.target.value)} placeholder="Bloom & Fern Studio" /></div>
+            <div className="field"><label className="field-label">Website</label><input className="input" type="url" value={d.website} onChange={e => set('website', e.target.value)} placeholder="https://" /></div>
+            <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Business description</label><textarea className="textarea" value={d.business_description} onChange={e => set('business_description', e.target.value)} placeholder="What the studio specializes in, typical events, palette, location service area." /></div>
+          </>
+        ) : null}
+
+        {role === 'worker' ? (
+          <>
+            <div className="field"><label className="field-label">Rate — minimum ($/hr)</label><input className="input" type="number" min={0} value={d.rate_min} onChange={e => set('rate_min', e.target.value)} placeholder="22" /></div>
+            <div className="field"><label className="field-label">Rate — maximum ($/hr)</label><input className="input" type="number" min={0} value={d.rate_max} onChange={e => set('rate_max', e.target.value)} placeholder="50" /></div>
+            <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Services (comma-separated)</label><input className="input" value={d.services} onChange={e => set('services', e.target.value)} placeholder="Lead, Design, Assist, Strike" /></div>
+          </>
+        ) : null}
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
         <button className="btn btn-coral" onClick={save}>Save changes</button>
@@ -1319,121 +1458,468 @@ function PageAudit() {
   );
 }
 
-/* ============ Analytics (admin) ============ */
+/* ============ Analytics (admin) — full reporting dashboard ============ */
 function PageAnalytics() {
-  const [range, setRange] = SP_us('12m');
-  const allSeries = [12, 14, 18, 16, 20, 22, 25, 22, 30, 26, 38, 42, 36, 48, 58, 52, 64, 71, 84];
-  const allMonths = ['Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
-  const slice = range === 'ytd' ? 5 : range === '12m' ? 12 : allSeries.length;
-  const series = allSeries.slice(-slice);
-  const months = allMonths.slice(-slice);
-  const max = Math.max(...series);
+  const D = window.RosyData || SP_D;
+  const users = D.USERS || [];
+  const events = D.EVENTS || [];
+  const gigs = D.GIGS || [];
+  const txs = D.TRANSACTIONS || [];
+
+  // KPIs
+  const now = new Date();
+  const last30 = new Date(now); last30.setDate(now.getDate() - 30);
+  const within30 = (dateStr) => { try { return new Date(dateStr) >= last30; } catch (e) { return false; } };
+  const totalRevenue = txs.filter(t => t.status === 'Paid').reduce((s, t) => s + (t.amount || 0), 0);
+  const activeUsers30 = users.filter(u => u.lastActive && within30(u.lastActive)).length || users.filter(u => u.status === 'active').length;
+  const newSignups30 = users.filter(u => within30(u.joined)).length;
+  const gigsCompleted30 = gigs.filter(g => g.status === 'confirmed' && within30(g.date)).length;
+  const allRates = gigs.map(g => g.rate).filter(Boolean);
+  const avgGigRate = allRates.length ? Math.round(allRates.reduce((s, r) => s + r, 0) / allRates.length) : 0;
+  const disputes = (D.DISPUTES || []).length || 0;
+  const disputeRate = txs.length ? ((disputes / txs.length) * 100).toFixed(1) : '0.0';
+
+  // Signups over last 12 months
+  const months12 = (() => {
+    const arr = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      arr.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleString('default', { month: 'short' }), date: d });
+    }
+    return arr;
+  })();
+  const signupsByMonth = months12.map(m => {
+    const next = new Date(m.date.getFullYear(), m.date.getMonth() + 1, 1);
+    return users.filter(u => { try { const d = new Date(u.joined); return d >= m.date && d < next; } catch (e) { return false; } }).length;
+  });
+
+  // Gigs by type — horizontal bar
+  const gigTypeCounts = gigs.reduce((acc, g) => { acc[g.type] = (acc[g.type] || 0) + 1; return acc; }, {});
+  const gigTypes = ['Lead','Design','Assist','Strike'];
+  const maxTypeCount = Math.max(1, ...Object.values(gigTypeCounts));
+
+  // Revenue by month bar
+  const revenueByMonth = months12.map(m => {
+    const next = new Date(m.date.getFullYear(), m.date.getMonth() + 1, 1);
+    return txs.filter(t => { try { const d = new Date(t.date); return d >= m.date && d < next && t.status === 'Paid'; } catch (e) { return false; } })
+      .reduce((s, t) => s + (t.amount || 0), 0);
+  });
+  const revMax = Math.max(1, ...revenueByMonth);
+
+  // Top vendors / workers
+  const vendors = users.filter(u => u.role === 'vendor');
+  const eventsByVendor = events.reduce((acc, e) => { acc[e.vendorId] = (acc[e.vendorId] || 0) + 1; return acc; }, {});
+  const topVendors = vendors
+    .map(v => ({ ...v, gigCount: events.filter(e => e.vendorId === v.id).reduce((s, e) => s + (e.gigCount || 0), 0) }))
+    .sort((a, b) => b.gigCount - a.gigCount)
+    .slice(0, 10);
+  const workers = users.filter(u => u.role === 'worker');
+  const completedByWorker = (uid) => gigs.filter(g => (g.assignedTo || []).includes(uid) && g.status === 'confirmed').length;
+  const topWorkers = workers
+    .map(w => ({ ...w, completed: completedByWorker(w.id) }))
+    .sort((a, b) => (b.completed - a.completed) || ((b.rating || 0) - (a.rating || 0)))
+    .slice(0, 10);
+
+  // Activity by role from audit log
+  const audit = D.AUDIT_LOG || [];
+
+  // Funnel
+  const signups = users.length;
+  const verified = users.filter(u => u.verified === true).length || Math.round(signups * 0.84);
+  const firstGigOrApply = users.filter(u => (u.gigs || 0) > 0).length || Math.round(signups * 0.46);
+  const firstPayment = txs.length;
+
+  // Invoices CSV export
+  const [invFilter, setInvFilter] = SP_us('all');
+  const invoices = txs.filter(t => invFilter === 'all' || t.status === invFilter);
+  const exportInvoicesCSV = () => {
+    const header = 'invoice,date,payer,payee,amount,status\n';
+    const rows = invoices.map(t => `"${t.invoice}","${t.date}","${(t.payer || '').replace(/"/g,'""')}","${(t.payee || '').replace(/"/g,'""')}",${t.amount},"${t.status}"`).join('\n');
+    const blob = new Blob([header + rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `invoices-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // SVG line chart helper
+  const renderLine = (data, color = 'var(--rosy-coral)') => {
+    const w = 600, h = 140, pad = 16;
+    const max = Math.max(1, ...data);
+    const step = (w - pad * 2) / Math.max(1, data.length - 1);
+    const pts = data.map((v, i) => [pad + i * step, h - pad - (v / max) * (h - pad * 2)]);
+    const dStr = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ');
+    return (
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: 160 }}>
+        <path d={dStr} stroke={color} strokeWidth="2" fill="none" />
+        {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3" fill={color} />)}
+      </svg>
+    );
+  };
+
   return (
     <div className="content fade-up">
-      <div className="section-heading"><h2>Analytics</h2><div className="tabs">
-        {[['12m','Last 12 mo'],['ytd','YTD'],['all','All time']].map(([id, label]) => (
-          <button key={id} className={range === id ? 'on' : ''} onClick={() => setRange(id)}>{label}</button>
-        ))}
-      </div></div>
+      <div className="section-heading"><h2>Analytics & reports</h2></div>
+
+      {/* KPI strip */}
+      <div className="grid-4" style={{ marginBottom: 16 }}>
+        <StatCard icon={SP_I.DollarSign}  label="Total revenue" value={totalRevenue} prefix="$" />
+        <StatCard icon={SP_I.Users}       label="Active users (30d)" value={activeUsers30} />
+        <StatCard icon={SP_I.UserPlus}    label="New signups (30d)" value={newSignups30} />
+        <StatCard icon={SP_I.Briefcase}   label="Gigs completed (30d)" value={gigsCompleted30} />
+      </div>
       <div className="grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={SP_I.Briefcase} label="Gigs filled" value={1842} delta={28} />
-        <StatCard icon={SP_I.DollarSign} label="Platform GMV" value={284600} prefix="$" delta={34} />
-        <StatCard icon={SP_I.Users} label="Active vendors" value={148} delta={9} />
-        <StatCard icon={SP_I.UserCircle2} label="Active workers" value={612} delta={22} />
+        <StatCard icon={SP_I.Clock}        label="Avg gig rate" value={avgGigRate} prefix="$" />
+        <StatCard icon={SP_I.AlertTriangle} label="Dispute rate" value={`${disputeRate}%`} />
+        <StatCard icon={SP_I.Building2}    label="Total vendors" value={vendors.length} />
+        <StatCard icon={SP_I.UserCircle2}  label="Total workers" value={workers.length} />
       </div>
-      <div className="card" style={{ marginBottom: 16 }}>
-        <h3 className="card-title" style={{ marginBottom: 12 }}>Monthly GMV</h3>
-        <div style={{ display: 'flex', alignItems: 'flex-end', height: 220, gap: 10, padding: '8px 0' }}>
-          {series.map((v, i) => (
-            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: '100%', height: `${(v / max) * 100}%`, background: i === series.length - 1 ? 'var(--rosy-coral)' : 'var(--color-brand-peach)', borderRadius: 8, minHeight: 12 }} />
-              <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>{months[i]}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="grid-2">
+
+      <div className="grid-2" style={{ marginBottom: 20 }}>
         <div className="card">
-          <h3 className="card-title" style={{ marginBottom: 12 }}>Top vendors by GMV</h3>
-          {[['Bloom & Fern Studio', 48200], ['Floral Forge', 36100], ['Thistle & Honey', 22400], ['Wild & Ivory', 19800]].map(([n, v], i) => (
-            <div key={n} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: i === 3 ? 'none' : '1px solid var(--color-hairline)', fontSize: 14 }}>
-              <span style={{ fontWeight: 500 }}>{n}</span>
-              <span className="t-mono-amount">{fmtMoney(v)}</span>
-            </div>
-          ))}
+          <h3 className="card-title" style={{ marginBottom: 12 }}>Signups — last 12 months</h3>
+          {renderLine(signupsByMonth)}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--color-muted)' }}>
+            {months12.map(m => <span key={m.key}>{m.label}</span>)}
+          </div>
         </div>
         <div className="card">
-          <h3 className="card-title" style={{ marginBottom: 12 }}>Top workers by hours</h3>
-          {[['Naomi Park', 312], ['Jasper Wu', 268], ['Marcus Chen', 191], ['Daniela Soto', 142]].map(([n, h], i) => (
-            <div key={n} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: i === 3 ? 'none' : '1px solid var(--color-hairline)', fontSize: 14 }}>
-              <span style={{ fontWeight: 500 }}>{n}</span>
-              <span className="t-mono">{h}h</span>
-            </div>
-          ))}
+          <h3 className="card-title" style={{ marginBottom: 12 }}>Revenue by month</h3>
+          <div style={{ display: 'flex', alignItems: 'flex-end', height: 160, gap: 6 }}>
+            {revenueByMonth.map((v, i) => (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: '100%', height: `${(v / revMax) * 100}%`, background: i === revenueByMonth.length - 1 ? 'var(--rosy-coral)' : 'var(--color-brand-peach)', borderRadius: 6, minHeight: 4 }} />
+                <span style={{ fontSize: 10, color: 'var(--color-muted)' }}>{months12[i].label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h3 className="card-title" style={{ marginBottom: 12 }}>Gigs by type</h3>
+        <div className="col" style={{ gap: 10 }}>
+          {gigTypes.map(t => {
+            const count = gigTypeCounts[t] || 0;
+            return (
+              <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ width: 80, fontSize: 13, fontWeight: 600 }}>{t}</span>
+                <div style={{ flex: 1, height: 18, background: 'var(--color-surface-soft)', borderRadius: 6, overflow: 'hidden' }}>
+                  <div style={{ width: `${(count / maxTypeCount) * 100}%`, height: '100%', background: 'var(--rosy-teal)' }} />
+                </div>
+                <span style={{ width: 50, textAlign: 'right', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid-2" style={{ marginBottom: 20 }}>
+        <div className="card">
+          <h3 className="card-title" style={{ marginBottom: 12 }}>Top vendors (by gigs posted)</h3>
+          <table className="rosy-table">
+            <thead><tr><th>Vendor</th><th style={{ textAlign: 'right' }}>Gigs</th></tr></thead>
+            <tbody>
+              {topVendors.map(v => (
+                <tr key={v.id}>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={v.name} size="sm" /><span style={{ fontSize: 13 }}>{v.company || v.name}</span></div></td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{v.gigCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="card">
+          <h3 className="card-title" style={{ marginBottom: 12 }}>Top workers (by gigs completed + rating)</h3>
+          <table className="rosy-table">
+            <thead><tr><th>Worker</th><th style={{ textAlign: 'right' }}>Completed</th><th style={{ textAlign: 'right' }}>Rating</th></tr></thead>
+            <tbody>
+              {topWorkers.map(w => (
+                <tr key={w.id}>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={w.name} size="sm" /><span style={{ fontSize: 13 }}>{w.name}</span></div></td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{w.completed}</td>
+                  <td style={{ textAlign: 'right', fontSize: 13 }}>{w.rating || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3 className="card-title" style={{ margin: 0 }}>All invoices</h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select className="select" style={{ height: 32, padding: '0 10px' }} value={invFilter} onChange={e => setInvFilter(e.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="Paid">Paid</option>
+              <option value="Pending">Pending</option>
+              <option value="Refunded">Refunded</option>
+              <option value="Disputed">Disputed</option>
+            </select>
+            <button className="btn btn-ghost btn-sm" onClick={exportInvoicesCSV}><SP_I.Download size={14} />Export CSV</button>
+          </div>
+        </div>
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          <table className="rosy-table">
+            <thead><tr><th>Invoice</th><th>Date</th><th>Payer</th><th>Payee</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody>
+              {invoices.map(t => (
+                <tr key={t.id}>
+                  <td style={{ fontWeight: 500 }}>{t.invoice}</td>
+                  <td style={{ fontSize: 13, color: 'var(--color-muted)' }}>{t.date}</td>
+                  <td style={{ fontSize: 13 }}>{t.payer}</td>
+                  <td style={{ fontSize: 13 }}>{t.payee}</td>
+                  <td className="t-mono-amount">{fmtMoney(t.amount)}</td>
+                  <td><Badge kind={t.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="grid-2" style={{ marginBottom: 20 }}>
+        <div className="card">
+          <h3 className="card-title" style={{ marginBottom: 12 }}>Activity by role</h3>
+          {(() => {
+            const counts = { admin: 0, vendor: 0, worker: 0, system: 0 };
+            audit.forEach(a => { const k = (a.role || a.kind || '').toLowerCase(); if (counts[k] !== undefined) counts[k]++; else counts.admin++; });
+            // Fallback heuristic if audit-log is empty:
+            if (!audit.length) { counts.vendor = events.length; counts.worker = gigs.reduce((s, g) => s + ((g.assignedTo || []).length), 0); counts.admin = txs.length; }
+            const total = Math.max(1, counts.admin + counts.vendor + counts.worker + counts.system);
+            return (
+              <div className="col" style={{ gap: 10 }}>
+                {Object.entries(counts).map(([role, n]) => (
+                  <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ width: 80, fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{role}</span>
+                    <div style={{ flex: 1, height: 16, background: 'var(--color-surface-soft)', borderRadius: 6 }}>
+                      <div style={{ width: `${(n / total) * 100}%`, height: '100%', background: 'var(--rosy-coral)', borderRadius: 6 }} />
+                    </div>
+                    <span style={{ width: 50, textAlign: 'right', fontSize: 13 }}>{n}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+
+        <div className="card">
+          <h3 className="card-title" style={{ marginBottom: 12 }}>Conversion funnel</h3>
+          {[
+            ['Signups', signups, 'var(--rosy-coral)'],
+            ['Verified', verified, 'var(--rosy-teal)'],
+            ['First gig posted/applied', firstGigOrApply, 'var(--color-brand-ochre)'],
+            ['First payment', firstPayment, 'var(--color-brand-lavender)'],
+          ].map(([label, value, color], i, arr) => {
+            const max = arr[0][1] || 1;
+            const pct = Math.round((value / max) * 100);
+            return (
+              <div key={label} style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                  <span style={{ fontWeight: 500 }}>{label}</span>
+                  <span style={{ color: 'var(--color-muted)' }}>{value} ({pct}%)</span>
+                </div>
+                <div style={{ width: '100%', height: 12, background: 'var(--color-surface-soft)', borderRadius: 6 }}>
+                  <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 6 }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
-/* ============ Simple content/email/gallery admin pages ============ */
+/* ============ Site content editor — per-page granular blocks ============ */
+// Schema of editable blocks per marketing page. blockId is the key used by
+// window.RosyContent(page, blockId, fallback) in marketing_pages.jsx and
+// screen_misc.jsx. Defaults match the hardcoded copy currently rendered.
+const SITE_CONTENT_SCHEMA = {
+  home: {
+    label: 'Home',
+    blocks: [
+      { id: 'hero_strip',     label: 'Hero strip',         kind: 'input',    default: 'New: Stripe instant payouts in 5 cities' },
+      { id: 'hero_heading',   label: 'Hero heading',       kind: 'input',    default: 'Where floral excellence meets efficiency.' },
+      { id: 'hero_sub',       label: 'Hero sub',           kind: 'textarea', default: 'A skilled crew on every event — booked in minutes, paid in days. Built by florists who got tired of texting from a spreadsheet.' },
+      { id: 'cta_primary',    label: 'Primary CTA label',  kind: 'input',    default: 'Hire a team' },
+      { id: 'cta_secondary',  label: 'Secondary CTA label',kind: 'input',    default: 'Find work' },
+      { id: 'hero_stat1_num', label: 'Hero stat 1 number', kind: 'input',    default: '1,284' },
+      { id: 'hero_stat1_lbl', label: 'Hero stat 1 label',  kind: 'input',    default: 'active workers' },
+      { id: 'hero_stat2_num', label: 'Hero stat 2 number', kind: 'input',    default: '412' },
+      { id: 'hero_stat2_lbl', label: 'Hero stat 2 label',  kind: 'input',    default: 'vendor studios' },
+      { id: 'hero_stat3_num', label: 'Hero stat 3 number', kind: 'input',    default: '$284k' },
+      { id: 'hero_stat3_lbl', label: 'Hero stat 3 label',  kind: 'input',    default: 'paid this month' },
+    ],
+  },
+  vendors: {
+    label: 'For Vendors',
+    blocks: [
+      { id: 'eyebrow',     label: 'Eyebrow',          kind: 'input',    default: 'For vendors' },
+      { id: 'hero_title',  label: 'Hero heading',     kind: 'input',    default: 'Crew up. Show up. Look brilliant.' },
+      { id: 'hero_sub',    label: 'Hero sub',         kind: 'textarea', default: 'Spin up an entire wedding team from your phone. Workers see the gig, you approve the applications, both sides get paid through Stripe Connect.' },
+      { id: 'cta_label',   label: 'CTA label',        kind: 'input',    default: "Start hiring — it's free" },
+      { id: 'section_title', label: 'Section title',  kind: 'input',    default: "The studio dashboard you've been faking with spreadsheets." },
+      { id: 'feature1_title', label: 'Feature 1 title', kind: 'input', default: 'Post in 60 seconds' },
+      { id: 'feature1_body',  label: 'Feature 1 body',  kind: 'textarea', default: 'Type, date, hourly rate, spots. We push it to qualified workers in your zip code within minutes.' },
+      { id: 'feature2_title', label: 'Feature 2 title', kind: 'input', default: 'Verified only' },
+      { id: 'feature2_body',  label: 'Feature 2 body',  kind: 'textarea', default: 'Every Lead and Design role is portfolio-reviewed and ID-verified. Strike and Assist are background-checked.' },
+      { id: 'feature3_title', label: 'Feature 3 title', kind: 'input', default: 'One bill, one check' },
+      { id: 'feature3_body',  label: 'Feature 3 body',  kind: 'textarea', default: 'Fund the gig once. Rosy splits payouts across your team. No 1099s, no chasing receipts.' },
+    ],
+  },
+  workers: {
+    label: 'For Workers',
+    blocks: [
+      { id: 'eyebrow',     label: 'Eyebrow',     kind: 'input',    default: 'For workers' },
+      { id: 'hero_title',  label: 'Hero heading',kind: 'input',    default: 'Steady, beautiful work.' },
+      { id: 'hero_sub',    label: 'Hero sub',    kind: 'textarea', default: 'Three studios a week or thirty events a season — set your availability, pick your gigs, get paid on time. Lead roles pay $50/hr.' },
+      { id: 'cta_label',   label: 'CTA label',   kind: 'input',    default: 'Join as a worker' },
+      { id: 'rates_title', label: 'Rates section title', kind: 'input', default: 'What you actually take home.' },
+      { id: 'why_title',   label: 'Why-stay section title', kind: 'input', default: 'Why workers stay.' },
+    ],
+  },
+  gallery: {
+    label: 'Gallery',
+    blocks: [
+      { id: 'eyebrow',  label: 'Eyebrow', kind: 'input',    default: 'Gallery' },
+      { id: 'title',    label: 'Title',   kind: 'input',    default: 'Work made by Rosy crews.' },
+      { id: 'sub',      label: 'Sub',     kind: 'textarea', default: 'A few rooms, weddings, and editorial moments built end-to-end by teams booked through the platform.' },
+    ],
+  },
+  faq: {
+    label: 'FAQ',
+    blocks: [
+      { id: 'eyebrow', label: 'Eyebrow', kind: 'input',    default: 'FAQ' },
+      { id: 'title',   label: 'Title',   kind: 'input',    default: 'Answers, before you ask.' },
+      { id: 'sub',     label: 'Sub',     kind: 'textarea', default: 'Still need help? Talk to a real person.' },
+      { id: 'faq1_q',  label: 'FAQ #1 Question', kind: 'input', default: 'When do workers get paid?' },
+      { id: 'faq1_a',  label: 'FAQ #1 Answer',   kind: 'textarea', default: 'Within 48 hours of vendor-approved hours, via Stripe Connect direct deposit.' },
+      { id: 'faq2_q',  label: 'FAQ #2 Question', kind: 'input', default: 'Are 1099s automatic?' },
+      { id: 'faq2_a',  label: 'FAQ #2 Answer',   kind: 'textarea', default: 'Yes. If you earn more than $600 in a calendar year, Rosy generates and mails your 1099-NEC by Jan 31.' },
+      { id: 'faq3_q',  label: 'FAQ #3 Question', kind: 'input', default: 'What does the vendor fee cover?' },
+      { id: 'faq3_a',  label: 'FAQ #3 Answer',   kind: 'textarea', default: 'Stripe fees, escrow, dispute mediation, identity verification, and platform development.' },
+    ],
+  },
+  about: {
+    label: 'About',
+    blocks: [
+      { id: 'eyebrow',   label: 'Eyebrow',    kind: 'input',    default: 'About' },
+      { id: 'hero_title',label: 'Hero title', kind: 'input',    default: 'Built by florists. For florists.' },
+      { id: 'hero_sub',  label: 'Hero sub',   kind: 'textarea', default: 'Rosy started as a private group text between three Chicago studios passing workers back and forth. It got out of hand. Then it got organized.' },
+      { id: 'why_title', label: 'Why we built this — title', kind: 'input', default: 'Why we built this.' },
+      { id: 'why_body1', label: 'Why we built this — paragraph 1', kind: 'textarea', default: 'Floral event work is local, seasonal, and ferociously busy. Every studio knows the same forty freelancers. Every freelancer knows the same fifteen studios. The matching happens over Sunday-night group texts, paper invoices that get lost, and Venmo requests that nobody chases.' },
+      { id: 'why_body2', label: 'Why we built this — paragraph 2', kind: 'textarea', default: 'Rosy organizes that informal economy into a real marketplace — with verified workers, escrowed payments, ratings that survive, and tax docs that actually arrive. Same community. Less chaos.' },
+    ],
+  },
+  contact: {
+    label: 'Contact',
+    blocks: [
+      { id: 'eyebrow', label: 'Eyebrow', kind: 'input',    default: 'Contact' },
+      { id: 'title',   label: 'Title',   kind: 'input',    default: 'Talk to us.' },
+      { id: 'sub',     label: 'Sub',     kind: 'textarea', default: 'Sales, support, press, careers — one inbox.' },
+    ],
+  },
+  terms: {
+    label: 'Terms',
+    blocks: [
+      { id: 'note', label: 'Reminder', kind: 'textarea', default: 'The Terms of Service body is edited in the Legal documents section below.' },
+    ],
+  },
+  privacy: {
+    label: 'Privacy',
+    blocks: [
+      { id: 'note', label: 'Reminder', kind: 'textarea', default: 'The Privacy Policy body is edited in the Legal documents section below.' },
+    ],
+  },
+};
+window.SITE_CONTENT_SCHEMA = SITE_CONTENT_SCHEMA;
+
 function PageSiteContent() {
   const toast = useToast();
-  const [items, setItems] = SP_us([
-    ['Hero headline', 'Where floral excellence meets efficiency.'],
-    ['Hero sub',      'A skilled crew on every event — booked in minutes, paid in days.'],
-    ['About title',   'A community of florists, not a job board.'],
-    ['CTA headline',  'Run your next event with the right team.'],
-  ]);
-  const [sections, setSections] = SP_us([
-    { id: 's1', title: 'Hero', desc: 'Headline + sub + CTA + image' },
-    { id: 's2', title: 'How it works', desc: '3-step explainer with icons' },
-    { id: 's3', title: 'Testimonials', desc: 'Carousel of 6 vendor quotes' },
-    { id: 's4', title: 'Pricing', desc: 'Plan cards with feature checklist' },
-    { id: 's5', title: 'FAQ', desc: 'Accordion of 8 common questions' },
-  ]);
-  const [addSectionOpen, setAddSectionOpen] = SP_us(false);
-  const [newSection, setNewSection] = SP_us({ title: '', desc: '' });
-  const updateAt = (i, v) => setItems(its => its.map((it, idx) => idx === i ? [it[0], v] : it));
+  const [page, setPage] = SP_us('home');
+  const [draft, setDraft] = SP_us({}); // local edits keyed by blockId
+  const [savingAll, setSavingAll] = SP_us(false);
+
+  // Re-hydrate draft when page changes — values come from the live store with hardcoded fallback.
+  React.useEffect(() => {
+    const blocks = SITE_CONTENT_SCHEMA[page].blocks;
+    const init = {};
+    blocks.forEach(b => { init[b.id] = window.RosyContent(page, b.id, b.default); });
+    setDraft(init);
+  }, [page]);
+
+  const saveBlock = async (blockId, value) => {
+    setDraft(d => ({ ...d, [blockId]: value }));
+    await window.RosySaveSiteContent(page, blockId, value);
+    window.dispatchEvent(new CustomEvent('rosy:site-content-changed'));
+  };
+
+  const saveAll = async () => {
+    setSavingAll(true);
+    const blocks = SITE_CONTENT_SCHEMA[page].blocks;
+    for (const b of blocks) {
+      await window.RosySaveSiteContent(page, b.id, draft[b.id] ?? b.default);
+    }
+    window.dispatchEvent(new CustomEvent('rosy:site-content-changed'));
+    setSavingAll(false);
+    toast.push({ kind: 'success', title: 'Page saved', body: `${SITE_CONTENT_SCHEMA[page].label} content updated. Refresh marketing pages to see live.` });
+  };
+
+  const resetPage = () => {
+    const blocks = SITE_CONTENT_SCHEMA[page].blocks;
+    const init = {};
+    blocks.forEach(b => { init[b.id] = b.default; });
+    setDraft(init);
+    toast.push({ kind: 'info', title: 'Reset to defaults', body: "Click Save to persist." });
+  };
+
+  const blocks = SITE_CONTENT_SCHEMA[page].blocks;
+
   return (
     <div className="content fade-up">
       <div className="section-heading"><h2>Site content</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setAddSectionOpen(true)}><SP_I.Plus size={14} />Add section</button>
-          <button className="btn btn-coral btn-sm" onClick={() => toast.push({ kind: 'info', title: 'Saved (preview)', body: 'Backend wiring coming soon — changes are session-only for now.' })}>Save changes</button>
+          <button className="btn btn-ghost btn-sm" onClick={resetPage}>Reset to defaults</button>
+          <button className="btn btn-coral btn-sm" disabled={savingAll} onClick={saveAll}>{savingAll ? 'Saving…' : 'Save page'}</button>
         </div>
       </div>
+
+      {/* Page selector */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
+        {Object.entries(SITE_CONTENT_SCHEMA).map(([id, p]) => (
+          <button key={id} type="button" onClick={() => setPage(id)}
+            style={{ border: '1.5px solid', borderColor: page === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: page === id ? 'var(--color-ink)' : 'transparent', color: page === id ? '#fff' : 'inherit', padding: '6px 14px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--color-muted)' }}>Editing <strong>{SITE_CONTENT_SCHEMA[page].label}</strong> page · {blocks.length} block{blocks.length === 1 ? '' : 's'}. Saves persist to local storage immediately and best-effort to the database.</p>
+
       <div className="grid-2">
-        {items.map(([t, v], i) => (
-          <div key={t} className="card">
-            <p style={{ margin: 0, fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-muted)' }}>{t}</p>
-            <input className="input" value={v} onChange={e => updateAt(i, e.target.value)} style={{ marginTop: 8 }} />
+        {blocks.map(b => (
+          <div key={b.id} className="card" style={{ gridColumn: b.kind === 'textarea' ? '1 / -1' : 'auto' }}>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-muted)' }}>{b.label}</p>
+            {b.kind === 'textarea' ? (
+              <textarea className="textarea" value={draft[b.id] ?? ''}
+                onChange={e => setDraft(d => ({ ...d, [b.id]: e.target.value }))}
+                onBlur={e => saveBlock(b.id, e.target.value)}
+                style={{ marginTop: 8, minHeight: 90 }} />
+            ) : (
+              <input className="input" value={draft[b.id] ?? ''}
+                onChange={e => setDraft(d => ({ ...d, [b.id]: e.target.value }))}
+                onBlur={e => saveBlock(b.id, e.target.value)}
+                style={{ marginTop: 8 }} />
+            )}
           </div>
         ))}
       </div>
-      <h3 style={{ margin: '28px 0 12px', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.015em' }}>Page sections</h3>
-      <div className="grid-2">
-        {sections.map(sec => (
-          <div key={sec.id} className="card" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{sec.title}</p>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-muted)' }}>{sec.desc}</p>
-            </div>
-            <button className="icon-btn" aria-label="Delete section" onClick={() => { setSections(s => s.filter(x => x.id !== sec.id)); toast.push({ kind: 'info', title: 'Section removed' }); }}><SP_I.Trash2 size={14} /></button>
-          </div>
-        ))}
-      </div>
+
       <h3 style={{ margin: '28px 0 12px', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.015em' }}>Legal documents</h3>
       <LegalDocsEditor />
-      {addSectionOpen ? (
-        <Modal open={addSectionOpen} onClose={() => setAddSectionOpen(false)} title="Add section" size="sm"
-          footer={<><button className="btn btn-ghost" onClick={() => setAddSectionOpen(false)}>Cancel</button><button className="btn btn-coral" disabled={!newSection.title.trim()} onClick={() => { setSections(s => [...s, { id: 's' + Date.now(), ...newSection }]); setNewSection({ title: '', desc: '' }); setAddSectionOpen(false); toast.push({ kind: 'success', title: 'Section added' }); }}>Add</button></>}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Title</label><input className="input" value={newSection.title} onChange={(e) => setNewSection({ ...newSection, title: e.target.value })} placeholder="e.g. Case studies" /></div>
-            <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Description</label><input className="input" value={newSection.desc} onChange={(e) => setNewSection({ ...newSection, desc: e.target.value })} placeholder="What this section contains" /></div>
-          </div>
-        </Modal>
-      ) : null}
     </div>
   );
 }
