@@ -608,7 +608,7 @@ function OnboardingPage({ onComplete }) {
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button>
-              <button className="btn btn-coral" disabled={!tc} onClick={() => { setStripeOpen(true); }}>Continue</button>
+              <button className="btn btn-coral" disabled={!tc} onClick={() => { onComplete(role.vendor ? 'vendor' : 'worker'); }}>Continue</button>
             </div>
           </div>
         </div>
@@ -784,7 +784,27 @@ function ProfileForm({ role }) {
         <div className="field"><label className="field-label">First name</label><input className="input" value={first} onChange={e => setFirst(e.target.value)} placeholder="Jane" /></div>
         <div className="field"><label className="field-label">Last name</label><input className="input" value={last} onChange={e => setLast(e.target.value)} placeholder="Doe" /></div>
       </div>
-      <div className="field"><label className="field-label">Phone number</label><input className="input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 (555) 555-0100" /></div>
+      <div className="field"><label className="field-label">Phone number <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(US only)</span></label>
+        <input className="input" type="tel" value={phone}
+          onChange={e => {
+            // Auto-format as US (xxx) xxx-xxxx as the user types
+            const d = e.target.value.replace(/\D/g, '').slice(0, 10);
+            let f = d;
+            if (d.length > 6) f = `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+            else if (d.length > 3) f = `(${d.slice(0,3)}) ${d.slice(3)}`;
+            else if (d.length > 0) f = `(${d}`;
+            setPhone(f);
+          }}
+          placeholder="(555) 555-0100" />
+        {(() => {
+          const digits = (phone || '').replace(/\D/g, '');
+          if (!digits) return null;
+          if (digits.length !== 10) return <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Must be a valid 10-digit US number.</p>;
+          // First digit of area code can't be 0 or 1
+          if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(digits)) return <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Not a valid US phone number.</p>;
+          return <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-teal-dark)' }}>✓ Valid US number</p>;
+        })()}
+      </div>
       <div className="field"><label className="field-label">{role === 'vendor' ? 'Your role at the studio' : 'Your specialty'}</label><input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder={role === 'vendor' ? 'Owner / Creative Director / Lead Designer' : 'Lead designer / Strike crew / Assist'} /></div>
       {role === 'vendor' ? <div className="field"><label className="field-label">Studio / company name</label><input className="input" value={company} onChange={e => setCompany(e.target.value)} placeholder="e.g. Bloom & Fern Studio" /></div> : null}
       <div className="field"><label className="field-label">Service categories</label>
