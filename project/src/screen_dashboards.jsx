@@ -82,28 +82,29 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
         });
       }
     } catch (e) { console.warn('dev notif persist failed:', e); }
-    // Best-effort route to Airtable RI Developer Tasks
-    // TODO: wire PAT from Vercel env (set window.__AIRTABLE_PAT in index.html or via env injection).
+    // Forward to Airtable Dev Issues table via the Vercel serverless proxy
+    // (/api/dev-issue reads AIRTABLE_API_KEY server-side; PAT never ships).
     try {
-      const token = window.__AIRTABLE_PAT;
-      if (token) {
-        // Tasks table id in app6biS7yjV6XzFVG. Replace with actual ID if known —
-        // table name also works in the Airtable REST API path.
-        const TABLE_ID = window.__AIRTABLE_TASKS_TABLE_ID || 'Tasks';
-        const priority = severity === 'high' ? '🔴 High' : severity === 'medium' ? '🟡 Medium' : '🟢 Low';
-        await fetch(`https://api.airtable.com/v0/app6biS7yjV6XzFVG/${encodeURIComponent(TABLE_ID)}`, {
-          method: 'POST',
-          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              Title: entry.title,
-              Notes: entry.body + (screenshot ? `\n\nScreenshot (data URL truncated): ${String(screenshot).slice(0, 120)}…` : ''),
-              Priority: priority,
-            },
-          }),
-        });
+      const payload = {
+        title: `${page} — ${desc.trim().slice(0, 80)}`,
+        severity,
+        description: desc.trim(),
+        screenshot: screenshot || null,
+        pageUrl: window.location.href,
+        userAgent: navigator.userAgent,
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
+        reporter: reportedBy?.email || reportedBy?.name || 'anonymous',
+      };
+      const r = await fetch('/api/dev-issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const errBody = await r.text();
+        console.warn('dev-issue proxy returned', r.status, errBody);
       }
-    } catch (e) { console.warn('Airtable dev-issue route failed:', e); }
+    } catch (e) { console.warn('Airtable dev-issue proxy failed:', e); }
     toast.push({ kind: 'success', title: 'Issue reported', body: 'Logged in your notifications. The team will review.' });
     onClose();
   };
