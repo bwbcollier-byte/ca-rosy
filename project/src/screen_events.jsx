@@ -291,8 +291,10 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
           <div>
             <p className="t-eyebrow" style={{ marginBottom: 8 }}>Venue</p>
             <select className="select" value={venueFilter} onChange={(e) => setVenueFilter(e.target.value)}>
-              <option value="all">All venues ({SE_D.VENUES.length})</option>
-              {SE_D.VENUES.map(v => <option key={v.id} value={v.id}>{v.name} — {v.city}</option>)}
+              {(() => { const av = SE_D.VENUES.filter(v => v.active !== false); return <>
+                <option value="all">All venues ({av.length})</option>
+                {av.map(v => <option key={v.id} value={v.id}>{v.name} — {v.city}</option>)}
+              </>; })()}
             </select>
           </div>
         </div>
@@ -355,7 +357,7 @@ function NewEventForm({ value = {}, onChange = () => {}, onCreateVenue }) {
           upd('venueId', e.target.value);
         }}>
           <option value="">— Pick a venue —</option>
-          {SE_D.VENUES.map(v => <option key={v.id} value={v.id}>{v.name} — {v.city}</option>)}
+          {SE_D.VENUES.filter(v => v.active !== false).map(v => <option key={v.id} value={v.id}>{v.name} — {v.city}</option>)}
           <option value="__new__" style={{ fontWeight: 600 }}>+ Create new venue…</option>
         </select>
       </div>

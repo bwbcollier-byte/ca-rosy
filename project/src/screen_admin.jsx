@@ -495,6 +495,15 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
           {role === 'admin' ? <button className="btn btn-coral" onClick={() => setInviteOpen(true)}><SP_I.Plus size={14} />Invite</button> : null}
         </div>
       </div>
+      {/* Status tab strip — Active / Inactive / All */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {[['all','All'],['active','Active'],['inactive','Inactive']].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setStatusFilter(id)}
+            style={{ border: '1.5px solid', borderColor: statusFilter === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: statusFilter === id ? 'var(--color-ink)' : 'transparent', color: statusFilter === id ? '#fff' : 'inherit', padding: '6px 14px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+            {label}
+          </button>
+        ))}
+      </div>
       {view === 'cards' ? (
         <>
           <div className="grid-3">
@@ -570,6 +579,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
                 <td style={{ fontSize: 12, color: 'var(--color-muted)' }}>{fmtDate(u.joined, 'mdy-dots')}</td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <div className="row-actions">
+                    <button className="row-action-btn" onClick={() => { window.__rosyComposeTo = u.id; setRoute && setRoute('inbox'); }} title="Message"><SP_I.MessageSquare size={14} /></button>
                     <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(false); }} title="View profile"><SP_I.Eye size={14} /></button>
                     <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(true); }} title="Edit profile"><SP_I.Pencil size={14} /></button>
                     {u.role !== 'admin' && u.verified !== true ? (
@@ -715,10 +725,20 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
         <div style={{ flex: 1 }}>
           <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, letterSpacing: '-0.02em' }}>{editing ? draft.name : user.name}</h3>
           <p style={{ margin: '4px 0 12px', color: 'var(--color-muted)', fontSize: 14 }}>{(editing ? draft.company : user.company)} · {(editing ? draft.city : user.city)}</p>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <Badge kind={user.status === 'active' ? 'Active' : 'Inactive'}>{user.status === 'active' ? 'Active' : 'Inactive'}</Badge>
             <span style={{ textTransform: 'capitalize', color: 'var(--color-muted)', fontSize: 13 }}>{user.role}</span>
             {user.rating ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13 }}><SP_I.Star size={12} style={{ color: '#F59E0B', fill: '#F59E0B' }} />{user.rating} ({user.gigs} gigs)</span> : null}
+            <button className="btn btn-ghost btn-sm" onClick={async () => {
+              const next = user.status === 'active' ? 'inactive' : 'active';
+              user.status = next;
+              const liveUser = (window.RosyData?.USERS || []).find(x => x.id === user.id);
+              if (liveUser) liveUser.status = next;
+              window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+              onSave && onSave({ status: next });
+              try { if (window.sb) await window.sb.from('rr_profiles').update({ status: next }).eq('id', user.id); } catch (e) { console.warn(e); }
+              toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${user.name} marked ${next}` });
+            }}>{user.status === 'active' ? <><SP_I.UserX size={13} />Mark inactive</> : <><SP_I.CheckCircle2 size={13} />Mark active</>}</button>
           </div>
         </div>
       </div>
@@ -789,9 +809,9 @@ function PageVenues() {
   const [viewOpen, setViewOpen] = SP_us(null);
   const [editing, setEditing] = SP_us(null);
   const [deleteId, setDeleteId] = SP_us(null);
-  const [venues, setVenues] = SP_us(SP_D.VENUES.map(v => ({ ...v, address: v.address || `${v.name} · ${v.city}`, image: v.image || SP_D.IMAGES.events[(parseInt((v.id.match(/\d+/)?.[0] || '1')) - 1) % SP_D.IMAGES.events.length], parking: v.parking || 'Street parking + nearby lot.', notes: v.notes || 'Standard load-in via rear dock. Single 30A 120V circuit available.' })));
+  const [venues, setVenues] = SP_us(SP_D.VENUES.map(v => ({ ...v, active: v.active !== false, address: v.address || `${v.name} · ${v.city}`, image: v.image || SP_D.IMAGES.events[(parseInt((v.id.match(/\d+/)?.[0] || '1')) - 1) % SP_D.IMAGES.events.length], parking: v.parking || 'Street parking + nearby lot.', notes: v.notes || 'Standard load-in via rear dock. Single 30A 120V circuit available.' })));
   React.useEffect(() => {
-    const sync = () => setVenues(SP_D.VENUES.map(v => ({ ...v, address: v.address || `${v.name} · ${v.city}`, image: v.image || SP_D.IMAGES.events[0], parking: v.parking || '', notes: v.notes || '' })));
+    const sync = () => setVenues(SP_D.VENUES.map(v => ({ ...v, active: v.active !== false, address: v.address || `${v.name} · ${v.city}`, image: v.image || SP_D.IMAGES.events[0], parking: v.parking || '', notes: v.notes || '' })));
     window.addEventListener('rosy:data-changed', sync);
     return () => window.removeEventListener('rosy:data-changed', sync);
   }, []);
@@ -875,9 +895,9 @@ function PageVenues() {
       {view === 'table' ? (
         <div className="table-wrap">
           <table className="rosy-table">
-            <thead><tr><th>Venue</th><th>City</th><th>Type</th><th>Capacity</th><th>Address</th><th style={{ width: 110 }}></th></tr></thead>
+            <thead><tr><th>Venue</th><th>City</th><th>Type</th><th>Capacity</th><th>Address</th><th>Active</th><th style={{ width: 140 }}></th></tr></thead>
             <tbody>
-              {visible.length === 0 ? <tr><td colSpan={6}><Empty icon={SP_I.MapPin} title="No matching venues" /></td></tr> :
+              {visible.length === 0 ? <tr><td colSpan={7}><Empty icon={SP_I.MapPin} title="No matching venues" /></td></tr> :
                visible.map(v => (
                 <tr key={v.id} tabIndex={0} role="button" aria-label={`Open ${v.name}`} style={{ cursor: 'pointer' }}
                   onClick={(e) => { if (e.target.closest('button')) return; setViewOpen(v); }}
@@ -890,10 +910,21 @@ function PageVenues() {
                   <td style={{ fontSize: 13 }}><span className="pill">{v.type}</span></td>
                   <td style={{ fontSize: 13 }}>{v.capacity}</td>
                   <td style={{ fontSize: 12, color: 'var(--color-muted)' }}>{v.address}</td>
+                  <td><Badge kind={v.active !== false ? 'Active' : 'Inactive'}>{v.active !== false ? 'Active' : 'Inactive'}</Badge></td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <div className="row-actions">
                       <button className="row-action-btn" onClick={() => setViewOpen(v)} title="View"><SP_I.Eye size={14} /></button>
                       <button className="row-action-btn" onClick={() => { setEditing(v); setAddOpen(true); }} title="Edit"><SP_I.Pencil size={14} /></button>
+                      <button className="row-action-btn" onClick={async () => {
+                        const next = !(v.active !== false);
+                        const updated = { ...v, active: next };
+                        setVenues(arr => arr.map(x => x.id === v.id ? updated : x));
+                        const lv = (window.RosyData?.VENUES || []).find(x => x.id === v.id);
+                        if (lv) lv.active = next;
+                        window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+                        try { if (window.sb) await window.sb.from('rr_venues').update({ active: next }).eq('id', v.id); } catch (e) { console.warn(e); }
+                        toast.push({ kind: next ? 'success' : 'warning', title: `${v.name} ${next ? 'activated' : 'deactivated'}` });
+                      }} title={v.active !== false ? 'Deactivate' : 'Activate'}>{v.active !== false ? <SP_I.UserX size={14} /> : <SP_I.CheckCircle2 size={14} />}</button>
                       <button className="row-action-btn danger" onClick={() => setDeleteId(v.id)} title="Delete"><SP_I.Trash2 size={14} /></button>
                     </div>
                   </td>
@@ -1056,12 +1087,17 @@ function VenueDetailModal({ venue, onClose, onEdit }) {
 /* ============ Settings ============ */
 function PageSettings({ role, currentUser }) {
   const [tab, setTab] = SP_us('profile');
+  // Admin sees a streamlined set — no Privacy & Data, Team, or Danger Zone.
+  const tabs = role === 'admin'
+    ? ['profile','account','notifications','payouts']
+    : ['profile','account','notifications','payouts','privacy','team','danger'];
+  React.useEffect(() => { if (!tabs.includes(tab)) setTab('profile'); }, [role]);
   return (
     <div className="content fade-up">
       <div className="section-heading"><h2>Settings</h2></div>
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 32 }}>
         <div className="col" style={{ gap: 4 }}>
-          {['profile','account','notifications','payouts','privacy','team','danger'].map(s => (
+          {tabs.map(s => (
             <button key={s} onClick={() => setTab(s)} className={`nav-item ${tab===s ? 'active' : ''}`} style={{ textTransform: 'capitalize' }}>{s === 'danger' ? 'Danger zone' : s === 'privacy' ? 'Privacy & data' : s}</button>
           ))}
         </div>
@@ -1070,9 +1106,9 @@ function PageSettings({ role, currentUser }) {
           {tab === 'account' ? <SettingsAccount /> : null}
           {tab === 'notifications' ? <SettingsNotifications /> : null}
           {tab === 'payouts' ? <SettingsPayouts /> : null}
-          {tab === 'privacy' ? <SettingsPrivacy role={role} /> : null}
-          {tab === 'team' ? <SettingsTeam /> : null}
-          {tab === 'danger' ? <SettingsDanger /> : null}
+          {tab === 'privacy' && role !== 'admin' ? <SettingsPrivacy role={role} /> : null}
+          {tab === 'team' && role !== 'admin' ? <SettingsTeam /> : null}
+          {tab === 'danger' && role !== 'admin' ? <SettingsDanger /> : null}
         </div>
       </div>
     </div>
@@ -1172,11 +1208,6 @@ function SettingsAccount() {
       <h3 className="card-title" style={{ marginBottom: 16 }}>Account</h3>
       <div className="col" style={{ gap: 16 }}>
         <div className="field"><label className="field-label">Password</label><input className="input" type="password" defaultValue="••••••••••" /></div>
-        <div className="field"><label className="field-label">Two-factor authentication</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span className="toggle on" /><span style={{ fontSize: 13.5 }}>Enabled via authenticator app</span>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -1447,13 +1478,42 @@ function PageEmails() {
   const [templates, setTemplates] = SP_us(window.RosyStores.emailTemplates);
   const [editId, setEditId] = SP_us(null);
   const [draft, setDraft] = SP_us({ subject: '', body: '', live: true });
+  const [editMode, setEditMode] = SP_us('html'); // 'html' | 'plain'
   const [testModalOpen, setTestModalOpen] = SP_us(false);
   const [testEmail, setTestEmail] = SP_us('');
+
+  // Convert HTML to a readable plain-text form (strip tags, <p>/<br> -> newlines).
+  const htmlToPlain = (html) => {
+    if (!html) return '';
+    return html
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<\s*br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/h[1-6]>/gi, '\n\n')
+      .replace(/<\/(div|tr|li)>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+  // Wrap plain-text lines in <p> tags (blank-line-separated paragraphs).
+  const plainToHtml = (plain) => {
+    if (!plain) return '';
+    return plain
+      .split(/\n{2,}/)
+      .map(block => `<p>${block.replace(/\n/g, '<br>').trim()}</p>`)
+      .join('\n');
+  };
 
   const openTemplate = (id) => {
     setEditId(id);
     const t = templates[id];
     setDraft({ subject: t.subject, body: t.body, live: t.live });
+    setEditMode('html');
   };
   const saveTemplate = () => {
     const updated = { ...templates[editId], subject: draft.subject, body: draft.body, live: draft.live, lastEdited: new Date().toISOString().slice(0, 10) };
@@ -1489,8 +1549,35 @@ function PageEmails() {
         footer={<><button className="btn btn-ghost" onClick={() => setEditId(null)}>Cancel</button><button className="btn btn-ghost" onClick={() => setTestModalOpen(true)}>Send test</button><button className="btn btn-coral" onClick={saveTemplate}>Save changes</button></>}>
         <div className="col" style={{ gap: 14 }}>
           <div className="field"><label className="field-label">Subject line</label><input className="input" value={draft.subject} onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))} /></div>
-          <div className="field"><label className="field-label">Body (HTML)</label>
-            <textarea className="textarea" value={draft.body} onChange={e => setDraft(d => ({ ...d, body: e.target.value }))} style={{ minHeight: 220, fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+          <div className="field">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <label className="field-label" style={{ margin: 0 }}>Body</label>
+              <div style={{ display: 'flex', gap: 4, border: '1px solid var(--color-hairline-strong)', borderRadius: 9999, padding: 2 }}>
+                {[['plain','Plain text'],['html','HTML']].map(([id, label]) => (
+                  <button key={id} type="button"
+                    onClick={() => {
+                      if (id === editMode) return;
+                      if (id === 'plain') {
+                        // switching html -> plain: derive plain from current html body
+                        setDraft(d => ({ ...d, body: d.body }));
+                      } else {
+                        // switching plain -> html: wrap current plain text into HTML and save
+                        setDraft(d => ({ ...d, body: plainToHtml(htmlToPlain(d.body)) }));
+                      }
+                      setEditMode(id);
+                    }}
+                    style={{ border: 0, background: editMode === id ? 'var(--color-ink)' : 'transparent', color: editMode === id ? '#fff' : 'var(--color-muted)', padding: '4px 12px', borderRadius: 9999, fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+                ))}
+              </div>
+            </div>
+            {editMode === 'plain' ? (
+              <textarea className="textarea"
+                value={htmlToPlain(draft.body)}
+                onChange={e => setDraft(d => ({ ...d, body: plainToHtml(e.target.value) }))}
+                style={{ minHeight: 220, fontFamily: 'inherit', fontSize: 13.5 }} />
+            ) : (
+              <textarea className="textarea" value={draft.body} onChange={e => setDraft(d => ({ ...d, body: e.target.value }))} style={{ minHeight: 220, fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+            )}
           </div>
           <div className="field"><label className="field-label">Live preview</label>
             <iframe title="Email preview" srcDoc={draft.body} style={{ width: '100%', height: 360, border: '1px solid var(--color-hairline)', borderRadius: 12, background: '#FAF7F2' }} />
@@ -1519,6 +1606,25 @@ function PageGallery() {
   const [filter, setFilter] = SP_us('all');
   const [confirmDeleteId, setConfirmDeleteId] = SP_us(null);
   const fileRef = React.useRef(null);
+  const replaceRef = React.useRef(null);
+  const [replaceTargetId, setReplaceTargetId] = SP_us(null);
+  const handleReplaceFile = (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f || !replaceTargetId) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const targetId = replaceTargetId;
+      setItems(arr => {
+        const next = arr.map(x => x.id === targetId ? { ...x, src: ev.target.result } : x);
+        window.RosyStores.gallery = next;
+        return next;
+      });
+      setReplaceTargetId(null);
+      toast.push({ kind: 'success', title: 'Photo replaced' });
+    };
+    reader.readAsDataURL(f);
+  };
 
   const updateItem = (id, patch) => {
     setItems(arr => {
@@ -1575,6 +1681,7 @@ function PageGallery() {
           <button key={s.id} className="pill" style={{ background: filter === s.id ? 'var(--color-ink)' : 'var(--color-surface-soft)', color: filter === s.id ? '#fff' : 'var(--color-muted)', cursor: 'pointer', border: 0 }} onClick={() => setFilter(s.id)}>{s.label} ({sectionCounts[s.id]})</button>
         ))}
       </div>
+      <input ref={replaceRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleReplaceFile} />
       <ConfirmDialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)} title="Remove this photo?" message="It will be removed from the gallery — you can re-upload later." confirmLabel="Remove" onConfirm={() => doRemove(confirmDeleteId)} />
 
       {filtered.length === 0 ? <Empty icon={SP_I.Image} title="No photos in this section" body="Drag a photo here or upload from the toolbar." /> : (
@@ -1586,6 +1693,7 @@ function PageGallery() {
                 <div style={{ position: 'relative', aspectRatio: '4/5' }}>
                   <EventImage src={item.src} name={section?.label || 'Photo'} size="100%" radius={0}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+                  <button className="row-action-btn" aria-label="Replace photo" title="Replace photo" style={{ position: 'absolute', top: 8, right: 44, background: 'rgba(255,255,255,0.92)' }} onClick={() => { setReplaceTargetId(item.id); replaceRef.current && replaceRef.current.click(); }}><SP_I.Upload size={14} /></button>
                   <button className="row-action-btn danger" aria-label="Remove photo" style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)' }} onClick={() => setConfirmDeleteId(item.id)}><SP_I.Trash2 size={14} /></button>
                 </div>
                 <div style={{ padding: 12 }}>

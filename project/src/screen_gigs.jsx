@@ -30,6 +30,7 @@ function PageGigsVendor({ user, role, setRoute }) {
   const [selected, setSelected] = SG_us({});
   const [editGig, setEditGig] = SG_us(null);
   const [editForm, setEditForm] = SG_us(null);
+  const [detailGig, setDetailGig] = SG_us(null);
   const [confirmDelete, setConfirmDelete] = SG_us(null);
   const [bulkConfirm, setBulkConfirm] = SG_us(null);
   const toast = useToast();
@@ -208,9 +209,9 @@ function PageGigsVendor({ user, role, setRoute }) {
                     </td>
                   </tr>
                   {open[ev.id] && evGigs.map(g => (
-                    <tr key={g.id} tabIndex={0} role="button" aria-label={`Edit gig ${g.type}`}
-                      onClick={(e) => { if (e.target.closest('button') || e.target.closest('[role="checkbox"]')) return; setEditGig(g); setEditForm({ type: g.type, date: g.date, rate: g.rate, start: g.start, end: g.end, spots: g.spots }); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setEditGig(g); setEditForm({ type: g.type, date: g.date, rate: g.rate, start: g.start, end: g.end, spots: g.spots }); } }}
+                    <tr key={g.id} tabIndex={0} role="button" aria-label={`View gig ${g.type}`}
+                      onClick={(e) => { if (e.target.closest('button') || e.target.closest('[role="checkbox"]')) return; setDetailGig(g); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setDetailGig(g); } }}
                       style={{ cursor: 'pointer' }}>
                       <td onClick={(e) => e.stopPropagation()}><CheckBox checked={!!selected[g.id]} onChange={(on) => setSelected(s => ({ ...s, [g.id]: on }))} /></td>
                       <td>
@@ -287,6 +288,41 @@ function PageGigsVendor({ user, role, setRoute }) {
           </div>
         </div>
       </Modal>
+
+      {detailGig ? (() => {
+        const g = detailGig;
+        const ev = SG_D.EVENTS.find(e => e.id === g.eventId);
+        const venue = ev ? SG_D.VENUES.find(v => v.id === ev.venueId) : null;
+        const vendor = ev ? SG_D.USERS.find(u => u.id === ev.vendorId) : null;
+        return (
+          <Modal open={!!detailGig} onClose={() => setDetailGig(null)} title={`${g.type} gig`} size="md"
+            footer={<><button className="btn btn-ghost" onClick={() => setDetailGig(null)}>Close</button><button className="btn btn-coral" onClick={() => { setDetailGig(null); setEditGig(g); setEditForm({ type: g.type, date: g.date, rate: g.rate, start: g.start, end: g.end, spots: g.spots }); }}><SG_I.Pencil size={14} />Edit gig</button></>}>
+            <div className="col" style={{ gap: 16 }}>
+              <div>
+                <p className="t-eyebrow" style={{ marginBottom: 6 }}>Gig</p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                  <GigChip type={g.type} />
+                  <Badge kind={g.status === 'confirmed' ? 'Confirmed' : g.status === 'completed' ? 'Completed' : 'Open'} />
+                  <Badge kind={g.priority} />
+                </div>
+                <p style={{ margin: 0, fontSize: 13.5, color: 'var(--color-body)' }}>{g.description}</p>
+              </div>
+              <div className="grid-2" style={{ gap: 12 }}>
+                <div><p className="t-eyebrow">Date</p><p style={{ margin: 0, fontSize: 13.5 }}>{fmtDate(g.date, 'mdy-dots')}</p></div>
+                <div><p className="t-eyebrow">Time</p><p style={{ margin: 0, fontSize: 13.5 }}>{g.start}–{g.end}</p></div>
+                <div><p className="t-eyebrow">Rate</p><p style={{ margin: 0, fontSize: 13.5 }}>${g.rate}/hr</p></div>
+                <div><p className="t-eyebrow">Spots</p><p style={{ margin: 0, fontSize: 13.5 }}>{g.spotsFilled}/{g.spots} filled</p></div>
+              </div>
+              <div className="divider" />
+              <div>
+                <p className="t-eyebrow" style={{ marginBottom: 6 }}>Parent event</p>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: 14.5 }}>{ev?.name || '—'}</p>
+                <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--color-muted)' }}>{ev ? fmtDate(ev.date, 'mdy-dots') : ''}{venue ? ` · ${venue.name}, ${venue.city}` : ''}{vendor ? ` · ${vendor.company || vendor.name}` : ''}</p>
+              </div>
+            </div>
+          </Modal>
+        );
+      })() : null}
 
       {editGig && editForm ? (
         <Modal open={!!editGig} onClose={() => { setEditGig(null); setEditForm(null); }} title="Edit gig" size="md"

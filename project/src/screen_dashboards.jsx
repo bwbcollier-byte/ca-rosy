@@ -119,9 +119,18 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
   );
 }
 
+function ordinal(n) { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+function getDateStrip() {
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return `${months[first.getMonth()]} ${ordinal(first.getDate())} ${first.getFullYear()} – ${months[last.getMonth()]} ${ordinal(last.getDate())} ${last.getFullYear()}`;
+}
+
 function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
   useDataTick();
-  const dateStrip = 'May 1st 2026 – June 1st 2026';
+  const dateStrip = getDateStrip();
   return (
     <div className="content fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
@@ -146,7 +155,7 @@ function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
 
 function DashboardVendor({ user, setRoute, statStrip, statAnim }) {
   useDataTick();
-  const dateStrip = 'May 1st 2026 – June 1st 2026';
+  const dateStrip = getDateStrip();
   // Read window.RosyData fresh on every render (Supabase hydrates after first paint)
   const D = window.RosyData || SD_D;
   const myEvents = user?.id ? (D.EVENTS || []).filter(e => e.vendorId === user.id) : (D.EVENTS || []);
@@ -188,7 +197,7 @@ function DashboardVendor({ user, setRoute, statStrip, statAnim }) {
 
 function DashboardWorker({ user, setRoute, statStrip, statAnim }) {
   useDataTick();
-  const dateStrip = 'May 1st 2026 – June 1st 2026';
+  const dateStrip = getDateStrip();
   const D = window.RosyData || SD_D;
   const today = new Date(); today.setHours(0,0,0,0);
   const next30 = new Date(today); next30.setDate(next30.getDate() + 30);
@@ -328,6 +337,23 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
   const isAdmin = role === 'admin';
   const showWorkers = !tabs || tab === 'users';
   const seed = showWorkers ? SD_D.USERS.filter(u => u.role !== 'admin').slice(0, 6) : SD_D.USERS.filter(u => u.role === 'vendor').slice(0, 6);
+  // Tab badge counts — items joined after the last time the user clicked that tab.
+  const seenKey = (tabId) => `rosy.tabSeen.${tabId}.${role}`;
+  const [seenAt, setSeenAt] = useState(() => ({
+    users:    parseInt(localStorage.getItem(seenKey('users')) || '0', 10),
+    co:       parseInt(localStorage.getItem(seenKey('co'))    || '0', 10),
+  }));
+  const countNewSince = (rows, ts) => rows.filter(u => {
+    const t = u.joined ? new Date(u.joined).getTime() : 0;
+    return t > ts;
+  }).length;
+  const usersBadge = countNewSince(SD_D.USERS.filter(u => u.role !== 'admin'), seenAt.users);
+  const coBadge    = countNewSince(SD_D.USERS.filter(u => u.role === 'vendor'), seenAt.co);
+  const markTabSeen = (tabId) => {
+    const ts = Date.now();
+    localStorage.setItem(seenKey(tabId), String(ts));
+    setSeenAt(s => ({ ...s, [tabId]: ts }));
+  };
   const [overrides, setOverrides] = useState({});
   const [deleted, setDeleted] = useState({});
   const [confirmId, setConfirmId] = useState(null);
@@ -365,7 +391,7 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
   };
 
   return (
-    <div className="card card-flush" style={{ alignSelf: 'flex-start' }}>
+    <div className="card card-flush" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="card-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 className="card-title"><SD_I.Users className="icon" />{title}</h3>
@@ -373,12 +399,12 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
         </div>
         {tabs ? (
           <div className="tabs">
-            <button className={tab === 'users' ? 'on' : ''} onClick={() => setTab('users')}>User Profiles</button>
-            <button className={tab === 'co' ? 'on' : ''} onClick={() => setTab('co')}>Companies</button>
+            <button className={tab === 'users' ? 'on' : ''} onClick={() => { setTab('users'); markTabSeen('users'); }}>User Profiles{usersBadge > 0 ? <span style={{ marginLeft: 6, background: 'var(--rosy-coral)', color: '#fff', borderRadius: 9999, padding: '0 6px', fontSize: 10.5, fontWeight: 700 }}>{usersBadge}</span> : null}</button>
+            <button className={tab === 'co' ? 'on' : ''} onClick={() => { setTab('co'); markTabSeen('co'); }}>Companies{coBadge > 0 ? <span style={{ marginLeft: 6, background: 'var(--rosy-coral)', color: '#fff', borderRadius: 9999, padding: '0 6px', fontSize: 10.5, fontWeight: 700 }}>{coBadge}</span> : null}</button>
           </div>
         ) : null}
       </div>
-      <div>
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {list.length === 0 ? <Empty icon={SD_I.Users} title="No new users yet" /> :
          list.map(u => (
            <div key={u.id} role="button" tabIndex={0} aria-label={`Open ${u.name}`}
@@ -421,12 +447,12 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
 function FeaturedGigPostsCard({ setRoute }) {
   const open = SD_D.GIGS.filter(g => g.status === 'open').slice(0, 4);
   return (
-    <div className="card card-flush" style={{ alignSelf: 'flex-start' }}>
+    <div className="card card-flush" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="card-header">
         <h3 className="card-title"><SD_I.ClipboardList className="icon" />Featured gig posts</h3>
         <button className="btn-link" onClick={() => setRoute('gig-posts')}>Browse all</button>
       </div>
-      <div>
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {open.map(g => {
           const ev = SD_D.EVENTS.find(e => e.id === g.eventId);
           return (

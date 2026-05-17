@@ -245,8 +245,18 @@ function App() {
           const me = sessionUserFromData || { first: '', role: pickedRole, id: sessionUserId };
           const meFirst = me?.first || (me?.name || '').split(' ')[0] || '';
           const niceRole = (me?.role || pickedRole || 'account').replace(/^./, c => c.toUpperCase());
-          const title = `Welcome to Rosy${meFirst ? ', ' + meFirst : ''}!`;
-          const body  = `Your ${niceRole.toLowerCase()} account is ready. Tap to take a 60-second tour — we'll show you what every page does.`;
+          // Pull title/body from the shared notification template so the platform
+          // has a single source of truth (admins can edit it later).
+          const tpl = (window.RosyStores?.notificationTemplates || {})['welcome'] || {
+            title: `Welcome to Rosy${meFirst ? ', ' + meFirst : ''}!`,
+            body:  `Your ${niceRole.toLowerCase()} account is ready. Tap to take a 60-second tour.`,
+          };
+          const subVars = (s) => (s || '')
+            .replace(/\{\{first_name\}\}/g, meFirst)
+            .replace(/\{\{role\}\}/g, (me?.role || pickedRole || ''))
+            .replace(/\{\{app_url\}\}/g, '');
+          const title = subVars(tpl.title);
+          const body  = subVars(tpl.body);
           try {
             const list = window.RosyData.NOTIFICATIONS = window.RosyData.NOTIFICATIONS || [];
             list.unshift({
@@ -590,9 +600,13 @@ function DevNoteButton({ route, currentUser }) {
 (async () => {
   try {
     if (typeof window.bootRosyFromSupabase === 'function') {
+      let timeoutId;
+      const timeoutPromise = new Promise(r => {
+        timeoutId = setTimeout(() => { console.warn('[boot] Supabase hydration > 3s, mounting on seed.'); r(null); }, 3000);
+      });
       await Promise.race([
-        window.bootRosyFromSupabase(),
-        new Promise(r => setTimeout(() => { console.warn('[boot] Supabase hydration > 3s, mounting on seed.'); r(null); }, 3000)),
+        window.bootRosyFromSupabase().finally(() => clearTimeout(timeoutId)),
+        timeoutPromise,
       ]);
     }
   } catch (e) { console.warn('Supabase hydration error:', e); }

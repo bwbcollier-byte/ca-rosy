@@ -367,13 +367,10 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
     return () => window.removeEventListener('rosy:data-changed', bump);
   }, []);
   const safeUser = currentUser || { name: 'Guest', first: 'Guest' };
-  // Show the red dot only when this user has at least one unread notification.
-  const allNotifs = (window.RosyData?.NOTIFICATIONS || []);
-  const myUnread = allNotifs.filter(n => {
-    if (!n.unread && !(n.read === false)) return false;
-    if (!currentUser?.id) return false;
-    return !n.user_id || n.user_id === currentUser.id;
-  }).length;
+  // Single source of truth for unread count — keeps bell and Notifications page in sync.
+  const myUnread = (window.rosyUnreadForUser
+    ? window.rosyUnreadForUser(window.RosyData?.NOTIFICATIONS || [], currentUser)
+    : 0);
   // Role switcher rules:
   //   - signed-in admin    → show as a "View as" tool (admins can preview vendor/worker)
   //   - signed-in non-admin → hide entirely (your role is fixed)
@@ -532,14 +529,20 @@ function Pagination({ page, setPage, total, perPage = 10, label = 'rows' }) {
   const to = Math.min(safePage * perPage, total);
   // Only show prev/next nav when there's more than one page worth of data.
   const showNav = pages > 1;
+  const scrollTop = () => {
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+    try { document.querySelector('.content')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+  };
+  const onPrev = () => { setPage(p => Math.max(1, p - 1)); scrollTop(); };
+  const onNext = () => { setPage(p => Math.min(pages, p + 1)); scrollTop(); };
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--color-hairline)', alignItems: 'center', fontSize: 12.5, color: 'var(--color-muted)' }}>
       <span>{total === 0 ? `No ${label}` : `Showing ${from}–${to} of ${total} ${label}`}</span>
       {showNav ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn btn-ghost btn-sm" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}><Ic.ChevronLeft size={14} />Previous</button>
+          <button className="btn btn-ghost btn-sm" disabled={safePage <= 1} onClick={onPrev}><Ic.ChevronLeft size={14} />Previous</button>
           <span>Page {safePage} of {pages}</span>
-          <button className="btn btn-ghost btn-sm" disabled={safePage >= pages} onClick={() => setPage(p => Math.min(pages, p + 1))}>Next<Ic.ChevronRight size={14} /></button>
+          <button className="btn btn-ghost btn-sm" disabled={safePage >= pages} onClick={onNext}>Next<Ic.ChevronRight size={14} /></button>
         </div>
       ) : null}
     </div>

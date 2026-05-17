@@ -111,12 +111,41 @@ function ImageUpload({ value, onChange, label = 'Upload photo', size = 96, round
   );
 }
 
+/* ============ Notification helpers ============ */
+// Canonical unread filter — shared by the header bell (components.jsx)
+// and the Notifications page below. Must stay in lockstep.
+window.ROSY_NOTIF_PREF_DEFAULTS = {
+  gig_application: true, gig_confirmed: true, gig_rejected: true,
+  payment_sent: true, payment_disputed: true, dispute_filed: true,
+  new_message: true, rating_received: false,
+  welcome: true, dev_issue: true, weekly_digest: false,
+  gig_24h_reminder: true,
+};
+window.rosyNotifPrefs = function rosyNotifPrefs() {
+  try { return { ...window.ROSY_NOTIF_PREF_DEFAULTS, ...(JSON.parse(localStorage.getItem('rosy.notif.prefs') || '{}')) }; }
+  catch (e) { return window.ROSY_NOTIF_PREF_DEFAULTS; }
+};
+window.rosyNotifsForUser = function rosyNotifsForUser(arr, currentUser) {
+  const meId = currentUser?.id;
+  const prefs = window.rosyNotifPrefs();
+  return (arr || []).filter(n => {
+    if (prefs[n.type] === false) return false;
+    if (!meId) return false;
+    const owner = n.user_id || n._userId;
+    return !owner || owner === meId;
+  });
+};
+window.rosyUnreadForUser = function rosyUnreadForUser(arr, currentUser) {
+  return window.rosyNotifsForUser(arr, currentUser)
+    .filter(n => n.unread || n.read === false).length;
+};
+
 /* ============ Notification Center (full page) ============ */
 function PageNotificationCenter({ setRoute, role, currentUser }) {
   const toast = useToast();
-  // Scope to the signed-in user's notifications.
+  // Scope to the signed-in user's notifications (shared filter — keeps page in sync with header bell).
   const meId = currentUser?.id;
-  const scopeFn = (arr) => meId ? arr.filter(n => !n._userId && !n.user_id || n._userId === meId || n.user_id === meId) : arr;
+  const scopeFn = (arr) => window.rosyNotifsForUser(arr, currentUser);
   const [items, setItems] = X_us(scopeFn(X_D.NOTIFICATIONS || []));
   X_ue(() => {
     const sync = () => setItems(scopeFn([...(X_D.NOTIFICATIONS || [])]));

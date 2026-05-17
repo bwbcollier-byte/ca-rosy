@@ -34,6 +34,14 @@ function PageInbox({ currentUser }) {
   const [localMessages, setLocalMessages] = SX_us(conv?.messages || []);
   React.useEffect(() => { setLocalMessages(conv?.messages || []); }, [active]);
 
+  // If another page set window.__rosyComposeTo before navigating here, open compose with that recipient.
+  React.useEffect(() => {
+    if (window.__rosyComposeTo) {
+      window.__rosyComposeTo = null;
+      setComposeOpen(true);
+    }
+  }, []);
+
   const send = async () => {
     if (!draft.trim()) return;
     const text = draft;
@@ -136,7 +144,9 @@ function PageInbox({ currentUser }) {
             </div>
           </>
         ) : (
-          <Empty icon={SX_I.MessageSquare} title="Select a conversation" body="Pick a thread to start messaging." />
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <Empty icon={SX_I.MessageSquare} title="Select a conversation" body="Pick a thread to start messaging." />
+          </div>
         )}
       </div>
 
