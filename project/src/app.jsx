@@ -288,29 +288,44 @@ function App() {
   :                     (AD.USERS.find(u => u.id === 'u3') || AD.USERS.find(u => u.role === 'worker'))
   );
 
-  // Hard block: if we're in app mode but the signed-in user's profile says
-  // they haven't onboarded yet, force the onboarding screen now — don't even
-  // render the dashboard. This catches the race where Supabase has set the
-  // session before routeForSession's async lookup completes.
-  if (mode === 'app' && sessionUserId && profileFromDb && profileFromDb.id === sessionUserId && (!profileFromDb.role || !profileFromDb.onboarding_complete)) {
-    return (
-      <ToastHost>
-        <OnboardingPage onComplete={async (pickedRole) => {
-          if (pickedRole) setRole(pickedRole);
-          try {
-            if (window.sb && sessionUserId) {
-              await window.sb.from('rr_profiles').upsert({
-                id: sessionUserId, role: pickedRole, onboarding_complete: true, verified: false,
-              }, { onConflict: 'id' });
-              setProfileFromDb(p => ({ ...(p || {}), role: pickedRole, onboarding_complete: true, verified: false, id: sessionUserId }));
-            }
-          } catch (e) { console.warn(e); }
-          setMode('app');
-          setRoute('dashboard');
-          window.location.hash = 'app/dashboard';
-        }} />
-      </ToastHost>
-    );
+  // Hard block: when there's an active session and the URL points at the
+  // app, we MUST NOT render the dashboard until we've verified the user's
+  // onboarding state. Three sub-cases:
+  //   (a) profileFromDb hasn't loaded yet  → loading splash
+  //   (b) profile says not onboarded       → onboarding screen
+  //   (c) profile says onboarded           → fall through to normal app render
+  if (mode === 'app' && sessionUserId) {
+    if (!profileFromDb || profileFromDb.id !== sessionUserId) {
+      return (
+        <ToastHost>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 18, color: 'var(--color-muted)' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 9999, border: '3px solid var(--color-hairline)', borderTopColor: 'var(--rosy-coral)', animation: 'spin 0.9s linear infinite' }} />
+            <p style={{ margin: 0, fontSize: 13.5 }}>Loading your account…</p>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        </ToastHost>
+      );
+    }
+    if (!profileFromDb.role || !profileFromDb.onboarding_complete) {
+      return (
+        <ToastHost>
+          <OnboardingPage onComplete={async (pickedRole) => {
+            if (pickedRole) setRole(pickedRole);
+            try {
+              if (window.sb && sessionUserId) {
+                await window.sb.from('rr_profiles').upsert({
+                  id: sessionUserId, role: pickedRole, onboarding_complete: true, verified: false,
+                }, { onConflict: 'id' });
+                setProfileFromDb(p => ({ ...(p || {}), role: pickedRole, onboarding_complete: true, verified: false, id: sessionUserId }));
+              }
+            } catch (e) { console.warn(e); }
+            setMode('app');
+            setRoute('dashboard');
+            window.location.hash = 'app/dashboard';
+          }} />
+        </ToastHost>
+      );
+    }
   }
   // header title from route
   const titleMap = {
