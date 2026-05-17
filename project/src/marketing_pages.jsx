@@ -43,8 +43,7 @@ function MarketingNav({ route, setRoute, goToAuth }) {
         ))}
       </nav>
       <div className="mk-right">
-        <button className="btn btn-ghost btn-sm" onClick={() => goToAuth('login')}>Log in</button>
-        <button className="btn btn-coral btn-sm" onClick={() => goToAuth('signup')}>Get started</button>
+        <MarketingNavAuthButtons goToAuth={goToAuth} />
       </div>
       <button className="mk-burger" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} onClick={() => setOpen(o => !o)}>
         {open ? <MP_I.X size={22} /> : <MP_I.Menu size={22} />}
@@ -60,6 +59,30 @@ function MarketingNav({ route, setRoute, goToAuth }) {
         </div>
       ) : null}
     </header>
+  );
+}
+
+function MarketingNavAuthButtons({ goToAuth }) {
+  const [hasSession, setHasSession] = MP_us(false);
+  React.useEffect(() => {
+    if (!window.sb) return;
+    window.sb.auth.getSession().then(({ data }) => setHasSession(!!data?.session));
+    const { data: sub } = window.sb.auth.onAuthStateChange((_e, s) => setHasSession(!!s));
+    return () => sub?.subscription?.unsubscribe?.();
+  }, []);
+  if (hasSession) {
+    return (
+      <>
+        <button className="btn btn-ghost btn-sm" onClick={async () => { try { await window.sb.auth.signOut(); } catch (e) {} try { localStorage.clear(); sessionStorage.clear(); } catch (e) {} window.location.href = '/'; }}>Log out</button>
+        <button className="btn btn-coral btn-sm" onClick={() => { window.location.hash = 'app/dashboard'; }}>Open app</button>
+      </>
+    );
+  }
+  return (
+    <>
+      <button className="btn btn-ghost btn-sm" onClick={() => goToAuth('login')}>Log in</button>
+      <button className="btn btn-coral btn-sm" onClick={() => goToAuth('signup')}>Get started</button>
+    </>
   );
 }
 
