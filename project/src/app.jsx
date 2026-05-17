@@ -82,19 +82,32 @@ function App() {
         if (!explicitApp) window.location.hash = 'app/dashboard';
       }
     };
-    // If the URL has an OAuth code/access_token, force the SDK to process it before we read the session.
     (async () => {
+      const href = window.location.href;
+      // Implicit-flow OAuth callback: URL fragment contains access_token after
+      // our own #app/dashboard hash (double-hash). Supabase's detectSessionInUrl
+      // can't parse that, so we manually rewrite the hash to JUST the token
+      // section before the SDK reads it.
+      const dblHashMatch = window.location.hash.match(/#?access_token=[^#]+/);
+      if (dblHashMatch) {
+        console.log('[rosy-route] rewriting double-hash for implicit OAuth callback');
+        // Replace the entire hash with just the token fragment (without leading slash route).
+        const tokenFrag = dblHashMatch[0].replace(/^#/, '');
+        window.history.replaceState(null, '', window.location.pathname + window.location.search + '#' + tokenFrag);
+      }
+      // Only call exchangeCodeForSession for PKCE flow (?code= query param).
       const url = new URL(window.location.href);
-      const hasCode = url.searchParams.has('code') || url.hash.includes('access_token=');
-      console.log('[rosy-route] boot. hasOAuthCode:', hasCode, 'href:', window.location.href);
-      if (hasCode && window.sb.auth.exchangeCodeForSession) {
+      const hasPkceCode = url.searchParams.has('code');
+      console.log('[rosy-route] boot. hasPkceCode:', hasPkceCode, 'href:', window.location.href);
+      if (hasPkceCode && window.sb.auth.exchangeCodeForSession) {
         try {
-          const { data, error } = await window.sb.auth.exchangeCodeForSession(window.location.href);
-          console.log('[rosy-route] exchangeCodeForSession:', { hasData: !!data, error });
+          const { error } = await window.sb.auth.exchangeCodeForSession(window.location.href);
+          if (error) console.warn('[rosy-route] exchange error:', error);
         } catch (e) { console.warn('[rosy-route] exchange failed', e); }
       }
       const { data } = await window.sb.auth.getSession();
       const sess = data?.session || null;
+      console.log('[rosy-route] getSession result:', !!sess, sess?.user?.email);
       setSession(sess);
       if (sess) routeForSession(sess, 'getSession');
     })();

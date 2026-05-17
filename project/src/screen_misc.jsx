@@ -521,7 +521,7 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: 'var(--color-muted-soft)', fontSize: 12, fontWeight: 500 }}>
                 <span style={{ flex: 1, height: 1, background: 'var(--color-hairline)' }} />or<span style={{ flex: 1, height: 1, background: 'var(--color-hairline)' }} />
               </div>
-              <GoogleButton onClick={async () => { try { if (window.sb) { const redirectTo = window.location.origin + window.location.pathname + '#app/dashboard'; const { error } = await window.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } }); if (error) throw error; return; /* browser is navigating away to Google */ } } catch (err) { toast.push({ kind: 'warning', title: 'Google sign-in not configured', body: err.message }); return; } }} label={mode === 'signup' ? 'Sign up with Google' : 'Continue with Google'} />
+              <GoogleButton onClick={async () => { try { if (window.sb) { /* No hash in redirectTo — implicit-flow OAuth appends #access_token=... and a stale hash creates a broken double-hash URL. App.jsx routes us after the session is set. */ const redirectTo = window.location.origin + window.location.pathname; const { error } = await window.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } }); if (error) throw error; return; } } catch (err) { toast.push({ kind: 'warning', title: 'Google sign-in not configured', body: err.message }); return; } }} label={mode === 'signup' ? 'Sign up with Google' : 'Continue with Google'} />
             </>
           ) : null}
 
