@@ -39,19 +39,23 @@ function App() {
       if (!sess?.user?.id) return;
       const uid = sess.user.id;
       const h = window.location.hash.replace(/^#/, '');
-      // If user explicitly typed an app/onboarding/auth route, honour it.
-      const explicit = h.startsWith('app') || h.startsWith('onboarding') || h.startsWith('auth');
+      // Honour explicit app/onboarding/auth deep links (e.g. /app/inbox).
+      const explicitApp = h.startsWith('app/') || h === 'app';
+      const explicitOnb = h.startsWith('onboarding');
       try {
         const { data } = await window.sb.from('rr_profiles').select('onboarding_complete, role').eq('id', uid).maybeSingle();
         const onboarded = !!(data?.onboarding_complete && data?.role);
-        if (onboarded) {
-          if (!explicit) { setMode('app'); window.location.hash = 'app/dashboard'; }
-        } else {
+        if (!onboarded) {
           setMode('onboarding');
+          if (!explicitOnb) window.location.hash = 'onboarding';
+        } else {
+          setMode('app');
+          if (!explicitApp) window.location.hash = 'app/dashboard';
         }
       } catch (e) {
         console.warn('routeForSession failed:', e);
-        if (!explicit) { setMode('app'); window.location.hash = 'app/dashboard'; }
+        setMode('app');
+        if (!explicitApp) window.location.hash = 'app/dashboard';
       }
     };
     window.sb.auth.getSession().then(({ data }) => {
@@ -61,9 +65,9 @@ function App() {
     });
     const { data: sub } = window.sb.auth.onAuthStateChange((evt, sess) => {
       setSession(sess);
-      // SIGNED_IN fires after OAuth return — route them properly even if the
-      // OAuth handshake clobbered our redirectTo hash.
-      if (evt === 'SIGNED_IN' && sess) routeForSession(sess);
+      // Route on every session arrival — OAuth callbacks can fire either
+      // SIGNED_IN or INITIAL_SESSION depending on timing.
+      if (sess && (evt === 'SIGNED_IN' || evt === 'INITIAL_SESSION' || evt === 'TOKEN_REFRESHED')) routeForSession(sess);
     });
     return () => sub?.subscription?.unsubscribe?.();
   }, []);
