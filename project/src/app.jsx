@@ -30,6 +30,9 @@ function App() {
   const [tourOpen, setTourOpen] = A_us(false);
   // Auth session — non-null when a user is signed in via Supabase Auth
   const [session, setSession] = A_us(null);
+  // Profile from rr_profiles for the signed-in user (verified, role, etc).
+  // Set by routeForSession so we don't depend on RosyData.USERS being fresh.
+  const [profileFromDb, setProfileFromDb] = A_us(null);
   A_ue(() => {
     if (!window.sb) return;
     // Decide where a signed-in user should land: dashboard if onboarded,
@@ -62,6 +65,7 @@ function App() {
           } catch (e) { console.warn('[rosy-route] profile insert failed', e); }
           data = { onboarding_complete: false, role: null, verified: false };
         }
+        setProfileFromDb({ ...data, id: uid, email: sess.user.email });
         const onboarded = !!(data?.onboarding_complete && data?.role);
         if (!onboarded) {
           console.log('[rosy-route] → onboarding (no role / not onboarded)');
@@ -260,7 +264,21 @@ function App() {
 
   // ---------- App mode ----------
   // If signed in, the session user trumps the demo role-switcher.
-  const sessionUser = session?.user?.id ? AD.USERS.find(u => u.id === session.user.id) : null;
+  // Look up against the LIVE RosyData (not the AD const captured at module
+  // load) so brand-new signups get matched after re-hydration.
+  let sessionUser = session?.user?.id ? (window.RosyData?.USERS || []).find(u => u.id === session.user.id) : null;
+  // Fallback: if RosyData hasn't picked up this user yet (just signed up),
+  // synthesise a minimal user object from the DB profile we fetched.
+  if (!sessionUser && session?.user?.id && profileFromDb?.id === session.user.id) {
+    const fn = profileFromDb.first_name || (session.user.user_metadata?.given_name) || (session.user.email || '').split('@')[0];
+    sessionUser = {
+      id: session.user.id, email: session.user.email, name: fn,
+      first: fn, role: profileFromDb.role || null,
+      verified: profileFromDb.verified === true,
+      onboarding_complete: !!profileFromDb.onboarding_complete,
+      photo: session.user.user_metadata?.picture || session.user.user_metadata?.avatar_url || null,
+    };
+  }
   const currentUser = sessionUser || (
     role === 'admin'  ? (AD.USERS.find(u => u.id === 'u2') || AD.USERS.find(u => u.role === 'admin'))
   : role === 'vendor' ? (AD.USERS.find(u => u.id === 'u1') || AD.USERS.find(u => u.role === 'vendor'))
