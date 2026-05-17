@@ -35,39 +35,52 @@ function App() {
     // Decide where a signed-in user should land: dashboard if onboarded,
     // onboarding form otherwise. Called on both initial getSession() and on
     // future onAuthStateChange (covers OAuth return flow).
-    const routeForSession = async (sess) => {
+    const routeForSession = async (sess, source) => {
+      console.log('[rosy-route]', source, 'session:', !!sess, 'uid:', sess?.user?.id, 'hash:', window.location.hash);
       if (!sess?.user?.id) return;
       const uid = sess.user.id;
       const h = window.location.hash.replace(/^#/, '');
-      // Honour explicit app/onboarding/auth deep links (e.g. /app/inbox).
       const explicitApp = h.startsWith('app/') || h === 'app';
       const explicitOnb = h.startsWith('onboarding');
       try {
-        const { data } = await window.sb.from('rr_profiles').select('onboarding_complete, role').eq('id', uid).maybeSingle();
+        const { data, error } = await window.sb.from('rr_profiles').select('onboarding_complete, role').eq('id', uid).maybeSingle();
+        console.log('[rosy-route] profile lookup:', { data, error });
         const onboarded = !!(data?.onboarding_complete && data?.role);
         if (!onboarded) {
+          console.log('[rosy-route] → onboarding');
           setMode('onboarding');
           if (!explicitOnb) window.location.hash = 'onboarding';
         } else {
+          console.log('[rosy-route] → app');
           setMode('app');
           if (!explicitApp) window.location.hash = 'app/dashboard';
         }
       } catch (e) {
-        console.warn('routeForSession failed:', e);
+        console.warn('[rosy-route] failed:', e);
         setMode('app');
         if (!explicitApp) window.location.hash = 'app/dashboard';
       }
     };
-    window.sb.auth.getSession().then(({ data }) => {
+    // If the URL has an OAuth code/access_token, force the SDK to process it before we read the session.
+    (async () => {
+      const url = new URL(window.location.href);
+      const hasCode = url.searchParams.has('code') || url.hash.includes('access_token=');
+      console.log('[rosy-route] boot. hasOAuthCode:', hasCode, 'href:', window.location.href);
+      if (hasCode && window.sb.auth.exchangeCodeForSession) {
+        try {
+          const { data, error } = await window.sb.auth.exchangeCodeForSession(window.location.href);
+          console.log('[rosy-route] exchangeCodeForSession:', { hasData: !!data, error });
+        } catch (e) { console.warn('[rosy-route] exchange failed', e); }
+      }
+      const { data } = await window.sb.auth.getSession();
       const sess = data?.session || null;
       setSession(sess);
-      if (sess) routeForSession(sess);
-    });
+      if (sess) routeForSession(sess, 'getSession');
+    })();
     const { data: sub } = window.sb.auth.onAuthStateChange((evt, sess) => {
+      console.log('[rosy-route] onAuthStateChange evt:', evt, 'has session:', !!sess);
       setSession(sess);
-      // Route on every session arrival — OAuth callbacks can fire either
-      // SIGNED_IN or INITIAL_SESSION depending on timing.
-      if (sess && (evt === 'SIGNED_IN' || evt === 'INITIAL_SESSION' || evt === 'TOKEN_REFRESHED')) routeForSession(sess);
+      if (sess && (evt === 'SIGNED_IN' || evt === 'INITIAL_SESSION' || evt === 'TOKEN_REFRESHED')) routeForSession(sess, 'authStateChange:' + evt);
     });
     return () => sub?.subscription?.unsubscribe?.();
   }, []);
