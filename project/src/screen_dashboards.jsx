@@ -21,7 +21,37 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
   const [page, setPage] = SD_us('');
   const [severity, setSeverity] = SD_us('medium');
   const [desc, setDesc] = SD_us('');
-  SD_ue(() => { if (open) { setPage(window.location.hash || '#unknown'); setSeverity('medium'); setDesc(''); } }, [open]);
+  const [screenshot, setScreenshot] = SD_us(null); // dataURL
+  const fileRef = React.useRef(null);
+  SD_ue(() => { if (open) { setPage(window.location.hash || '#unknown'); setSeverity('medium'); setDesc(''); setScreenshot(null); } }, [open]);
+  // Allow paste from clipboard while the modal is open
+  SD_ue(() => {
+    if (!open) return;
+    const onPaste = (e) => {
+      const items = e.clipboardData?.items || [];
+      for (const it of items) {
+        if (it.type && it.type.startsWith('image/')) {
+          const blob = it.getAsFile();
+          if (blob) {
+            const r = new FileReader();
+            r.onload = () => setScreenshot(r.result);
+            r.readAsDataURL(blob);
+            e.preventDefault();
+            return;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [open]);
+  const onFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => setScreenshot(r.result);
+    r.readAsDataURL(f);
+  };
   const submit = async () => {
     if (!desc.trim()) { toast.push({ kind: 'warning', title: 'Add a short description' }); return; }
     const sev = severity === 'high' ? '🔴' : severity === 'medium' ? '🟡' : '🟢';
@@ -29,11 +59,12 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
       id:     'dev_' + Date.now(),
       type:   'dev_issue',
       title:  `${sev} Dev issue · ${page}`,
-      body:   desc.trim(),
+      body:   desc.trim() + (screenshot ? '\n\n[Screenshot attached]' : ''),
       time:   'Just now',
       link:   page.startsWith('#') ? page : '#' + page,
       unread: true,
       user_id: reportedBy?.id,
+      screenshot,
     };
     window.RosyData.NOTIFICATIONS = window.RosyData.NOTIFICATIONS || [];
     window.RosyData.NOTIFICATIONS.unshift(entry);
@@ -67,6 +98,21 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
           </select>
         </div>
         <div><label className="field-label">What's wrong?</label><textarea className="textarea" rows={5} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What did you expect to happen? What actually happened? Steps to reproduce." /></div>
+        <div>
+          <label className="field-label">Screenshot <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
+          {screenshot ? (
+            <div style={{ position: 'relative', display: 'inline-block', marginTop: 4 }}>
+              <img src={screenshot} alt="Screenshot" style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 10, border: '1px solid var(--color-hairline)' }} />
+              <button type="button" onClick={() => setScreenshot(null)} style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.7)', color: '#fff', border: 0, width: 24, height: 24, borderRadius: 9999, cursor: 'pointer', fontSize: 14 }}>×</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>Upload image</button>
+              <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>or paste from clipboard (Cmd-V)</span>
+            </div>
+          )}
+        </div>
         <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>This creates a notification you'll see in your inbox bell. We use these to triage the next sprint.</p>
       </div>
     </Modal>
@@ -76,14 +122,11 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
 function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
   useDataTick();
   const dateStrip = 'May 1st 2026 – June 1st 2026';
-  const [devOpen, setDevOpen] = SD_us(false);
   return (
     <div className="content fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
-        <button className="btn btn-ghost btn-sm" onClick={() => setDevOpen(true)} aria-label="Report a development issue"><SD_I.AlertTriangle size={14} />Report dev issue</button>
       </div>
-      <DevNotificationModal open={devOpen} onClose={() => setDevOpen(false)} reportedBy={user} />
       <div className="grid-4" style={{ marginBottom: 24 }}>
         <StatCard icon={SD_I.Users}        label="All Workers"    value={3498} delta={6}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
         <StatCard icon={SD_I.UsersRound}   label="Total Workers"  value={1284} delta={4}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
@@ -388,4 +431,4 @@ function FeaturedGigPostsCard({ setRoute }) {
   );
 }
 
-Object.assign(window, { DashboardAdmin, DashboardVendor, DashboardWorker });
+Object.assign(window, { DashboardAdmin, DashboardVendor, DashboardWorker, DevNotificationModal });

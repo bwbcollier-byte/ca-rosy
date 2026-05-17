@@ -358,6 +358,7 @@ function RoseLogo({ size = 28 }) {
 /* ---------- App header ---------- */
 function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRoute, breadcrumbs, onBurger, sessionUser }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
   // Re-render this header when notifications mutate so the bell dot stays in sync.
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -407,6 +408,12 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
       </div>
       <div className="header-spacer" />
       {showRoleSwitch ? <RoleSwitch role={role} setRole={setRole} viewAs={!!sessionUser} /> : null}
+      {role === 'admin' ? (
+        <button className="btn btn-ghost btn-sm" onClick={() => setDevOpen(true)} title="Report a development issue" style={{ marginRight: 4 }}>
+          <Ic.AlertTriangle size={14} />Report dev issue
+        </button>
+      ) : null}
+      {role === 'admin' && window.DevNotificationModal ? <window.DevNotificationModal open={devOpen} onClose={() => setDevOpen(false)} reportedBy={currentUser} /> : null}
       <button className="icon-btn" aria-label={`Notifications${myUnread ? ' — ' + myUnread + ' unread' : ''}`} onClick={onBell}>
         <Ic.Bell size={18} />
         {myUnread > 0 ? <span className="bell-dot" /> : null}
