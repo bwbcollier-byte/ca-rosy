@@ -43,15 +43,32 @@ function App() {
       const explicitApp = h.startsWith('app/') || h === 'app';
       const explicitOnb = h.startsWith('onboarding');
       try {
-        const { data, error } = await window.sb.from('rr_profiles').select('onboarding_complete, role').eq('id', uid).maybeSingle();
+        let { data, error } = await window.sb.from('rr_profiles').select('onboarding_complete, role, verified').eq('id', uid).maybeSingle();
         console.log('[rosy-route] profile lookup:', { data, error });
+        // First-time OAuth user: no row exists yet. Insert one so the
+        // verification gate has somewhere to read from.
+        if (!data) {
+          const email = sess.user.email || null;
+          const meta = sess.user.user_metadata || {};
+          const firstName = meta.given_name || meta.first_name || (meta.full_name || '').split(' ')[0] || null;
+          const lastName  = meta.family_name || meta.last_name || (meta.full_name || '').split(' ').slice(1).join(' ') || null;
+          const avatar    = meta.avatar_url || meta.picture || null;
+          try {
+            await window.sb.from('rr_profiles').insert({
+              id: uid, email, first_name: firstName, last_name: lastName,
+              avatar_url: avatar, role: null, onboarding_complete: false, verified: false,
+            });
+            console.log('[rosy-route] inserted fresh profile row');
+          } catch (e) { console.warn('[rosy-route] profile insert failed', e); }
+          data = { onboarding_complete: false, role: null, verified: false };
+        }
         const onboarded = !!(data?.onboarding_complete && data?.role);
         if (!onboarded) {
-          console.log('[rosy-route] → onboarding');
+          console.log('[rosy-route] → onboarding (no role / not onboarded)');
           setMode('onboarding');
           if (!explicitOnb) window.location.hash = 'onboarding';
         } else {
-          console.log('[rosy-route] → app');
+          console.log('[rosy-route] → app (onboarded)');
           setMode('app');
           if (!explicitApp) window.location.hash = 'app/dashboard';
         }
@@ -291,7 +308,7 @@ function App() {
   };
 
   // Verification gate — signed-in non-admins with verified === false see only a pending-approval popup.
-  const needsVerification = !!sessionUser && sessionUser.role !== 'admin' && sessionUser.verified === false;
+  const needsVerification = !!sessionUser && sessionUser.role !== 'admin' && sessionUser.verified !== true;
 
   return (
     <ToastHost>
