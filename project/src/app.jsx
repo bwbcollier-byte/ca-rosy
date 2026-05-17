@@ -418,10 +418,6 @@ function App() {
                   <p style={{ margin: '14px 0 0' }}>Or you can check back soon!</p>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 22 }}>
-                <button className="btn btn-ghost" onClick={() => window.location.reload()}>Check status</button>
-                <button className="btn btn-ghost-coral" onClick={handleSignOut}>Sign out</button>
-              </div>
             </div>
           </div>
         ) : null}
