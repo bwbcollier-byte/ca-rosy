@@ -333,10 +333,29 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
   const [confirmId, setConfirmId] = useState(null);
   const list = seed.filter(u => !deleted[u.id]).map(u => overrides[u.id] ? { ...u, ...overrides[u.id] } : u);
 
-  const toggleActive = (u) => {
+  const toggleActive = async (u) => {
     const next = u.status === 'active' ? 'inactive' : 'active';
     setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), status: next } }));
-    toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.first} marked ${next}` });
+    // Reflect in the live RosyData store so the change survives navigation
+    const liveUser = (window.RosyData?.USERS || []).find(x => x.id === u.id);
+    if (liveUser) liveUser.status = next;
+    window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+    // Persist to Supabase so a refresh keeps the change
+    try {
+      if (window.sb) {
+        const { error } = await window.sb.from('rr_profiles').update({ status: next }).eq('id', u.id);
+        if (error) throw error;
+      }
+    } catch (e) {
+      console.warn('status update failed:', e);
+      toast.push({ kind: 'error', title: 'Status save failed', body: e.message || 'Try again' });
+      // Roll back local override on failure
+      setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), status: u.status } }));
+      if (liveUser) liveUser.status = u.status;
+      window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+      return;
+    }
+    toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.first || u.name} marked ${next}` });
   };
   const confirmDelete = () => {
     const u = list.find(x => x.id === confirmId);

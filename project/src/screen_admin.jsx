@@ -581,7 +581,15 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction }) {
                         toast.push({ kind: 'success', title: `${u.name} verified`, body: 'They can now access the dashboard.' });
                       }} title="Verify account"><SP_I.UserCheck size={14} /></button>
                     ) : null}
-                    <button className="row-action-btn" onClick={() => { const next = u.status === 'active' ? 'inactive' : 'active'; setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), status: next } })); toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.name} marked ${next}` }); }} title={u.status === 'active' ? 'Deactivate' : 'Activate'}>{u.status === 'active' ? <SP_I.UserX size={14} /> : <SP_I.CheckCircle2 size={14} />}</button>
+                    <button className="row-action-btn" onClick={async () => {
+                      const next = u.status === 'active' ? 'inactive' : 'active';
+                      setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), status: next } }));
+                      const liveUser = (window.RosyData?.USERS || []).find(x => x.id === u.id);
+                      if (liveUser) liveUser.status = next;
+                      window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+                      try { if (window.sb) { const { error } = await window.sb.from('rr_profiles').update({ status: next }).eq('id', u.id); if (error) throw error; } } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Status save failed', body: e.message }); return; }
+                      toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.name} marked ${next}` });
+                    }} title={u.status === 'active' ? 'Deactivate' : 'Activate'}>{u.status === 'active' ? <SP_I.UserX size={14} /> : <SP_I.CheckCircle2 size={14} />}</button>
                     <button className="row-action-btn danger" onClick={() => setConfirmId(u.id)} title="Delete"><SP_I.Trash2 size={14} /></button>
                   </div>
                 </td>
