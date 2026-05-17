@@ -134,12 +134,15 @@ function App() {
     let cancelled = false;
     (async () => {
       try {
-        // Fast path: a profile exists in already-loaded data → done.
-        if (sessionUserFromData && sessionUserFromData.role) return;
+        // ALWAYS check the DB. RosyData may have a stale row (e.g. role set by
+        // a Supabase trigger before the user finished onboarding).
         const { data } = await window.sb.from('rr_profiles').select('id, onboarding_complete, role').eq('id', sessionUserId).maybeSingle();
         if (cancelled) return;
+        console.log('[rosy-gate] db profile', data);
         if (!data || !data.onboarding_complete || !data.role) {
+          console.log('[rosy-gate] forcing onboarding mode');
           setMode('onboarding');
+          if (!window.location.hash.startsWith('#onboarding')) window.location.hash = 'onboarding';
         }
       } catch (e) { console.warn('post-auth onboarding gate failed:', e); }
     })();
@@ -284,6 +287,31 @@ function App() {
   : role === 'vendor' ? (AD.USERS.find(u => u.id === 'u1') || AD.USERS.find(u => u.role === 'vendor'))
   :                     (AD.USERS.find(u => u.id === 'u3') || AD.USERS.find(u => u.role === 'worker'))
   );
+
+  // Hard block: if we're in app mode but the signed-in user's profile says
+  // they haven't onboarded yet, force the onboarding screen now — don't even
+  // render the dashboard. This catches the race where Supabase has set the
+  // session before routeForSession's async lookup completes.
+  if (mode === 'app' && sessionUserId && profileFromDb && profileFromDb.id === sessionUserId && (!profileFromDb.role || !profileFromDb.onboarding_complete)) {
+    return (
+      <ToastHost>
+        <OnboardingPage onComplete={async (pickedRole) => {
+          if (pickedRole) setRole(pickedRole);
+          try {
+            if (window.sb && sessionUserId) {
+              await window.sb.from('rr_profiles').upsert({
+                id: sessionUserId, role: pickedRole, onboarding_complete: true, verified: false,
+              }, { onConflict: 'id' });
+              setProfileFromDb(p => ({ ...(p || {}), role: pickedRole, onboarding_complete: true, verified: false, id: sessionUserId }));
+            }
+          } catch (e) { console.warn(e); }
+          setMode('app');
+          setRoute('dashboard');
+          window.location.hash = 'app/dashboard';
+        }} />
+      </ToastHost>
+    );
+  }
   // header title from route
   const titleMap = {
     dashboard: 'Dashboard', users: 'Users', events: 'Events', gigs: 'Gigs',
