@@ -77,16 +77,7 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
       try { await Promise.all(pickedIds.map(id => window.RosyMutate?.events?.update(id, { status: action }))); } catch (e) { console.warn(e); }
       toast.push({ kind: 'success', title: `${pickedCount} marked ${action}` });
       setSelected({});
-    } else if (action === 'delete') {
-      setBulkConfirm({ ids: pickedIds, count: pickedCount });
     }
-  };
-  const confirmBulkDelete = async () => {
-    const ids = bulkConfirm.ids;
-    setEvents(es => es.filter(e => !ids.includes(e.id)));
-    try { await Promise.all(ids.map(id => window.RosyMutate?.events?.delete(id))); } catch (e) { console.warn(e); }
-    toast.push({ kind: 'warning', title: `${bulkConfirm.count} events deleted` });
-    setSelected({}); setBulkConfirm(null);
   };
 
   return (
@@ -172,7 +163,12 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
                       <div className="row-actions">
                         <button className="row-action-btn" onClick={() => setRoute('events:' + e.id)} title="View"><SE_I.Eye size={14} /></button>
                         <button className="row-action-btn" onClick={() => setEditEvent(e)} title="Edit"><SE_I.Pencil size={14} /></button>
-                        <button className="row-action-btn danger" onClick={() => setConfirmId(e.id)} title="Delete"><SE_I.Trash2 size={14} /></button>
+                        <button className="row-action-btn" title={e.status === 'completed' ? 'Mark draft' : 'Mark completed'} onClick={async () => {
+                          const next = e.status === 'completed' ? 'draft' : 'completed';
+                          setEvents(es => es.map(x => x.id === e.id ? { ...x, status: next } : x));
+                          try { await window.RosyMutate?.events?.update(e.id, { status: next }); } catch (err) { console.warn(err); }
+                          toast.push({ kind: next === 'completed' ? 'success' : 'warning', title: `${e.name} marked ${next}` });
+                        }}>{e.status === 'completed' ? <SE_I.CheckCircle2 size={14} /> : <SE_I.UserX size={14} />}</button>
                       </div>
                     </td>
                   </tr>
@@ -189,7 +185,6 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
           { label: 'Mark Open',     icon: SE_I.CheckCircle2, onClick: () => applyBulk('open') },
           { label: 'Mark Draft',    icon: SE_I.ClipboardList, onClick: () => applyBulk('draft') },
           { label: 'Mark Completed', icon: SE_I.CheckCircle, onClick: () => applyBulk('completed') },
-          { label: 'Delete', icon: SE_I.Trash2, danger: true, onClick: () => applyBulk('delete') },
         ]} />
 
       <Slideover open={!!editEvent} onClose={() => setEditEvent(null)} title={editEvent ? `Edit · ${editEvent.name}` : 'Edit event'}
@@ -208,10 +203,6 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
         }>
         {editEvent ? <NewEventForm value={editEvent} onChange={setEditEvent} /> : null}
       </Slideover>
-
-      <ConfirmDialog open={!!bulkConfirm} onClose={() => setBulkConfirm(null)}
-        title={bulkConfirm ? `Delete ${bulkConfirm.count} events?` : ''} message="This will also remove their gigs, applications, and pending payments."
-        confirmLabel="Delete" onConfirm={confirmBulkDelete} />
 
       <Slideover open={addOpen} onClose={() => setAddOpen(false)} title="New Event"
         footer={
@@ -251,15 +242,6 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
         message={postCreatePrompt ? `Post gigs for ${postCreatePrompt.name} now so workers can start applying.` : ''}
         confirmLabel="Add gigs"
         onConfirm={() => { const id = postCreatePrompt.eventId; setPostCreatePrompt(null); window.__rosyAddGigEventId = id; setRoute && setRoute('gigs'); }} />
-
-      <ConfirmDialog open={!!confirmId} onClose={() => setConfirmId(null)} title="Delete this event?" message="This will also remove all gigs, applications, and pending payments. You can't undo this."
-        confirmLabel="Delete event"
-        onConfirm={async () => {
-          const id = confirmId;
-          setEvents(es => es.filter(x => x.id !== id));
-          try { await window.RosyMutate?.events?.delete(id); } catch (e) { console.warn(e); }
-          toast.push({ kind: 'warning', title: 'Event deleted' });
-        }} />
 
       <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter events" size="md"
         footer={<><button className="btn btn-ghost" onClick={() => { setFilter({ open: true, draft: true, completed: true }); setTypeFilter({ Lead: true, Design: true, Assist: true, Strike: true }); setVenueFilter('all'); setDateFilter('any'); }}>Reset all</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>

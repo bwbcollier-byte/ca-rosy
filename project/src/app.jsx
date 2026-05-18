@@ -370,6 +370,7 @@ function App() {
     'site-content': 'Site content', emails: 'Email templates', gallery: 'Gallery',
     platform: 'Platform settings', notifications: 'Notifications', 'build-team': 'Build my team',
     'admin-team': 'Admin team', broadcast: 'Send broadcast', 'notif-rules': 'Notification rules',
+    changelog: 'Change log',
   };
   const baseRoute = route.split(':')[0];
   const subId = route.split(':')[1];
@@ -476,6 +477,7 @@ const ROUTE_ROLES = {
   'admin-team':    ['admin'],
   'broadcast':     ['admin'],
   'notif-rules':   ['admin'],
+  'changelog':     ['admin'],
   'gigs':          ['admin', 'vendor'],
   'venues':        ['admin', 'vendor'],
   'build-team':    ['admin', 'vendor'],
@@ -554,6 +556,7 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
   if (baseRoute === 'emails')   return <PageEmails />;
   if (baseRoute === 'gallery')  return <PageGallery />;
   if (baseRoute === 'platform') return <PagePlatformSettings />;
+  if (baseRoute === 'changelog') return <PageChangeLog currentUser={currentUser} />;
 
   return <div className="content"><Empty title={`No ${baseRoute} screen yet`} body="Try a different sidebar item." /></div>;
 }

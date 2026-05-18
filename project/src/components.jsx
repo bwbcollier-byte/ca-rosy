@@ -276,6 +276,7 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, curr
         { id: 'notif-rules', label: 'Notification rules', icon: Ic.Sliders },
         { id: 'admin-team', label: 'Admin team', icon: Ic.ShieldCheck },
         { id: 'audit',     label: 'Audit Log', icon: Ic.ScrollText },
+        { id: 'changelog', label: 'Change log', icon: Ic.History },
         { id: 'platform',  label: 'Platform Settings', icon: Ic.Sliders },
       ]},
     ],

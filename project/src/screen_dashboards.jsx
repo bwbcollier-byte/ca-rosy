@@ -479,9 +479,7 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
     setSeenAt(s => ({ ...s, [tabId]: ts }));
   };
   const [overrides, setOverrides] = useState({});
-  const [deleted, setDeleted] = useState({});
-  const [confirmId, setConfirmId] = useState(null);
-  const list = seed.filter(u => !deleted[u.id]).map(u => overrides[u.id] ? { ...u, ...overrides[u.id] } : u);
+  const list = seed.map(u => overrides[u.id] ? { ...u, ...overrides[u.id] } : u);
 
   const toggleActive = async (u) => {
     const next = u.status === 'active' ? 'inactive' : 'active';
@@ -507,13 +505,6 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
     }
     toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.first || u.name} marked ${next}` });
   };
-  const confirmDelete = () => {
-    const u = list.find(x => x.id === confirmId);
-    setDeleted(d => ({ ...d, [confirmId]: true }));
-    setConfirmId(null);
-    toast.push({ kind: 'info', title: 'Hidden from list', body: `${u?.name || 'User'} hidden from your dashboard list (still active in Users).` });
-  };
-
   return (
     <div className="card card-flush" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="card-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
@@ -551,18 +542,13 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
                </button>
              ) : <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>}
              {isAdmin ? (
-               <>
-                 <button onClick={(e) => { e.stopPropagation(); setConfirmId(u.id); }} className="row-action-btn danger" aria-label="Delete user"><SD_I.Trash2 size={14} /></button>
-                 <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('users:' + u.id + ':edit'); }} className="row-action-btn" aria-label="Edit user"><SD_I.Pencil size={14} /></button>
-               </>
+               <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('users:' + u.id + ':edit'); }} className="row-action-btn" aria-label="Edit user"><SD_I.Pencil size={14} /></button>
              ) : (
                <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${u.first || u.name.split(' ')[0]}` }); }} className="row-action-btn" aria-label={`Message ${u.name}`} title={`Message ${u.name}`}><SD_I.MessageSquare size={14} /></button>
              )}
            </div>
          ))}
       </div>
-      <ConfirmDialog open={!!confirmId} onClose={() => setConfirmId(null)} title="Remove this user from the list?" message="They'll be hidden from this card. The full user record is unchanged."
-        confirmLabel="Remove" onConfirm={confirmDelete} />
     </div>
   );
 }

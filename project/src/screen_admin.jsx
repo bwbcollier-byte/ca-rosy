@@ -501,18 +501,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
       });
       toast.push({ kind: action === 'activate' ? 'success' : 'warning', title: `${pickedCount} marked ${next}` });
       setPicked({});
-    } else if (action === 'delete') {
-      setBulkConfirm({ ids: pickedIds, count: pickedCount });
     }
-  };
-  const confirmBulkDelete = () => {
-    setDeleted(d => {
-      const c = { ...d };
-      bulkConfirm.ids.forEach(id => { c[id] = true; });
-      return c;
-    });
-    toast.push({ kind: 'warning', title: `${bulkConfirm.count} removed` });
-    setPicked({}); setBulkConfirm(null);
   };
 
   return (
@@ -675,7 +664,6 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
                       } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Status save failed', body: e.message }); return; }
                       toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.name} marked ${next}` });
                     }} title={u.status === 'active' ? 'Deactivate' : 'Activate'}>{u.status === 'active' ? <SP_I.UserX size={14} /> : <SP_I.CheckCircle2 size={14} />}</button>
-                    <button className="row-action-btn danger" onClick={() => setConfirmId(u.id)} title="Delete"><SP_I.Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>
@@ -692,15 +680,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
           { label: 'Activate',   icon: SP_I.CheckCircle2, onClick: () => applyBulk('activate') },
           { label: 'Deactivate', icon: SP_I.UserX,        onClick: () => applyBulk('deactivate') },
           { label: 'Clear',      icon: SP_I.X,            onClick: () => setPicked({}) },
-          { label: 'Delete',     icon: SP_I.Trash2, danger: true, onClick: () => applyBulk('delete') },
         ]} />
-
-      <ConfirmDialog open={!!confirmId} onClose={() => setConfirmId(null)} title="Delete this user?" message="They'll be removed from the directory. The full record stays archived." confirmLabel="Delete"
-        onConfirm={() => { setDeleted(d => ({ ...d, [confirmId]: true })); toast.push({ kind: 'warning', title: 'User deleted' }); }} />
-
-      <ConfirmDialog open={!!bulkConfirm} onClose={() => setBulkConfirm(null)}
-        title={bulkConfirm ? `Delete ${bulkConfirm.count} users?` : ''} message="They'll be removed from the directory."
-        confirmLabel="Delete" onConfirm={confirmBulkDelete} />
 
       <UserDetailModal user={selected} onClose={closeDetail} setRoute={setRoute}
         initialEdit={editing}
@@ -1012,7 +992,6 @@ function PageVenues() {
                         try { if (window.sb) await window.sb.from('rr_venues').update({ active: next }).eq('id', v.id); } catch (e) { console.warn(e); }
                         toast.push({ kind: next ? 'success' : 'warning', title: `${v.name} ${next ? 'activated' : 'deactivated'}` });
                       }} title={v.active !== false ? 'Deactivate' : 'Activate'}>{v.active !== false ? <SP_I.UserX size={14} /> : <SP_I.CheckCircle2 size={14} />}</button>
-                      <button className="row-action-btn danger" onClick={() => setDeleteId(v.id)} title="Delete"><SP_I.Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -1046,7 +1025,16 @@ function PageVenues() {
               <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(v); setAddOpen(true); }}><SP_I.Pencil size={13} />Edit</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setViewOpen(v)}><SP_I.Eye size={13} />View</button>
-                <button className="row-action-btn danger" style={{ marginLeft: 'auto' }} onClick={() => setDeleteId(v.id)}><SP_I.Trash2 size={14} /></button>
+                <button className="row-action-btn" style={{ marginLeft: 'auto' }} title={v.active !== false ? 'Deactivate' : 'Activate'} onClick={async () => {
+                  const next = !(v.active !== false);
+                  const updated = { ...v, active: next };
+                  setVenues(arr => arr.map(x => x.id === v.id ? updated : x));
+                  const lv = (window.RosyData?.VENUES || []).find(x => x.id === v.id);
+                  if (lv) lv.active = next;
+                  window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+                  try { if (window.sb) await window.sb.from('rr_venues').update({ active: next }).eq('id', v.id); } catch (e) { console.warn(e); }
+                  toast.push({ kind: next ? 'success' : 'warning', title: `${v.name} ${next ? 'activated' : 'deactivated'}` });
+                }}>{v.active !== false ? <SP_I.UserX size={14} /> : <SP_I.CheckCircle2 size={14} />}</button>
               </div>
             </div>
           </div>
@@ -1088,9 +1076,6 @@ function PageVenues() {
       <VenueFormModal open={addOpen} onClose={() => setAddOpen(false)} venue={editing} onSave={(v) => { upsert(v, !editing); setAddOpen(false); toast.push({ kind: 'success', title: editing ? 'Venue updated' : 'Venue added' }); }} />
 
       <VenueDetailModal venue={viewOpen} onClose={() => setViewOpen(null)} onEdit={(v) => { setViewOpen(null); setEditing(v); setAddOpen(true); }} />
-
-      <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} title="Remove venue?" message="This won't affect past events but it'll be hidden from new event creation." confirmLabel="Remove"
-        onConfirm={async () => { const id = deleteId; setVenues(vs => vs.filter(v => v.id !== id)); try { await window.RosyMutate?.venues?.delete(id); } catch (e) { console.warn(e); } toast.push({ kind: 'warning', title: 'Venue removed' }); }} />
     </div>
   );
 }
@@ -2130,7 +2115,6 @@ function PageGallery() {
   const toast = useToast();
   const [items, setItems] = SP_us(window.RosyStores.gallery);
   const [filter, setFilter] = SP_us('all');
-  const [confirmDeleteId, setConfirmDeleteId] = SP_us(null);
   const fileRef = React.useRef(null);
   const replaceRef = React.useRef(null);
   const [replaceTargetId, setReplaceTargetId] = SP_us(null);
@@ -2167,14 +2151,13 @@ function PageGallery() {
       return next;
     });
   };
-  const doRemove = (id) => {
+  const doArchive = (id) => {
     setItems(arr => {
-      const next = arr.filter(x => x.id !== id);
+      const next = arr.map(x => x.id === id ? { ...x, section: 'unused' } : x);
       window.RosyStores.gallery = next;
       return next;
     });
-    setConfirmDeleteId(null);
-    toast.push({ kind: 'warning', title: 'Photo removed' });
+    toast.push({ kind: 'info', title: 'Photo archived', body: 'Moved to Unused — you can reassign or re-publish later.' });
   };
   const handleFile = (e) => {
     const f = e.target.files && e.target.files[0];
@@ -2208,7 +2191,6 @@ function PageGallery() {
         ))}
       </div>
       <input ref={replaceRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleReplaceFile} />
-      <ConfirmDialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)} title="Remove this photo?" message="It will be removed from the gallery — you can re-upload later." confirmLabel="Remove" onConfirm={() => doRemove(confirmDeleteId)} />
 
       {filtered.length === 0 ? <Empty icon={SP_I.Image} title="No photos in this section" body="Drag a photo here or upload from the toolbar." /> : (
         <div className="grid-3">
@@ -2220,7 +2202,7 @@ function PageGallery() {
                   <EventImage src={item.src} name={section?.label || 'Photo'} size="100%" radius={0}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
                   <button className="row-action-btn" aria-label="Replace photo" title="Replace photo" style={{ position: 'absolute', top: 8, right: 44, background: 'rgba(255,255,255,0.92)' }} onClick={() => { setReplaceTargetId(item.id); replaceRef.current && replaceRef.current.click(); }}><SP_I.Upload size={14} /></button>
-                  <button className="row-action-btn danger" aria-label="Remove photo" style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)' }} onClick={() => setConfirmDeleteId(item.id)}><SP_I.Trash2 size={14} /></button>
+                  {item.section !== 'unused' ? <button className="row-action-btn" aria-label="Archive photo" title="Archive (move to Unused)" style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)' }} onClick={() => doArchive(item.id)}><SP_I.UserX size={14} /></button> : null}
                 </div>
                 <div style={{ padding: 12 }}>
                   <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Assigned to</p>

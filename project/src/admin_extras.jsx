@@ -180,7 +180,7 @@ function PageAdminAssistants() {
                     <div className="row-actions">
                       {/* Cog = permissions editor */}
                       <button className="row-action-btn" onClick={() => setEditing(m)} title="Manage permissions"><AX_I.Sliders size={14} /></button>
-                      {m.preset !== 'owner' ? <button className="row-action-btn danger" onClick={() => { setTeam(t => t.filter(x => x.id !== m.id)); toast.push({ kind: 'warning', title: 'Admin removed' }); }}><AX_I.Trash2 size={14} /></button> : null}
+                      {m.preset !== 'owner' ? <button className="row-action-btn" title={m.status === 'active' ? 'Deactivate' : 'Activate'} onClick={() => { setTeam(t => t.map(x => x.id === m.id ? { ...x, status: x.status === 'active' ? 'inactive' : 'active' } : x)); toast.push({ kind: m.status === 'active' ? 'warning' : 'success', title: `${m.name} ${m.status === 'active' ? 'deactivated' : 'activated'}` }); }}>{m.status === 'active' ? <AX_I.UserX size={14} /> : <AX_I.CheckCircle2 size={14} />}</button> : null}
                     </div>
                   </td>
                 </tr>
@@ -591,4 +591,200 @@ function PageBroadcast() {
   );
 }
 
-Object.assign(window, { PageAdminAssistants, PermissionsModal, PageNotificationRules, PageBroadcast, SafeImage });
+/* ============ Change log + revert ============ */
+function PageChangeLog({ currentUser }) {
+  const toast = useToast();
+  const [logs, setLogs] = AX_us([]);
+  const [loading, setLoading] = AX_us(true);
+  const [tableFilter, setTableFilter] = AX_us('all');
+  const [actionFilter, setActionFilter] = AX_us('all');
+  const [actorFilter, setActorFilter] = AX_us('all');
+  const [dateFrom, setDateFrom] = AX_us('');
+  const [dateTo, setDateTo] = AX_us('');
+  const [expanded, setExpanded] = AX_us(null);
+  const [reverting, setReverting] = AX_us(null);
+  const [confirmRevertId, setConfirmRevertId] = AX_us(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      if (!window.sb) { setLogs([]); setLoading(false); return; }
+      const { data, error } = await window.sb.from('rr_change_log')
+        .select('*').order('created_at', { ascending: false }).limit(500);
+      if (error) throw error;
+      setLogs(data || []);
+    } catch (e) {
+      console.warn('change log load failed:', e);
+      toast.push({ kind: 'error', title: 'Could not load change log', body: e.message || 'See console' });
+    }
+    setLoading(false);
+  };
+
+  AX_ue(() => { load(); }, []);
+
+  // Build filter dropdown options from loaded rows
+  const tables = Array.from(new Set(logs.map(l => l.table_name))).sort();
+  const actors = Array.from(new Set(logs.map(l => l.actor_id).filter(Boolean)));
+
+  const filtered = logs.filter(l => {
+    if (tableFilter !== 'all' && l.table_name !== tableFilter) return false;
+    if (actionFilter !== 'all' && l.action !== actionFilter) return false;
+    if (actorFilter !== 'all' && l.actor_id !== actorFilter) return false;
+    if (dateFrom && new Date(l.created_at) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(l.created_at) > new Date(dateTo + 'T23:59:59')) return false;
+    return true;
+  });
+
+  const diffSummary = (l) => {
+    if (l.action === 'insert') return 'Record created';
+    if (l.action === 'delete') return 'Record deleted (revert will restore)';
+    const before = l.before_data || {};
+    const after = l.after_data || {};
+    const changed = [];
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const k of keys) {
+      if (k === 'updated_at') continue;
+      if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) changed.push(k);
+    }
+    if (changed.length === 0) return 'No field changes';
+    if (changed.length <= 3) return `${changed.length} field${changed.length === 1 ? '' : 's'} changed: ${changed.join(', ')}`;
+    return `${changed.length} fields changed: ${changed.slice(0, 3).join(', ')}…`;
+  };
+
+  const actorLabel = (l) => {
+    if (!l.actor_id) return 'System';
+    const u = (window.RosyData?.USERS || []).find(x => x.id === l.actor_id);
+    return u ? (u.name || u.email || l.actor_id) : `${l.actor_role || 'user'} · ${l.actor_id.slice(0, 8)}…`;
+  };
+
+  const tableLabel = (t) => ({
+    rr_profiles: 'Profiles', rr_events: 'Events', rr_gigs: 'Gigs', rr_venues: 'Venues',
+    rr_vendor_profiles: 'Vendor profiles', rr_worker_profiles: 'Worker profiles',
+    rr_site_content: 'Site content', rr_admin_invites: 'Admin invites', rr_email_templates: 'Email templates',
+  })[t] || t;
+
+  const doRevert = async (id) => {
+    setReverting(id);
+    try {
+      const { data: s } = await window.sb.auth.getSession();
+      const r = await fetch('/api/admin/revert-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+        body: JSON.stringify({ changeId: id }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || `Revert failed (${r.status})`);
+      toast.push({ kind: 'success', title: 'Change reverted', body: `Reverted ${body.action || 'change'}.` });
+      await load();
+    } catch (e) {
+      console.warn('revert failed:', e);
+      toast.push({ kind: 'error', title: 'Revert failed', body: e.message || 'See console' });
+    }
+    setReverting(null);
+    setConfirmRevertId(null);
+  };
+
+  return (
+    <div className="content fade-up">
+      <div className="section-heading">
+        <h2>Change log</h2>
+        <button className="btn btn-ghost btn-sm" onClick={load}><AX_I.RefreshCw size={14} />Refresh</button>
+      </div>
+
+      <div className="card" style={{ marginBottom: 18, padding: 16 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 6 }}>Table</p>
+            <select className="select" value={tableFilter} onChange={e => setTableFilter(e.target.value)}>
+              <option value="all">All tables</option>
+              {tables.map(t => <option key={t} value={t}>{tableLabel(t)}</option>)}
+            </select>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 6 }}>Action</p>
+            <select className="select" value={actionFilter} onChange={e => setActionFilter(e.target.value)}>
+              <option value="all">All actions</option>
+              <option value="insert">Insert</option>
+              <option value="update">Update</option>
+              <option value="delete">Delete</option>
+            </select>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 6 }}>Actor</p>
+            <select className="select" value={actorFilter} onChange={e => setActorFilter(e.target.value)}>
+              <option value="all">All actors</option>
+              {actors.map(a => <option key={a} value={a}>{actorLabel({ actor_id: a })}</option>)}
+            </select>
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 6 }}>From</p>
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          </div>
+          <div>
+            <p className="t-eyebrow" style={{ marginBottom: 6 }}>To</p>
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setTableFilter('all'); setActionFilter('all'); setActorFilter('all'); setDateFrom(''); setDateTo(''); }}>Reset</button>
+        </div>
+      </div>
+
+      <div className="table-wrap">
+        <table className="rosy-table">
+          <thead><tr>
+            <th>When</th><th>Who</th><th>Table</th><th>Record</th><th>Action</th><th>Diff</th><th style={{ width: 110 }}></th>
+          </tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7}><Empty title="Loading…" /></td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={7}><Empty icon={AX_I.History} title="No changes match" body="Try a different filter, or sit tight — changes appear here as they happen." /></td></tr>
+            ) : filtered.map(l => (
+              <React.Fragment key={l.id}>
+                <tr style={{ cursor: 'pointer', background: l.reverted_at ? 'rgba(0,0,0,0.02)' : undefined }} onClick={() => setExpanded(expanded === l.id ? null : l.id)}>
+                  <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{new Date(l.created_at).toLocaleString()}</td>
+                  <td style={{ fontSize: 13 }}>{actorLabel(l)}{l.actor_role ? <span className="t-muted" style={{ fontSize: 11, marginLeft: 6 }}>({l.actor_role})</span> : null}</td>
+                  <td style={{ fontSize: 13 }}>{tableLabel(l.table_name)}</td>
+                  <td style={{ fontSize: 11.5, color: 'var(--color-muted)', fontFamily: 'var(--font-mono)' }}>{(l.record_id || '').slice(0, 12)}…</td>
+                  <td>
+                    <Badge kind={l.action === 'insert' ? 'Active' : l.action === 'delete' ? 'Inactive' : 'Draft'}>
+                      {l.action}{l.action === 'delete' ? ' (restorable)' : ''}
+                    </Badge>
+                  </td>
+                  <td style={{ fontSize: 12.5, color: 'var(--color-body)' }}>{diffSummary(l)}{l.reverted_at ? <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--rosy-coral)' }}>· reverted {new Date(l.reverted_at).toLocaleDateString()}</span> : null}</td>
+                  <td onClick={e => e.stopPropagation()}>
+                    <button className="btn btn-ghost btn-sm" disabled={!!l.reverted_at || reverting === l.id} onClick={() => setConfirmRevertId(l.id)}>
+                      <AX_I.Undo2 size={13} />{l.reverted_at ? 'Reverted' : reverting === l.id ? 'Reverting…' : 'Revert'}
+                    </button>
+                  </td>
+                </tr>
+                {expanded === l.id ? (
+                  <tr>
+                    <td colSpan={7} style={{ background: 'var(--color-surface-soft)', padding: 16 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                        <div>
+                          <p className="t-eyebrow" style={{ marginBottom: 6 }}>Before</p>
+                          <pre style={{ margin: 0, padding: 12, background: 'var(--color-canvas)', borderRadius: 8, fontSize: 11, overflow: 'auto', maxHeight: 280, fontFamily: 'var(--font-mono)' }}>{l.before_data ? JSON.stringify(l.before_data, null, 2) : '— (insert)'}</pre>
+                        </div>
+                        <div>
+                          <p className="t-eyebrow" style={{ marginBottom: 6 }}>After</p>
+                          <pre style={{ margin: 0, padding: 12, background: 'var(--color-canvas)', borderRadius: 8, fontSize: 11, overflow: 'auto', maxHeight: 280, fontFamily: 'var(--font-mono)' }}>{l.after_data ? JSON.stringify(l.after_data, null, 2) : '— (delete)'}</pre>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <ConfirmDialog open={!!confirmRevertId} onClose={() => setConfirmRevertId(null)}
+        title="Revert this change?"
+        message="The current value will be replaced with the original. This itself is logged as a new change you can also revert."
+        confirmLabel="Revert change" onConfirm={() => doRevert(confirmRevertId)} />
+    </div>
+  );
+}
+
+Object.assign(window, { PageAdminAssistants, PermissionsModal, PageNotificationRules, PageBroadcast, SafeImage, PageChangeLog });

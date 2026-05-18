@@ -31,8 +31,6 @@ function PageGigsVendor({ user, role, setRoute }) {
   const [editGig, setEditGig] = SG_us(null);
   const [editForm, setEditForm] = SG_us(null);
   const [detailGig, setDetailGig] = SG_us(null);
-  const [confirmDelete, setConfirmDelete] = SG_us(null);
-  const [bulkConfirm, setBulkConfirm] = SG_us(null);
   const toast = useToast();
   const events = SG_D.EVENTS.filter(e => e.status !== 'draft' && (!isVendor || ownEventIds.has(e.id)));
 
@@ -116,22 +114,6 @@ function PageGigsVendor({ user, role, setRoute }) {
     try { await window.RosyMutate?.gigs?.update(id, patch); } catch (e) { console.warn(e); }
     setEditGig(null); setEditForm(null);
     toast.push({ kind: 'success', title: 'Gig updated' });
-  };
-
-  const doDelete = async (id) => {
-    setGigs(gs => gs.filter(g => g.id !== id));
-    setSelected(s => { const n = { ...s }; delete n[id]; return n; });
-    setConfirmDelete(null);
-    try { await window.RosyMutate?.gigs?.delete(id); } catch (e) { console.warn(e); }
-    toast.push({ kind: 'warning', title: 'Gig removed' });
-  };
-
-  const doBulkDelete = async () => {
-    const ids = [...pickedIds];
-    setGigs(gs => gs.filter(g => !ids.includes(g.id)));
-    try { await Promise.all(ids.map(id => window.RosyMutate?.gigs?.delete(id))); } catch (e) { console.warn(e); }
-    toast.push({ kind: 'warning', title: `${pickedCount} removed` });
-    setSelected({}); setBulkConfirm(null);
   };
 
   const bulkSetStatus = async (status) => {
@@ -230,7 +212,12 @@ function PageGigsVendor({ user, role, setRoute }) {
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
                           <button className="row-action-btn" aria-label="Edit gig" onClick={() => { setEditGig(g); setEditForm({ type: g.type, date: g.date, rate: g.rate, start: g.start, end: g.end, spots: g.spots }); }}><SG_I.Pencil size={14} /></button>
-                          <button className="row-action-btn danger" aria-label="Delete gig" onClick={() => setConfirmDelete(g)}><SG_I.Trash2 size={14} /></button>
+                          <button className="row-action-btn" aria-label={g.status === 'completed' ? 'Reopen gig' : 'Mark completed'} title={g.status === 'completed' ? 'Reopen' : 'Mark completed'} onClick={async () => {
+                            const next = g.status === 'completed' ? 'open' : 'completed';
+                            setGigs(gs => gs.map(x => x.id === g.id ? { ...x, status: next } : x));
+                            try { await window.RosyMutate?.gigs?.update(g.id, { status: next }); } catch (e) { console.warn(e); }
+                            toast.push({ kind: next === 'completed' ? 'success' : 'warning', title: `Gig ${next}` });
+                          }}>{g.status === 'completed' ? <SG_I.CheckCircle2 size={14} /> : <SG_I.UserX size={14} />}</button>
                         </div>
                       </td>
                     </tr>
@@ -342,20 +329,12 @@ function PageGigsVendor({ user, role, setRoute }) {
         </Modal>
       ) : null}
 
-      <ConfirmDialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)}
-        title="Delete this gig?" message={confirmDelete ? `${confirmDelete.type} on ${fmtDate(confirmDelete.date, 'mdy-dots')} will be removed.` : ''}
-        confirmLabel="Delete" danger onConfirm={() => doDelete(confirmDelete.id)} />
-
-      <ConfirmDialog open={!!bulkConfirm} onClose={() => setBulkConfirm(null)}
-        title={`Delete ${pickedCount} gigs?`} message="This cannot be undone."
-        confirmLabel="Delete all" danger onConfirm={doBulkDelete} />
-
       {pickedCount > 0 ? (
         <BulkActionBar count={pickedCount} onClear={() => setSelected({})}
           actions={[
             { label: 'Mark confirmed', onClick: () => bulkSetStatus('confirmed') },
             { label: 'Mark open', onClick: () => bulkSetStatus('open') },
-            { label: 'Delete', danger: true, onClick: () => setBulkConfirm(true) },
+            { label: 'Mark completed', onClick: () => bulkSetStatus('completed') },
           ]} />
       ) : null}
     </div>
