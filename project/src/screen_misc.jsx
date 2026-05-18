@@ -279,7 +279,15 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
             <div className="mk-strip" style={{ marginBottom: 20 }}>
               <SX_I.Sparkles size={14} />{(window.RosyContent ? window.RosyContent('home','hero_strip','New: Stripe instant payouts in 5 cities') : 'New: Stripe instant payouts in 5 cities')}
             </div>
-            <h1 dangerouslySetInnerHTML={{ __html: (window.RosyContent ? window.RosyContent('home','hero_heading','Where floral <em>excellence</em> meets efficiency.') : 'Where floral <em>excellence</em> meets efficiency.') }} />
+            <h1>{(() => {
+              const raw = window.RosyContent ? window.RosyContent('home','hero_heading','Where floral excellence meets efficiency.') : 'Where floral excellence meets efficiency.';
+              // Render plain text with simple *italic* shortcode (admin can use *word* for emphasis).
+              // No HTML interpretation — prevents stored XSS from the admin content editor.
+              const parts = String(raw).split(/(\*[^*]+\*)/g);
+              return parts.map((p, i) => p.startsWith('*') && p.endsWith('*') && p.length > 2
+                ? <em key={i}>{p.slice(1, -1)}</em>
+                : <React.Fragment key={i}>{p}</React.Fragment>);
+            })()}</h1>
             <p>{(window.RosyContent ? window.RosyContent('home','hero_sub','A skilled crew on every event — booked in minutes, paid in days. Built by florists who got tired of texting from a spreadsheet.') : 'A skilled crew on every event — booked in minutes, paid in days. Built by florists who got tired of texting from a spreadsheet.')}</p>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <button className="btn btn-coral btn-lg" onClick={() => goToAuth('signup')}>{(window.RosyContent ? window.RosyContent('home','cta_primary','Hire a team') : 'Hire a team')}</button>

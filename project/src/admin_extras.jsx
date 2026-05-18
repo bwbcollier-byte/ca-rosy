@@ -456,13 +456,35 @@ function PageBroadcast() {
     admins:  4,
   };
 
-  const send = () => {
+  const send = async () => {
     const sentTime = schedule === 'schedule' && scheduleTime
       ? scheduleTime.replace('T', ' ').slice(0, 16)
       : new Date().toISOString().replace('T', ' ').slice(0, 16);
-    const entry = { id: 's' + Math.random().toString(36).slice(2, 6), audience, subject, sent: sentTime, reach: audienceCounts[audience] };
+    // Resolve recipients from the live RosyData USERS list (filtered by audience)
+    const users = (window.RosyData?.USERS || []).filter(u => u.email);
+    const targetUsers = audience === 'all' ? users : users.filter(u => (audience === 'vendors' ? u.role === 'vendor' : audience === 'workers' ? u.role === 'worker' : u.role === 'admin'));
+    const reach = targetUsers.length;
+    let okCount = 0, failCount = 0;
+    if (channels.email && schedule === 'now' && window.RosySendEmail) {
+      // Branded HTML wrapper for the message body (preserves admin's plain-text bias)
+      const wrap = (htmlBody) => `<!doctype html><html><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1A1A1A;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAF7F2;padding:24px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);"><tr><td style="background:#F47C5D;padding:18px 24px;color:#fff;font-weight:600;font-size:18px;font-family:Georgia,serif;">Rosy <span style="opacity:0.8;">Recruits</span></td></tr><tr><td style="padding:28px 28px 24px;font-size:15px;line-height:1.6;">${htmlBody}</td></tr><tr><td style="padding:16px 28px;background:#FAF7F2;border-top:1px solid #ECE6DD;font-size:11.5px;color:#7A7470;">You're getting this because you have a Rosy Recruits account. <a href="https://rosy-demo.vercel.app/#app/settings" style="color:#7A7470;">Preferences</a></td></tr></table></td></tr></table></body></html>`;
+      // Send one at a time so demo-redirect still delivers everything; replace
+      // with a queue/batch in production. Cap at 50 so a typo doesn't blast.
+      for (const u of targetUsers.slice(0, 50)) {
+        const html = wrap(String(body || '').split(/\n+/).map(p => `<p style="margin:0 0 12px;">${p.replace(/\{\{first_name\}\}/g, u.first || u.name || 'there')}</p>`).join(''));
+        const r = await window.RosySendEmail({ slug: 'broadcast', to: u.email, subject, html, vars: { first_name: u.first || u.name || 'there' } });
+        if (r?.ok) okCount++; else failCount++;
+      }
+    }
+    const entry = { id: 's' + Math.random().toString(36).slice(2, 6), audience, subject, sent: sentTime, reach };
     setSent(arr => [entry, ...arr]);
-    toast.push({ kind: 'success', title: schedule === 'now' ? `Broadcast sent to ${audienceCounts[audience].toLocaleString()} ${audience === 'all' ? 'people' : audience}` : 'Broadcast scheduled', body: schedule === 'now' ? `Subject: ${subject}` : `Will send on ${scheduleTime}.` });
+    if (schedule === 'schedule') {
+      toast.push({ kind: 'info', title: 'Broadcast scheduled', body: `Will send to ${reach} recipients on ${scheduleTime}.` });
+    } else if (channels.email) {
+      toast.push({ kind: okCount ? 'success' : 'warning', title: `Email broadcast sent`, body: `${okCount} delivered${failCount ? `, ${failCount} failed` : ''} (demo mode redirects all to ben@pronocoders.com).` });
+    } else {
+      toast.push({ kind: 'info', title: 'Broadcast queued', body: 'In-app/push/sms channels are placeholders in the demo.' });
+    }
     setSubject(''); setBody('');
   };
 

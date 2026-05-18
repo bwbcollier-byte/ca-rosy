@@ -327,6 +327,23 @@ Object.assign(window, { bootRosyFromSupabase: window.bootRosyFromSupabase });
    ====================================================================== */
 
 const isLive = () => !!window.sb && window.__rosyDataSource === 'supabase';
+// Block real mutations when nobody is signed in. The role-switcher demo (vendor/worker/admin tabs in
+// the header) is for visual exploration only — without this guard, an anonymous visitor clicking
+// "New event" or "Approve payment" would issue real INSERTs/UPDATEs against the seed Supabase rows.
+const hasRealSession = () => {
+  try {
+    const raw = localStorage.getItem('rosy.auth');
+    return !!raw && raw.includes('access_token');
+  } catch (e) { return false; }
+};
+const guardMutation = (op) => {
+  if (isLive() && !hasRealSession()) {
+    console.warn('[RosyMutate]', op, 'blocked — no signed-in session (demo mode is read-only)');
+    const err = new Error('Sign in to make changes. The role-switcher demo is read-only.');
+    err.code = 'NOT_AUTHENTICATED';
+    throw err;
+  }
+};
 
 function genId(prefix) { return prefix + '_' + Math.random().toString(36).slice(2, 10); }
 
@@ -445,6 +462,7 @@ function notifyChange() {
 window.RosyMutate = {
   events: {
     async create(patch) {
+      guardMutation('create');
       const tempId = genId('e');
       const optimistic = { id: tempId, gigCount: 0, filledCount: 0, ...patch };
       window.RosyData.EVENTS.unshift(optimistic);
@@ -459,6 +477,7 @@ window.RosyMutate = {
       return live;
     },
     async update(id, patch) {
+      guardMutation('update');
       const before = window.RosyData.EVENTS.find(e => e.id === id);
       if (before) Object.assign(before, patch);
       notifyChange();
@@ -471,6 +490,7 @@ window.RosyMutate = {
       return before;
     },
     async delete(id) {
+      guardMutation('delete');
       const before = window.RosyData.EVENTS.find(e => e.id === id);
       removeById(window.RosyData.EVENTS, id);
       notifyChange();
@@ -483,6 +503,7 @@ window.RosyMutate = {
 
   gigs: {
     async create(patch) {
+      guardMutation('create');
       const tempId = genId('g');
       const optimistic = { id: tempId, assignedTo: [], spotsFilled: 0, ...patch };
       window.RosyData.GIGS.unshift(optimistic);
@@ -497,6 +518,7 @@ window.RosyMutate = {
       return live;
     },
     async update(id, patch) {
+      guardMutation('update');
       const before = window.RosyData.GIGS.find(g => g.id === id);
       if (before) Object.assign(before, patch);
       notifyChange();
@@ -513,6 +535,7 @@ window.RosyMutate = {
       return before;
     },
     async delete(id) {
+      guardMutation('delete');
       const before = window.RosyData.GIGS.find(g => g.id === id);
       removeById(window.RosyData.GIGS, id);
       notifyChange();
@@ -525,6 +548,7 @@ window.RosyMutate = {
 
   venues: {
     async create(patch) {
+      guardMutation('create');
       const tempId = genId('v');
       const optimistic = { id: tempId, ...patch };
       window.RosyData.VENUES.unshift(optimistic);
@@ -539,6 +563,7 @@ window.RosyMutate = {
       return live;
     },
     async update(id, patch) {
+      guardMutation('update');
       const before = window.RosyData.VENUES.find(v => v.id === id);
       if (before) Object.assign(before, patch);
       notifyChange();
@@ -548,6 +573,7 @@ window.RosyMutate = {
       return before;
     },
     async delete(id) {
+      guardMutation('delete');
       const before = window.RosyData.VENUES.find(v => v.id === id);
       removeById(window.RosyData.VENUES, id);
       notifyChange();
@@ -561,6 +587,7 @@ window.RosyMutate = {
   applications: {
     async apply({ gigId, workerId }) {
       // Worker creates an application for a gig. Returns optimistic record locally + persists to DB.
+      guardMutation('apply');
       const gig = window.RosyData.GIGS.find(g => g.id === gigId);
       const worker = window.RosyData.USERS.find(u => u.id === workerId);
       const vendorId = window.RosyData.EVENTS.find(e => e.id === gig?.eventId)?.vendorId;
@@ -615,6 +642,7 @@ window.RosyMutate = {
     },
     async withdraw({ gigId, workerId }) {
       // Cancel applications for this worker on this gig.
+      guardMutation('withdraw');
       const before = window.RosyData.TRANSACTIONS
         .filter(t => t._gigId === gigId && t._workerId === workerId);
       // Local optimistic delete (best-effort by application linkage)
@@ -627,6 +655,7 @@ window.RosyMutate = {
     },
     async markComplete({ id, hoursWorked, notes }) {
       // Worker submits hours; vendor will approve later.
+      guardMutation('markComplete');
       const before = window.RosyData.TRANSACTIONS.find(t => t.id === id);
       if (before) before.status = 'Completed';
       notifyChange();
@@ -643,6 +672,7 @@ window.RosyMutate = {
     },
     async setStatus(id, status) {
       // status: 'confirmed' | 'completed' | 'rejected' | 'cancelled' | 'paid'
+      guardMutation('setStatus');
       const before = window.RosyData.TRANSACTIONS.find(t => t.id === id);
       if (before) before.status = capitalize(status);
       notifyChange();
@@ -656,6 +686,7 @@ window.RosyMutate = {
       return before;
     },
     async setPaymentStatus(id, paymentStatus) {
+      guardMutation('setPaymentStatus');
       const before = window.RosyData.TRANSACTIONS.find(t => t.id === id);
       if (before) before.status = paymentStatusForUI(paymentStatus);
       notifyChange();
@@ -670,6 +701,7 @@ window.RosyMutate = {
 
   messages: {
     async send({ conversationId, senderId, recipientId, content }) {
+      guardMutation('send');
       if (!isLive()) return { id: genId('m'), text: content, who: 'me', time: 'Just now', day: 'Today' };
       const { data, error } = await window.sb.from('rr_messages').insert({
         conversation_id: conversationId,
@@ -686,6 +718,7 @@ window.RosyMutate = {
 
   conversations: {
     async create({ subject, startedBy, participants, eventId, gigAppId }) {
+      guardMutation('create');
       const tempId = genId('c');
       const optimistic = { id: tempId, with: participants[0], name: subject, online: false, unread: 0, preview: '', messages: [] };
       window.RosyData.MESSAGES.unshift(optimistic);
@@ -707,6 +740,7 @@ window.RosyMutate = {
 
   ratings: {
     async create({ raterId, ratedId, gigAppId, raterRole, score, comment }) {
+      guardMutation('create');
       if (!isLive()) return { id: genId('rt'), score };
       const { data, error } = await window.sb.from('rr_ratings').insert({
         rater_id: raterId,
@@ -724,6 +758,7 @@ window.RosyMutate = {
 
   notifications: {
     async markRead(id) {
+      guardMutation('markRead');
       const n = window.RosyData.NOTIFICATIONS.find(x => x.id === id);
       if (n) n.unread = false;
       notifyChange();
@@ -732,6 +767,7 @@ window.RosyMutate = {
       if (error) console.warn('[RosyMutate.notifications.markRead]', error.message);
     },
     async markAllRead(userId) {
+      guardMutation('markAllRead');
       window.RosyData.NOTIFICATIONS.forEach(n => { n.unread = false; });
       notifyChange();
       if (!isLive()) return;

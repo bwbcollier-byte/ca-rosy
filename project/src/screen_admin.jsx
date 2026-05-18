@@ -635,7 +635,14 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
                     {u.role !== 'admin' && u.verified !== true ? (
                       <button className="row-action-btn" onClick={async () => {
                         setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), verified: true } }));
-                        try { if (window.sb) await window.sb.from('rr_profiles').update({ verified: true }).eq('id', u.id); } catch (e) { console.warn(e); }
+                        try {
+                          const { data: s } = await window.sb.auth.getSession();
+                          await fetch('/api/admin/profile-update', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+                            body: JSON.stringify({ userId: u.id, fields: { verified: true } }),
+                          });
+                        } catch (e) { console.warn(e); }
                         const uu = (window.RosyData?.USERS || []).find(x => x.id === u.id);
                         if (uu) { uu.verified = true; window.dispatchEvent(new CustomEvent('rosy:data-changed')); }
                         // Send verified email via Postmark (demo redirects to ben@pronocoders.com)
@@ -657,7 +664,15 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
                       const liveUser = (window.RosyData?.USERS || []).find(x => x.id === u.id);
                       if (liveUser) liveUser.status = next;
                       window.dispatchEvent(new CustomEvent('rosy:data-changed'));
-                      try { if (window.sb) { const { error } = await window.sb.from('rr_profiles').update({ status: next }).eq('id', u.id); if (error) throw error; } } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Status save failed', body: e.message }); return; }
+                      try {
+                        const { data: s } = await window.sb.auth.getSession();
+                        const r = await fetch('/api/admin/profile-update', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+                          body: JSON.stringify({ userId: u.id, fields: { status: next } }),
+                        });
+                        if (!r.ok) throw new Error('Admin update failed (' + r.status + ')');
+                      } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Status save failed', body: e.message }); return; }
                       toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${u.name} marked ${next}` });
                     }} title={u.status === 'active' ? 'Deactivate' : 'Activate'}>{u.status === 'active' ? <SP_I.UserX size={14} /> : <SP_I.CheckCircle2 size={14} />}</button>
                     <button className="row-action-btn danger" onClick={() => setConfirmId(u.id)} title="Delete"><SP_I.Trash2 size={14} /></button>

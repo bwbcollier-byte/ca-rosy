@@ -364,9 +364,14 @@ Questions about this Vendor Agreement? Email **legal@rosyrecruits.com**.
       return { ok: false, error: 'missing fields' };
     }
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      try {
+        const { data } = await window.sb.auth.getSession();
+        if (data?.session?.access_token) headers.Authorization = 'Bearer ' + data.session.access_token;
+      } catch (e) { /* unauthenticated send will be rejected by the server */ }
       const r = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ templateSlug: slug, to, vars, subject: finalSubject, html: finalHtml, text: finalText }),
       });
       const data = await r.json().catch(() => ({}));
