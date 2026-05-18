@@ -340,6 +340,44 @@ Questions about this Vendor Agreement? Email **legal@rosyrecruits.com**.
   window.RosySaveSavedProfiles = async (ownerId) => {
     try { localStorage.setItem('rosy.savedProfiles', JSON.stringify(window.RosyStores.savedProfiles)); } catch (e) {}
   };
+
+  // ============ Email helper ============
+  // Sends a templated email via the /api/send-email Vercel function (Postmark).
+  // In demo mode the function force-routes the message to ben@pronocoders.com.
+  // Pass `slug` to look up the template from RosyStores.emailTemplates; or pass
+  // explicit `subject` + `html`. `vars` fill {{placeholders}}.
+  window.RosySendEmail = async ({ slug, to, vars = {}, subject, html, text }) => {
+    let finalSubject = subject;
+    let finalHtml = html;
+    let finalText = text;
+    if (slug && window.RosyStores?.emailTemplates?.[slug]) {
+      const tpl = window.RosyStores.emailTemplates[slug];
+      if (tpl.live === false) {
+        console.info('[email] template', slug, 'is disabled (live=false); skipping');
+        return { ok: false, skipped: true };
+      }
+      finalSubject = finalSubject || tpl.subject;
+      finalHtml = finalHtml || tpl.body;
+    }
+    if (!finalSubject || (!finalHtml && !finalText)) {
+      console.warn('[email] missing subject or body for', slug);
+      return { ok: false, error: 'missing fields' };
+    }
+    try {
+      const r = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateSlug: slug, to, vars, subject: finalSubject, html: finalHtml, text: finalText }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { console.warn('[email] send failed', r.status, data); return { ok: false, status: r.status, data }; }
+      console.log('[email] sent', slug || '(adhoc)', '→', data?.demoRoutedTo);
+      return { ok: true, data };
+    } catch (e) {
+      console.warn('[email] network error', e);
+      return { ok: false, error: String(e) };
+    }
+  };
   // Best-effort hydrate site-content from Supabase on boot.
   (async () => {
     try {

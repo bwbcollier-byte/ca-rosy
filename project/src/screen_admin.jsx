@@ -37,6 +37,21 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
         if (vendorUser) rows.push({ user_id: vendorUser.id, type: 'payment_sent', title: `Payment confirmed: ${t.invoice}`, body: `Released ${fmtMoney(t.amount)} to ${t.payee}.`, link: '#vendor/payments', read: false });
         if (rows.length) window.sb.from('rr_notifications').insert(rows).then(() => {});
       }
+      // Postmark email to worker (demo redirects to ben@pronocoders.com)
+      try {
+        if (window.RosySendEmail && workerUser?.email) {
+          await window.RosySendEmail({
+            slug: 'worker-paid',
+            to: workerUser.email,
+            vars: {
+              worker_first: workerUser.first || workerUser.name || 'there',
+              amount: String(t.amount || 0),
+              event_name: t.eventName || t.invoice || 'your gig',
+              event_date: t.eventDate || '',
+            },
+          });
+        }
+      } catch (e) { console.warn('paid email failed:', e); }
     } catch (e) { console.warn('notify payment failed:', e); }
   };
 
@@ -623,6 +638,16 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
                         try { if (window.sb) await window.sb.from('rr_profiles').update({ verified: true }).eq('id', u.id); } catch (e) { console.warn(e); }
                         const uu = (window.RosyData?.USERS || []).find(x => x.id === u.id);
                         if (uu) { uu.verified = true; window.dispatchEvent(new CustomEvent('rosy:data-changed')); }
+                        // Send verified email via Postmark (demo redirects to ben@pronocoders.com)
+                        try {
+                          if (window.RosySendEmail) {
+                            await window.RosySendEmail({
+                              slug: 'verified',
+                              to: u.email,
+                              vars: { first_name: u.first || u.name || 'there', role: u.role || 'account' },
+                            });
+                          }
+                        } catch (e) { console.warn('verified email failed:', e); }
                         toast.push({ kind: 'success', title: `${u.name} verified`, body: 'They can now access the dashboard.' });
                       }} title="Verify account"><SP_I.UserCheck size={14} /></button>
                     ) : null}

@@ -278,6 +278,17 @@ function App() {
                 const u = (window.RosyData.USERS || []).find(x => x.id === me.id);
                 if (u) { u.role = pickedRole; u.verified = false; window.dispatchEvent(new CustomEvent('rosy:data-changed')); }
               } catch (e) { console.warn('profile upsert failed:', e); }
+              // Send Postmark welcome email (demo-mode redirects to ben@pronocoders.com)
+              try {
+                const slug = pickedRole === 'vendor' ? 'welcome-vendor' : 'welcome-worker';
+                if (window.RosySendEmail) {
+                  await window.RosySendEmail({
+                    slug,
+                    to: me.email,
+                    vars: { first_name: me.first || me.name || 'there', role: pickedRole },
+                  });
+                }
+              } catch (e) { console.warn('welcome email failed:', e); }
             }
           } catch (e) { console.warn('welcome notif failed:', e); }
           setMode('app');

@@ -590,6 +590,27 @@ window.RosyMutate = {
       const i = window.RosyData.TRANSACTIONS.findIndex(t => t.id === tempId);
       if (i >= 0) window.RosyData.TRANSACTIONS[i] = { ...optimistic, id: data.id, invoice: data.request_code || data.id.slice(0, 8).toUpperCase() };
       notifyChange();
+      // Postmark — notify vendor of new application (demo redirects to ben@pronocoders.com)
+      try {
+        const vendor = window.RosyData.USERS.find(u => u.id === vendorId);
+        const event = window.RosyData.EVENTS.find(e => e.id === gig?.eventId);
+        if (window.RosySendEmail && vendor?.email) {
+          await window.RosySendEmail({
+            slug: 'application-received',
+            to: vendor.email,
+            vars: {
+              vendor_first: vendor.first || vendor.name || 'there',
+              worker_name: worker?.name || 'A worker',
+              worker_rating: String(worker?.rating || 5),
+              worker_gigs: String(worker?.gigs || 0),
+              gig_type: gig?.type || 'gig',
+              event_name: event?.name || 'your event',
+              event_date: event?.date || '',
+              hourly_rate: String(gig?.rate || 0),
+            },
+          });
+        }
+      } catch (e) { console.warn('application-received email failed:', e); }
       return { ...optimistic, id: data.id };
     },
     async withdraw({ gigId, workerId }) {
