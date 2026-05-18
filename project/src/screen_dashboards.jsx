@@ -154,6 +154,59 @@ function getDateStrip() {
 /* Dashboard-level one-time PWA install prompt (dismissible, persists in localStorage).
    Shows on first dashboard load when Chrome's beforeinstallprompt has fired, OR on iOS.
    iOS users get a "Share -> Add to Home Screen" toast instead of the install dialog. */
+/* Stripe Connect banner — shown on vendor/worker dashboards until the user
+   completes Stripe Express onboarding. Polls /api/stripe/connect-status. */
+function StripeConnectBanner({ user }) {
+  const [status, setStatus] = SD_us(null); // null = unknown, false = not connected, true = ready
+  const [loading, setLoading] = SD_us(false);
+  SD_ue(() => {
+    if (!user?.id) return;
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/stripe/connect-status?userId=' + encodeURIComponent(user.id));
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!cancel) setStatus(!!d.payoutsEnabled);
+      } catch (e) { /* ignore */ }
+    })();
+    return () => { cancel = true; };
+  }, [user?.id]);
+  if (status === true) return null; // already connected
+  const onboard = async () => {
+    if (!user?.id || !user?.email) { return; }
+    setLoading(true);
+    try {
+      const r = await fetch('/api/stripe/connect-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id, email: user.email,
+          returnUrl: window.location.origin + '/#app/dashboard?stripe=connected',
+          refreshUrl: window.location.origin + '/#app/settings?stripe=refresh',
+        }),
+      });
+      const d = await r.json();
+      if (d?.url) { window.location.href = d.url; return; }
+      alert('Stripe is not configured: ' + (d?.error || 'unknown'));
+    } catch (e) {
+      alert('Could not start Stripe Connect: ' + e.message);
+    } finally { setLoading(false); }
+  };
+  return (
+    <div className="card" style={{ display: 'flex', gap: 14, alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(90deg, #f6f3ee, #fff)', border: '1px solid var(--color-hairline)', marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 9999, background: '#635BFF', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontWeight: 700, flex: 'none' }}>S</div>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontWeight: 600 }}>Connect Stripe to {user?.role === 'vendor' ? 'fund gigs' : 'get paid'}</p>
+          <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--color-muted)' }}>Takes about 2 minutes. Bank link via Stripe Express.</p>
+        </div>
+      </div>
+      <button className="btn btn-coral btn-sm" onClick={onboard} disabled={loading}>{loading ? 'Opening Stripe…' : 'Connect Stripe'}</button>
+    </div>
+  );
+}
+
 function DashboardInstallPrompt() {
   const toast = useToast();
   const dismissed = (() => { try { return !!localStorage.getItem('rosy.installPromptDismissed'); } catch (e) { return false; } })();
@@ -238,6 +291,7 @@ function DashboardVendor({ user, setRoute, statStrip, statAnim }) {
   return (
     <div className="content fade-up">
       <DashboardInstallPrompt />
+      <StripeConnectBanner user={user} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -284,6 +338,7 @@ function DashboardWorker({ user, setRoute, statStrip, statAnim }) {
   return (
     <div className="content fade-up">
       <DashboardInstallPrompt />
+      <StripeConnectBanner user={user} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
