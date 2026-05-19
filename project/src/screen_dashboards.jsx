@@ -249,6 +249,11 @@ function DashboardInstallPrompt() {
 function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
   useDataTick();
   const dateStrip = getDateStrip();
+  const D = window.RosyData || SD_D;
+  const allUsers = D.USERS || [];
+  const workers  = allUsers.filter(u => u.role === 'worker');
+  const vendors  = allUsers.filter(u => u.role === 'vendor');
+  const inactive = allUsers.filter(u => u.status === 'inactive');
   return (
     <div className="content fade-up">
       <DashboardInstallPrompt />
@@ -256,10 +261,10 @@ function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
       </div>
       <div className="grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={SD_I.Users}        label="All Workers"    value={3498} delta={6}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.UsersRound}   label="Total Workers"  value={1284} delta={4}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.Building2}    label="All Vendors"    value={412}  delta={12}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.UserX}        label="Inactive Users" value={206}  delta={-22} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.Users}        label="All Workers"    value={allUsers.filter(u => u.role !== 'admin').length} delta={6}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.UsersRound}   label="Total Workers"  value={workers.length}  delta={4}   dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.Building2}    label="All Vendors"    value={vendors.length}  delta={12}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.UserX}        label="Inactive Users" value={inactive.length} delta={-22} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
       </div>
       <div className="grid-dash">
         <div className="col" style={{ gap: 20 }}>
