@@ -392,16 +392,30 @@ function PageNotificationRules() {
     });
     return m;
   };
-  const [rules, setRules] = AX_us(init);
+  // Persist to localStorage so admin changes survive a refresh until a dedicated
+  // rr_notification_rules table is added.
+  const [rules, setRules] = AX_us(() => {
+    try { const saved = JSON.parse(localStorage.getItem('rosy.notifRules') || 'null'); return saved || init(); } catch (e) { return init(); }
+  });
+  const [quiet, setQuiet] = AX_us(() => {
+    try { const saved = JSON.parse(localStorage.getItem('rosy.quietHours') || 'null'); return saved || { from: '22:00', to: '07:30' }; } catch (e) { return { from: '22:00', to: '07:30' }; }
+  });
   const flip = (eid, ch) => setRules(r => ({ ...r, [eid]: { ...r[eid], [ch]: !r[eid][ch] } }));
+  const saveAll = () => {
+    try {
+      localStorage.setItem('rosy.notifRules', JSON.stringify(rules));
+      localStorage.setItem('rosy.quietHours', JSON.stringify(quiet));
+      toast.push({ kind: 'success', title: 'Workflows saved', body: 'Preferences stored on this device.' });
+    } catch (e) { toast.push({ kind: 'error', title: "Couldn't save", body: e.message }); }
+  };
 
   return (
     <div className="content fade-up">
       <div className="section-heading">
         <h2>Notification workflows</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setRules(init()); toast.push({ kind: 'info', title: 'Reset to defaults' }); }}>Reset defaults</button>
-          <button className="btn btn-coral" onClick={() => toast.push({ kind: 'success', title: 'Workflows saved', body: 'Preview only — backend wiring coming soon.' })}>Save workflows</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setRules(init()); toast.push({ kind: 'info', title: 'Reset to defaults', body: 'Click Save to persist.' }); }}>Reset defaults</button>
+          <button className="btn btn-coral" onClick={saveAll}>Save workflows</button>
         </div>
       </div>
       <div className="card card-flush" style={{ marginBottom: 24, overflowX: 'auto' }}>
@@ -434,8 +448,8 @@ function PageNotificationRules() {
           <h3 className="card-title" style={{ marginBottom: 10 }}><AX_I.AlertCircle className="icon" />Quiet hours</h3>
           <p style={{ margin: '0 0 14px', fontSize: 13.5, color: 'var(--color-muted)' }}>Don't send push or SMS during these hours unless marked urgent.</p>
           <div className="grid-2">
-            <div className="field"><label className="field-label">From</label><input className="input" type="time" defaultValue="22:00" /></div>
-            <div className="field"><label className="field-label">To</label><input className="input" type="time" defaultValue="07:30" /></div>
+            <div className="field"><label className="field-label">From</label><input className="input" type="time" value={quiet.from} onChange={e => setQuiet(q => ({ ...q, from: e.target.value }))} /></div>
+            <div className="field"><label className="field-label">To</label><input className="input" type="time" value={quiet.to} onChange={e => setQuiet(q => ({ ...q, to: e.target.value }))} /></div>
           </div>
         </div>
         <div className="card">

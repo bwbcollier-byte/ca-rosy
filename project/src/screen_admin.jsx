@@ -2380,6 +2380,7 @@ function PageGallery() {
       setItems(arr => {
         const next = arr.map(x => x.id === targetId ? { ...x, src: ev.target.result } : x);
         window.RosyStores.gallery = next;
+      try { localStorage.setItem('rosy.gallery', JSON.stringify(next)); } catch (e) {}
         return next;
       });
       setReplaceTargetId(null);
@@ -2400,6 +2401,7 @@ function PageGallery() {
         }
       }
       window.RosyStores.gallery = next;
+      try { localStorage.setItem('rosy.gallery', JSON.stringify(next)); } catch (e) {}
       return next;
     });
   };
@@ -2407,6 +2409,7 @@ function PageGallery() {
     setItems(arr => {
       const next = arr.map(x => x.id === id ? { ...x, section: 'unused' } : x);
       window.RosyStores.gallery = next;
+      try { localStorage.setItem('rosy.gallery', JSON.stringify(next)); } catch (e) {}
       return next;
     });
     toast.push({ kind: 'info', title: 'Photo archived', body: 'Moved to Unused — you can reassign or re-publish later.' });
@@ -2419,6 +2422,7 @@ function PageGallery() {
       const newId = 'g' + Math.random().toString(36).slice(2, 6);
       const next = [{ id: newId, src: ev.target.result, section: 'unused' }, ...items];
       setItems(next); window.RosyStores.gallery = next;
+      try { localStorage.setItem('rosy.gallery', JSON.stringify(next)); } catch (e) {}
       toast.push({ kind: 'success', title: 'Photo uploaded', body: 'Assign it to a section below.' });
     };
     reader.readAsDataURL(f);

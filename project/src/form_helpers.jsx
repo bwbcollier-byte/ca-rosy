@@ -289,7 +289,9 @@ This Agreement is governed by Illinois law. Disputes are subject to the binding 
 Questions about this Vendor Agreement? Email **legal@rosyrecruits.com**.
 ` },
   };
-  const gallery = [
+  // Gallery — persists to localStorage so admin changes survive refresh.
+  // Defaults below are placeholder Unsplash photos until real images are uploaded.
+  const defaultGallery = [
     { id: 'g1', src: 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=600&q=80', section: 'hero' },
     { id: 'g2', src: 'https://images.unsplash.com/photo-1606041011872-596597976b25?w=600&q=80', section: 'gallery' },
     { id: 'g3', src: 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=600&q=80', section: 'gallery' },
@@ -297,6 +299,8 @@ Questions about this Vendor Agreement? Email **legal@rosyrecruits.com**.
     { id: 'g5', src: 'https://images.unsplash.com/photo-1455659817273-f96807779a8a?w=600&q=80', section: 'gallery' },
     { id: 'g6', src: 'https://images.unsplash.com/photo-1416379590848-77df60bf64ec?w=600&q=80', section: 'gallery' },
   ];
+  let gallery = defaultGallery;
+  try { const raw = localStorage.getItem('rosy.gallery'); if (raw) gallery = JSON.parse(raw) || defaultGallery; } catch (e) {}
   // Site content store: page → blockId → value. Persists to localStorage and best-effort to rr_site_content.
   let siteContent = {};
   try {
