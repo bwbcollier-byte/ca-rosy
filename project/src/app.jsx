@@ -336,8 +336,11 @@ function App() {
                 const cityVal = m ? m[2].trim() : (addr || null);
                 const stateVal = m ? m[3].trim() : null;
                 const zipVal = m && m[4] ? m[4].trim() : null;
+                // rr_profiles row already exists (created by rr_handle_new_user trigger).
+                // UPDATE rather than UPSERT — UPSERT fails the NOT-NULL check on email
+                // before the conflict can redirect to the update path.
                 const profilePayload = {
-                  id: me.id, role: pickedRole, onboarding_complete: true, verified: false,
+                  role: pickedRole, onboarding_complete: true, verified: false,
                   first_name: formData?.first || null,
                   last_name:  formData?.last  || null,
                   phone:      formData?.phone || null,
@@ -347,8 +350,8 @@ function App() {
                   street, city: cityVal, state: stateVal, zip: zipVal,
                   geo_address: addr || null,
                 };
-                const { error: pErr } = await window.sb.from('rr_profiles').upsert(profilePayload, { onConflict: 'id' });
-                if (pErr) console.warn('rr_profiles upsert failed:', pErr.message);
+                const { error: pErr } = await window.sb.from('rr_profiles').update(profilePayload).eq('id', me.id);
+                if (pErr) console.warn('rr_profiles update failed:', pErr.message);
 
                 // Vendor-specific profile row.
                 if (pickedRole === 'vendor') {
@@ -476,8 +479,10 @@ function App() {
                 const cityVal = m ? m[2].trim() : (addr || null);
                 const stateVal = m ? m[3].trim() : null;
                 const zipVal = m && m[4] ? m[4].trim() : null;
-                await window.sb.from('rr_profiles').upsert({
-                  id: sessionUserId, role: pickedRole, onboarding_complete: true, verified: false,
+                // UPDATE not UPSERT — the trigger already created the row; UPSERT fails
+                // the NOT-NULL email constraint before conflict resolution.
+                await window.sb.from('rr_profiles').update({
+                  role: pickedRole, onboarding_complete: true, verified: false,
                   first_name: formData?.first || null,
                   last_name:  formData?.last  || null,
                   phone:      formData?.phone || null,
@@ -486,7 +491,7 @@ function App() {
                   avatar_url: formData?.photo || null,
                   street, city: cityVal, state: stateVal, zip: zipVal,
                   geo_address: addr || null,
-                }, { onConflict: 'id' });
+                }).eq('id', sessionUserId);
                 if (pickedRole === 'vendor') {
                   await window.sb.from('rr_vendor_profiles').upsert({
                     id: sessionUserId,
