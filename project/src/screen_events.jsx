@@ -80,13 +80,18 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
     }
   };
 
+  // Live stat counts from window.RosyData (replaces hardcoded 9/6/32/7 demo values).
+  const allEventsCount = (window.RosyData?.EVENTS || []).length;
+  const openEventsCount = (window.RosyData?.EVENTS || []).filter(e => e.status === 'open').length;
+  const allGigsCount = (window.RosyData?.GIGS || []).length;
+  const openGigsCount = (window.RosyData?.GIGS || []).filter(g => g.status === 'open').length;
   return (
     <div className="content fade-up">
       <div className="grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={SE_I.CalendarCheck} label="All New Events" value={9}  delta={20}  />
-        <StatCard icon={SE_I.Calendar}      label="Open Events"    value={6}  delta={20}  />
-        <StatCard icon={SE_I.Briefcase}     label="All Gigs"       value={32} delta={9}   />
-        <StatCard icon={SE_I.ClipboardList} label="Open Gigs"      value={7}  delta={-3}  />
+        <StatCard icon={SE_I.CalendarCheck} label="All events"  value={allEventsCount} />
+        <StatCard icon={SE_I.Calendar}      label="Open events" value={openEventsCount} />
+        <StatCard icon={SE_I.Briefcase}     label="All gigs"    value={allGigsCount} />
+        <StatCard icon={SE_I.ClipboardList} label="Open gigs"   value={openGigsCount} />
       </div>
 
       <div className="section-heading">
@@ -469,6 +474,17 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
   const [applyGig, setApplyGig] = SE_us(null);
   const [editOpen, setEditOpen] = SE_us(false);
   const [editForm, setEditForm] = SE_us({ name: e.name, desc: e.desc, date: e.date });
+  const [editSaving, setEditSaving] = SE_us(false);
+  const submitEventEdit = async () => {
+    if (editSaving) return;
+    setEditSaving(true);
+    const patch = { name: editForm.name, desc: editForm.desc, date: editForm.date };
+    setOverride(o => ({ ...o, ...patch }));
+    try { await window.RosyMutate?.events?.update(eventId, patch); } catch (err) { console.warn(err); }
+    setEditOpen(false);
+    toast.push({ kind: 'success', title: 'Event updated', body: `${editForm.name} saved.` });
+    setEditSaving(false);
+  };
   const [decided, setDecided] = SE_us({});
 
   return (
@@ -622,7 +638,7 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
       </Modal>
 
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setEditOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const patch = { name: editForm.name, desc: editForm.desc, date: editForm.date }; setOverride(o => ({ ...o, ...patch })); try { await window.RosyMutate?.events?.update(eventId, patch); } catch (err) { console.warn(err); } setEditOpen(false); toast.push({ kind: 'success', title: 'Event updated', body: `${editForm.name} saved.` }); }}>Save changes</button></>}>
+        footer={<><button className="btn btn-ghost" disabled={editSaving} onClick={() => setEditOpen(false)}>Cancel</button><button className="btn btn-coral" disabled={editSaving} onClick={submitEventEdit}>{editSaving ? 'Saving…' : 'Save changes'}</button></>}>
         <div className="col" style={{ gap: 14 }}>
           <div className="field"><label className="field-label">Event name</label><input className="input" value={editForm.name} onChange={(ev) => setEditForm(f => ({ ...f, name: ev.target.value }))} /></div>
           <div className="field"><label className="field-label">Description</label><textarea className="textarea" value={editForm.desc} onChange={(ev) => setEditForm(f => ({ ...f, desc: ev.target.value }))} /></div>

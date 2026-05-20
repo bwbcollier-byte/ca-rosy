@@ -106,14 +106,17 @@ function PageGigsVendor({ user, role, setRoute }) {
     toast.push({ kind: 'success', title: 'Gig created', body: 'Posted to the marketplace.' });
   };
 
+  const [editSaving, setEditSaving] = SG_us(false);
   const submitEdit = async () => {
-    if (!editForm) return;
+    if (!editForm || editSaving) return;
+    setEditSaving(true);
     const id = editGig.id;
     const patch = { ...editForm, rate: +editForm.rate, spots: +editForm.spots };
     setGigs(gs => gs.map(g => g.id === id ? { ...g, ...patch } : g));
     try { await window.RosyMutate?.gigs?.update(id, patch); } catch (e) { console.warn(e); }
     setEditGig(null); setEditForm(null);
     toast.push({ kind: 'success', title: 'Gig updated' });
+    setEditSaving(false);
   };
 
   const bulkSetStatus = async (status) => {
@@ -124,13 +127,18 @@ function PageGigsVendor({ user, role, setRoute }) {
     setSelected({});
   };
 
+  // Live stat counts from window.RosyData (replaces hardcoded 9/6/32/7 demo values).
+  const allEventsCount = (window.RosyData?.EVENTS || []).length;
+  const openEventsCount = (window.RosyData?.EVENTS || []).filter(e => e.status === 'open').length;
+  const allGigsCount = (window.RosyData?.GIGS || []).length;
+  const openGigsCount = (window.RosyData?.GIGS || []).filter(g => g.status === 'open').length;
   return (
     <div className="content fade-up">
       <div className="grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={SG_I.CalendarCheck} label="All New Events" value={9}   delta={20}  />
-        <StatCard icon={SG_I.Calendar}      label="Open Events"    value={6}   delta={20}  />
-        <StatCard icon={SG_I.Briefcase}     label="All Gigs"       value={32}  delta={9}   />
-        <StatCard icon={SG_I.ClipboardList} label="Open Gigs"      value={7}   delta={-3}  />
+        <StatCard icon={SG_I.CalendarCheck} label="All events"  value={allEventsCount} />
+        <StatCard icon={SG_I.Calendar}      label="Open events" value={openEventsCount} />
+        <StatCard icon={SG_I.Briefcase}     label="All gigs"    value={allGigsCount} />
+        <StatCard icon={SG_I.ClipboardList} label="Open gigs"   value={openGigsCount} />
       </div>
 
       <div className="section-heading">
@@ -313,7 +321,7 @@ function PageGigsVendor({ user, role, setRoute }) {
 
       {editGig && editForm ? (
         <Modal open={!!editGig} onClose={() => { setEditGig(null); setEditForm(null); }} title="Edit gig" size="md"
-          footer={<><button className="btn btn-ghost" onClick={() => { setEditGig(null); setEditForm(null); }}>Cancel</button><button className="btn btn-coral" onClick={submitEdit}>Save changes</button></>}>
+          footer={<><button className="btn btn-ghost" disabled={editSaving} onClick={() => { setEditGig(null); setEditForm(null); }}>Cancel</button><button className="btn btn-coral" disabled={editSaving} onClick={submitEdit}>{editSaving ? 'Saving…' : 'Save changes'}</button></>}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Type</label><input className="input" value={editForm.type} onChange={e => setEditForm(f => ({ ...f, type: e.target.value }))} /></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

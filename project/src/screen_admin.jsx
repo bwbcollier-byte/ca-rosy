@@ -125,9 +125,9 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
   return (
     <div className="content fade-up">
       <div className="grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={SP_I.DollarSign}    label={role === 'worker' ? 'Total earned' : 'Total paid'} value={totalEarned}  prefix="$" delta={14} />
-        <StatCard icon={SP_I.Clock}         label="Pending"  value={totalPending} prefix="$" delta={6}  />
-        <StatCard icon={SP_I.AlertCircle}   label="Late / disputed" value={totalLate} prefix="$" delta={-32} />
+        <StatCard icon={SP_I.DollarSign}    label={role === 'worker' ? 'Total earned' : 'Total paid'} value={totalEarned}  prefix="$" />
+        <StatCard icon={SP_I.Clock}         label="Pending"  value={totalPending} prefix="$" />
+        <StatCard icon={SP_I.AlertCircle}   label="Late / disputed" value={totalLate} prefix="$" />
         <StatCard icon={SP_I.CreditCard}    label="Avg per gig" value={Math.round((totalEarned + totalPending) / Math.max(txs.length, 1))} prefix="$" />
       </div>
       <div className="section-heading">
@@ -1212,7 +1212,7 @@ function PageSettings({ role, currentUser }) {
           {tab === 'account' ? <SettingsAccount user={currentUser} /> : null}
           {tab === 'notifications' ? <SettingsNotifications user={currentUser} /> : null}
           {tab === 'payouts' ? <SettingsPayouts user={currentUser} /> : null}
-          {tab === 'privacy' && role !== 'admin' ? <SettingsPrivacy role={role} /> : null}
+          {tab === 'privacy' && role !== 'admin' ? <SettingsPrivacy role={role} user={currentUser} /> : null}
           {tab === 'team' && role !== 'admin' ? <SettingsTeam /> : null}
           {tab === 'danger' && role !== 'admin' ? <SettingsDanger user={currentUser} /> : null}
         </div>
@@ -1221,10 +1221,38 @@ function PageSettings({ role, currentUser }) {
   );
 }
 
-function SettingsPrivacy({ role }) {
+function SettingsPrivacy({ role, user }) {
   const toast = useToast();
   const [hideOldRatings, setHideOldRatings] = SP_us(false);
   const [noindex, setNoindex] = SP_us(false);
+  const exportMyData = async () => {
+    if (!user?.id) { toast.push({ kind: 'warning', title: 'Sign in first' }); return; }
+    try {
+      const D = window.RosyData || {};
+      const myId = user.id;
+      const myName = user.name;
+      const payload = {
+        exported_at: new Date().toISOString(),
+        profile: (D.USERS || []).find(u => u.id === myId) || null,
+        events: (D.EVENTS || []).filter(e => e.vendorId === myId),
+        gigs: (D.GIGS || []).filter(g => (g.assignedTo || []).includes(myId)),
+        applications: (D.APPLICATIONS || []).filter(a => a.workerId === myId),
+        messages_summary: (D.MESSAGES || []).filter(c => (c.participants || []).includes(myId)).map(c => ({ id: c.id, with: c.with, messages: (c.messages || []).length })),
+        notifications: (D.NOTIFICATIONS || []).filter(n => !n._userId || n._userId === myId),
+        transactions: (D.TRANSACTIONS || []).filter(t => (myName && (t.payer === myName || t.payee === myName)) || (user.company && t.payer === user.company)),
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rosy-recruits-data-${myId.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.push({ kind: 'success', title: 'Data exported', body: 'Your JSON file is downloading now.' });
+    } catch (e) {
+      toast.push({ kind: 'error', title: "Couldn't export data", body: 'Please try again.' });
+    }
+  };
   const matrix = {
     admin:  ['Full visibility across all users, events, gigs, and payments.','Audit log access.','Can mediate disputes and release escrow.','Cannot read private message bodies.'],
     vendor: ['Only your own events, gigs, payments, and team are visible.','Worker profiles show public info only — ratings, gigs, location.','You see worker contact info only after confirming them on a gig.','Disputes you file are visible to admins and the named worker.'],
@@ -1245,7 +1273,7 @@ function SettingsPrivacy({ role }) {
       <div className="divider" style={{ margin: '20px 0' }} />
       <h4 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600 }}>Your data</h4>
       <div className="col" style={{ gap: 8 }}>
-        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => toast.push({ kind: 'success', title: 'Export started', body: 'We\'ll email the ZIP within 5 minutes.' })}><SP_I.UploadCloud size={14} />Export all my data</button>
+        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={exportMyData}><SP_I.UploadCloud size={14} />Export all my data</button>
         <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setHideOldRatings(v => !v); toast.push({ kind: 'info', title: hideOldRatings ? 'Older ratings visible' : 'Older ratings hidden', body: hideOldRatings ? 'Ratings older than 12 months now show.' : 'Ratings older than 12 months are now hidden from your profile.' }); }}>
           <SP_I.Eye size={14} />{hideOldRatings ? '✓ ' : ''}Hide ratings older than 12 months
         </button>
