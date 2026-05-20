@@ -32,6 +32,22 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
   const [postCreatePrompt, setPostCreatePrompt] = SE_us(null);
   const blankEvent = { name: '', desc: '', date: '', endDate: '', start: '', end: '', venueId: '', image: '', address: '' };
   const [newEvent, setNewEvent] = SE_us(blankEvent);
+  const [publishingEvent, setPublishingEvent] = SE_us(false);
+  const publishEvent = async () => {
+    if (publishingEvent) return;
+    setPublishingEvent(true);
+    const draftEvent = { ...newEvent, vendorId: user?.id, status: 'open', gigCount: 0, filledCount: 0 };
+    let createdId = null;
+    try {
+      const live = await window.RosyMutate?.events?.create(draftEvent);
+      if (live) { setEvents(es => [live, ...es]); createdId = live.id; }
+      else      { createdId = 'e_' + Math.random().toString(36).slice(2,8); setEvents(es => [{ id: createdId, ...draftEvent }, ...es]); }
+    } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Publish failed', body: e.message }); setPublishingEvent(false); return; }
+    setAddOpen(false);
+    toast.push({ kind: 'success', title: 'Event published', body: `${newEvent.name} is open for gig posts.` });
+    if (createdId) setPostCreatePrompt({ eventId: createdId, name: newEvent.name });
+    setPublishingEvent(false);
+  };
   // Reset to blank every time the slideover opens (so each new-event session starts clean).
   SE_ue(() => { if (addOpen) setNewEvent(blankEvent); }, [addOpen]);
   const toast = useToast();
@@ -222,20 +238,7 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
                 { key: 'notes', label: 'Anything we should know?', type: 'textarea', placeholder: 'Palette, installation scope, special requests...' },
               ]}
               onFill={(d) => { setNewEvent(s => ({ ...s, name: d.name || s.name, desc: d.desc || s.desc })); }} />
-            <button className="btn btn-coral" disabled={!newEvent.name.trim() || !newEvent.desc.trim()}
-              onClick={async () => {
-                const draftEvent = { ...newEvent, vendorId: user?.id, status: 'open', gigCount: 0, filledCount: 0 };
-                let createdId = null;
-                try {
-                  const live = await window.RosyMutate?.events?.create(draftEvent);
-                  if (live) { setEvents(es => [live, ...es]); createdId = live.id; }
-                  else      { createdId = 'e_' + Math.random().toString(36).slice(2,8); setEvents(es => [{ id: createdId, ...draftEvent }, ...es]); }
-                } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Publish failed', body: e.message }); return; }
-                setAddOpen(false);
-                toast.push({ kind: 'success', title: 'Event published', body: `${newEvent.name} is open for gig posts.` });
-                // Prompt to create gigs straight away (admin's #1 next step)
-                if (createdId) setPostCreatePrompt({ eventId: createdId, name: newEvent.name });
-              }}>Publish Event</button>
+            <button className="btn btn-coral" disabled={publishingEvent || !newEvent.name.trim() || !newEvent.desc.trim()} onClick={publishEvent}>{publishingEvent ? 'Publishing…' : 'Publish Event'}</button>
           </>
         }>
         <NewEventForm value={newEvent} onChange={setNewEvent}

@@ -81,7 +81,9 @@ function PageGigsVendor({ user, role, setRoute }) {
     setAddOpen(true);
   };
 
+  const [addSaving, setAddSaving] = SG_us(false);
   const submitAdd = async () => {
+    if (addSaving) return;
     if (!addForm?.eventId || !addForm?.type) {
       toast.push({ kind: 'warning', title: 'Pick an event and gig type' });
       return;
@@ -91,6 +93,7 @@ function PageGigsVendor({ user, role, setRoute }) {
       toast.push({ kind: 'warning', title: 'Sign in required', body: 'Sign in to post a gig under your studio.' });
       return;
     }
+    setAddSaving(true);
     const draft = {
       eventId: addForm.eventId, vendorId: ev.vendorId, type: addForm.type,
       description: addForm.description, date: addForm.date,
@@ -101,9 +104,10 @@ function PageGigsVendor({ user, role, setRoute }) {
     try {
       const live = await window.RosyMutate?.gigs?.create(draft);
       setGigs(gs => [(live || { id: 'g_' + Math.random().toString(36).slice(2,8), assignedTo: [], ...draft }), ...gs]);
-    } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Create failed', body: e.message }); return; }
+    } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Create failed', body: e.message }); setAddSaving(false); return; }
     setAddOpen(false);
     toast.push({ kind: 'success', title: 'Gig created', body: 'Posted to the marketplace.' });
+    setAddSaving(false);
   };
 
   const [editSaving, setEditSaving] = SG_us(false);
@@ -248,7 +252,7 @@ function PageGigsVendor({ user, role, setRoute }) {
                 { key: 'notes', label: 'Anything specific?', type: 'textarea', placeholder: 'Heavy install, must lift 50 lbs, etc.' },
               ]}
               onFill={(d) => setAddForm(f => ({ ...f, description: d.description || d._raw || f.description }))} />
-            <button className="btn btn-coral" onClick={submitAdd}>Create Gig</button>
+            <button className="btn btn-coral" disabled={addSaving} onClick={submitAdd}>{addSaving ? 'Creating…' : 'Create Gig'}</button>
           </>
         }>
         {addForm ? <AddGigForm value={addForm} onChange={setAddForm} events={events} /> : null}
