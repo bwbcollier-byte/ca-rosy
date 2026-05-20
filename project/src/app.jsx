@@ -33,6 +33,8 @@ function App() {
   // Profile from rr_profiles for the signed-in user (verified, role, etc).
   // Set by routeForSession so we don't depend on RosyData.USERS being fresh.
   const [profileFromDb, setProfileFromDb] = A_us(null);
+  // Set true while handleSignOut is running so other routing effects skip.
+  const signingOutRef = React.useRef(false);
   A_ue(() => {
     if (!window.sb) return;
     // Decide where a signed-in user should land: dashboard if onboarded,
@@ -41,6 +43,11 @@ function App() {
     const routeForSession = async (sess, source) => {
       console.log('[rosy-route]', source, 'session:', !!sess, 'uid:', sess?.user?.id, 'hash:', window.location.hash);
       if (!sess?.user?.id) return;
+      // Skip routing during logout — handleSignOut owns the transition.
+      if (signingOutRef.current || window.location.hash === '#logout' || window.location.hash === '#app/logout') {
+        console.log('[rosy-route] skip — logout in progress');
+        return;
+      }
       const uid = sess.user.id;
       const h = window.location.hash.replace(/^#/, '');
       const explicitApp = h.startsWith('app/') || h === 'app';
@@ -144,13 +151,15 @@ function App() {
   // If not, bounce them to /onboarding to pick role + finish their profile.
   A_ue(() => {
     if (!sessionUserId || !window.sb) return;
+    if (signingOutRef.current) return;
+    if (window.location.hash === '#logout' || window.location.hash === '#app/logout') return;
     let cancelled = false;
     (async () => {
       try {
         // ALWAYS check the DB. RosyData may have a stale row (e.g. role set by
         // a Supabase trigger before the user finished onboarding).
         const { data } = await window.sb.from('rr_profiles').select('id, onboarding_complete, role').eq('id', sessionUserId).maybeSingle();
-        if (cancelled) return;
+        if (cancelled || signingOutRef.current) return;
         console.log('[rosy-gate] db profile', data);
         if (!data || !data.onboarding_complete || !data.role) {
           console.log('[rosy-gate] forcing onboarding mode');
@@ -409,11 +418,24 @@ function App() {
   })();
 
   const handleSignOut = async () => {
-    try { if (window.sb) await window.sb.auth.signOut(); } catch (e) { console.warn('signOut error:', e); }
+    signingOutRef.current = true;
+    try { if (window.sb) await window.sb.auth.signOut({ scope: 'global' }); } catch (e) { console.warn('signOut error:', e); }
+    // Hard-clear any Supabase tokens that survived the SDK call so a reload
+    // can't re-hydrate the session and bounce us back to onboarding.
+    try {
+      Object.keys(localStorage).filter(k => k.startsWith('sb-') || k.startsWith('supabase.')).forEach(k => localStorage.removeItem(k));
+      Object.keys(sessionStorage).filter(k => k.startsWith('sb-') || k.startsWith('supabase.')).forEach(k => sessionStorage.removeItem(k));
+    } catch (e) { console.warn('storage clear failed:', e); }
     setSession(null);
+    setProfileFromDb(null);
     setRole('admin');     // reset to default demo role for next sign-in
     setRoute('dashboard');
+    setMarketingSub('home');
+    // Write the hash BEFORE flipping mode so the hash-router doesn't echo #logout back.
+    try { window.location.hash = 'marketing'; } catch (e) {}
     setMode('marketing');
+    // Release the guard once the transition has settled.
+    setTimeout(() => { signingOutRef.current = false; }, 100);
   };
 
   // Logout via URL — supports #logout (clean bookmark) and #app/logout (in-app deeplink).
