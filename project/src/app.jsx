@@ -177,7 +177,7 @@ function App() {
       const h = window.location.hash.replace(/^#/, '');
       if (!h) return;
       const [m, r, sub] = h.split('/');
-      if (['marketing','auth','onboarding','app'].includes(m)) setMode(m);
+      if (['marketing','auth','onboarding','app','logout'].includes(m)) setMode(m);
       if (m === 'marketing' && r) setMarketingSub(r);
       else if (m === 'marketing' && !r) setMarketingSub('home');
       if (m === 'app' && r) setRoute(sub ? `${r}:${sub}` : r);
@@ -299,6 +299,19 @@ function App() {
     );
   }
 
+  // Logout splash — brief "Signing you out…" while handleSignOut runs (#logout or #app/logout).
+  if (mode === 'logout' || (mode === 'app' && route === 'logout')) {
+    return (
+      <ToastHost>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 18, color: 'var(--color-muted)' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9999, border: '3px solid var(--color-hairline)', borderTopColor: 'var(--rosy-coral)', animation: 'spin 0.9s linear infinite' }} />
+          <p style={{ margin: 0, fontSize: 13.5 }}>Signing you out…</p>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </ToastHost>
+    );
+  }
+
   // ---------- App mode ----------
   // If signed in, the session user trumps the demo role-switcher.
   // Look up against the LIVE RosyData (not the AD const captured at module
@@ -402,6 +415,14 @@ function App() {
     setRoute('dashboard');
     setMode('marketing');
   };
+
+  // Logout via URL — supports #logout (clean bookmark) and #app/logout (in-app deeplink).
+  // Lets users sign out from anywhere by typing /#logout or following a logout link.
+  A_ue(() => {
+    if (mode === 'logout' || (mode === 'app' && route === 'logout')) {
+      handleSignOut();
+    }
+  }, [mode, route]);
 
   // Verification gate — signed-in non-admins with verified === false see only a pending-approval popup.
   const needsVerification = !!sessionUser && sessionUser.role !== 'admin' && sessionUser.verified !== true;
