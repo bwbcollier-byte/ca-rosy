@@ -223,6 +223,10 @@ function buildTransactions(applications, usersById) {
         status:  paymentStatusForUI(a.payment_status),
         date:    (a.paid_at || a.completed_at || a.confirmed_at || a.applied_at || '').slice(0, 10),
         note:    a.cancellation_reason || null,
+        // Raw IDs for downstream actions (e.g. filing a dispute).
+        _applicationId: a.id,
+        _workerId: a.worker_id,
+        _vendorId: a.vendor_id,
       };
     });
 }

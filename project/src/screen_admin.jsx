@@ -2,12 +2,15 @@
 
 const SP_D = window.RosyData;
 const SP_I = window.Icons;
-const { useState: SP_us } = React;
+const { useState: SP_us, useEffect: SP_ue } = React;
 
 /* ============ Payments (admin/vendor/worker) ============ */
 function PagePayments({ role, currentUser, setRoute, openId }) {
   const toast = useToast();
   const [dispute, setDispute] = SP_us(null);
+  const [disputeReason, setDisputeReason] = SP_us('Hours mismatch');
+  const [disputeDescription, setDisputeDescription] = SP_us('');
+  const [disputeFiling, setDisputeFiling] = SP_us(false);
   const [openTx, setOpenTx] = SP_us(null);
   const [statusTab, setStatusTab] = SP_us('all');
   const [search, setSearch] = SP_us('');
@@ -207,16 +210,41 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
           ]} />
       ) : null}
 
-      <Modal open={!!dispute} onClose={() => setDispute(null)} title="File a dispute" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setDispute(null)}>Cancel</button><button className="btn btn-danger" onClick={() => { setDispute(null); toast.push({ kind: 'warning', title: 'Dispute filed', body: 'Rosy support will review within 48 hours.' }); }}>File dispute</button></>}>
+      <Modal open={!!dispute} onClose={() => { setDispute(null); setDisputeReason('Hours mismatch'); setDisputeDescription(''); }} title="File a dispute" size="md"
+        footer={<><button className="btn btn-ghost" disabled={disputeFiling} onClick={() => { setDispute(null); setDisputeReason('Hours mismatch'); setDisputeDescription(''); }}>Cancel</button><button className="btn btn-danger" disabled={disputeFiling || !disputeDescription.trim()} onClick={async () => {
+          if (!dispute || disputeFiling) return;
+          setDisputeFiling(true);
+          try {
+            if (!dispute._applicationId || !dispute._workerId || !dispute._vendorId) {
+              throw new Error('Missing application or party IDs');
+            }
+            if (window.sb) {
+              const { data: { user } } = await window.sb.auth.getUser();
+              const { error } = await window.sb.from('rr_disputes').insert({
+                gig_application_id: dispute._applicationId,
+                raised_by: user?.id || dispute._vendorId,
+                worker_id: dispute._workerId,
+                vendor_id: dispute._vendorId,
+                reason: disputeReason,
+                description: disputeDescription.trim(),
+                status: 'open',
+              });
+              if (error) throw error;
+            }
+            setDispute(null); setDisputeReason('Hours mismatch'); setDisputeDescription('');
+            toast.push({ kind: 'warning', title: 'Dispute filed', body: 'Rosy support will review within 48 hours.' });
+          } catch (e) {
+            toast.push({ kind: 'error', title: "Couldn't file dispute", body: e.message || 'Please try again.' });
+          } finally { setDisputeFiling(false); }
+        }}>{disputeFiling ? 'Filing…' : 'File dispute'}</button></>}>
         {dispute ? (
           <div className="col" style={{ gap: 14 }}>
             <KV label="Invoice" value={dispute.invoice} />
             <KV label="Amount" value={fmtMoney(dispute.amount)} />
             <div className="field"><label className="field-label">Reason</label>
-              <select className="select"><option>Hours mismatch</option><option>No-show</option><option>Quality of work</option><option>Other</option></select>
+              <select className="select" value={disputeReason} onChange={e => setDisputeReason(e.target.value)}><option>Hours mismatch</option><option>No-show</option><option>Quality of work</option><option>Other</option></select>
             </div>
-            <div className="field"><label className="field-label">Describe what happened</label><textarea className="textarea" placeholder="Be specific. Include dates, times, what was agreed, and what occurred." /></div>
+            <div className="field"><label className="field-label">Describe what happened</label><textarea className="textarea" value={disputeDescription} onChange={e => setDisputeDescription(e.target.value)} placeholder="Be specific. Include dates, times, what was agreed, and what occurred." /></div>
             <div className="field"><label className="field-label">Evidence (optional)</label>
               <div style={{ border: '2px dashed var(--color-hairline-strong)', borderRadius: 12, padding: 18, textAlign: 'center', background: 'var(--color-surface-soft)' }}>
                 <SP_I.UploadCloud size={22} style={{ color: 'var(--color-muted)' }} />
@@ -407,6 +435,9 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
   const [sortBy, setSortBy] = SP_us('newest');
   const [filterOpen, setFilterOpen] = SP_us(false);
   const [inviteOpen, setInviteOpen] = SP_us(false);
+  const [inviteEmail, setInviteEmail] = SP_us('');
+  const [inviteNote, setInviteNote] = SP_us('');
+  const [inviteSending, setInviteSending] = SP_us(false);
   const [confirmId, setConfirmId] = SP_us(null);
   const [bulkConfirm, setBulkConfirm] = SP_us(null);
   const [selected, setSelected] = SP_us(null);
@@ -735,11 +766,27 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
         </div>
       </Modal>
 
-      <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title={`Invite ${title.toLowerCase().slice(0, -1) || 'user'}`} size="sm"
-        footer={<><button className="btn btn-ghost" onClick={() => setInviteOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={() => { setInviteOpen(false); toast.push({ kind: 'success', title: 'Invite sent', body: 'They\'ll get an email within a minute.' }); }}>Send invite</button></>}>
+      <Modal open={inviteOpen} onClose={() => { setInviteOpen(false); setInviteEmail(''); setInviteNote(''); }} title={`Invite ${title.toLowerCase().slice(0, -1) || 'user'}`} size="sm"
+        footer={<><button className="btn btn-ghost" disabled={inviteSending} onClick={() => { setInviteOpen(false); setInviteEmail(''); setInviteNote(''); }}>Cancel</button><button className="btn btn-coral" disabled={inviteSending || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail)} onClick={async () => {
+          if (inviteSending) return;
+          setInviteSending(true);
+          try {
+            const inviterName = currentUser?.name || 'A Rosy admin';
+            const targetRole = title === 'Vendors' ? 'vendor' : title === 'Workers' ? 'worker' : 'user';
+            const r = await window.RosySendEmail?.({
+              slug: 'invite-user', to: inviteEmail,
+              vars: { inviter_name: inviterName, role: targetRole, invite_url: window.location.origin + '/#auth' },
+            });
+            if (r?.ok === false) throw new Error('Send failed');
+            setInviteOpen(false); setInviteEmail(''); setInviteNote('');
+            toast.push({ kind: 'success', title: 'Invite sent', body: `Sent to ${inviteEmail}.` });
+          } catch (e) {
+            toast.push({ kind: 'error', title: "Couldn't send invite", body: e.message || 'Please try again.' });
+          } finally { setInviteSending(false); }
+        }}>{inviteSending ? 'Sending…' : 'Send invite'}</button></>}>
         <div className="col" style={{ gap: 12 }}>
-          <div className="field"><label className="field-label">Email</label><input className="input" placeholder="they@studio.com" defaultValue="" /></div>
-          <div className="field"><label className="field-label">Personal note (optional)</label><textarea className="textarea" placeholder="Hey — wanted to bring you onto our weekend crew." /></div>
+          <div className="field"><label className="field-label">Email</label><input className="input" placeholder="they@studio.com" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} /></div>
+          <div className="field"><label className="field-label">Personal note (optional)</label><textarea className="textarea" value={inviteNote} onChange={e => setInviteNote(e.target.value)} placeholder="Hey — wanted to bring you onto our weekend crew." /></div>
         </div>
       </Modal>
     </div>
