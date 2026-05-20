@@ -377,11 +377,13 @@ function DashboardWorker({ user, setRoute, statStrip, statAnim }) {
 
 /* ------- Upcoming Events card ------- */
 function UpcomingEventsCard({ setRoute, vendorId, workerId }) {
-  let events = SD_D.EVENTS.filter(e => e.status !== 'draft' && e.status !== 'completed').slice(0, 3);
-  if (vendorId) events = SD_D.EVENTS.filter(e => e.vendorId === vendorId).slice(0, 3);
+  // Read window.RosyData fresh so we pick up post-hydration data.
+  const D = window.RosyData || SD_D;
+  let events = (D.EVENTS || []).filter(e => e.status !== 'draft' && e.status !== 'completed').slice(0, 3);
+  if (vendorId) events = (D.EVENTS || []).filter(e => e.vendorId === vendorId).slice(0, 3);
   if (workerId) {
-    const ids = SD_D.GIGS.filter(g => g.assignedTo.includes(workerId)).map(g => g.eventId);
-    events = SD_D.EVENTS.filter(e => ids.includes(e.id) && e.status !== 'completed').slice(0, 3);
+    const ids = (D.GIGS || []).filter(g => (g.assignedTo || []).includes(workerId)).map(g => g.eventId);
+    events = (D.EVENTS || []).filter(e => ids.includes(e.id) && e.status !== 'completed').slice(0, 3);
   }
   return (
     <div className="card card-flush">
@@ -418,10 +420,19 @@ function UpcomingEventsCard({ setRoute, vendorId, workerId }) {
 }
 
 /* ------- Recent transactions card ------- */
-function RecentTransactionsCard({ vendorScope, workerScope, setRoute }) {
-  let allTxs = SD_D.TRANSACTIONS;
-  if (vendorScope) allTxs = SD_D.TRANSACTIONS.filter(t => t.payer.includes('Bloom'));
-  if (workerScope) allTxs = SD_D.TRANSACTIONS.filter(t => t.payee === 'Naomi Park' || t.payee === 'Multiple');
+function RecentTransactionsCard({ vendorScope, workerScope, user, setRoute }) {
+  // Read fresh + filter by the actual signed-in user instead of hardcoded names.
+  const D = window.RosyData || SD_D;
+  let allTxs = D.TRANSACTIONS || [];
+  if (vendorScope) {
+    const company = user?.company_name || user?.company;
+    const name = user?.name;
+    allTxs = (D.TRANSACTIONS || []).filter(t => (company && t.payer === company) || (name && t.payer && t.payer.includes(name)));
+  }
+  if (workerScope) {
+    const name = user?.name;
+    allTxs = (D.TRANSACTIONS || []).filter(t => (name && t.payee === name) || t.payee === 'Multiple');
+  }
   const paged = usePaged(allTxs, 5);
   return (
     <div className="card card-flush">

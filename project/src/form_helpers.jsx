@@ -413,60 +413,22 @@ window.GALLERY_SECTIONS = GALLERY_SECTIONS;
 
 /* ============ Address autocomplete (mock) ============
    Looks like Google Maps Place Autocomplete — keystrokes filter a list of plausible NY/NJ addresses. */
-const ADDRESS_BANK = [
-  '238 N Halsted St, Chicago, IL 60661',
-  '111 N Aberdeen St, Chicago, IL 60607',
-  '1900 Sherman Ave, Evanston, IL 60201',
-  '155 W Kinzie St, Chicago, IL 60654',
-  '900 W Fulton Market, Chicago, IL 60607',
-  '4731 N Lincoln Ave, Chicago, IL 60625',
-  '290 W Roosevelt Rd, Chicago, IL 60607',
-  '475 W Hubbard St, Chicago, IL 60654',
-  '1 Lincoln Park West, Chicago, IL 60614',
-  '5 Lake Shore Dr, Chicago, IL 60611',
-  '1000 W Washington Blvd, Chicago, IL 60607',
-  '7 W Madison St, Chicago, IL 60603',
-  '321 N Clark St, Chicago, IL 60654',
-  '60 W Wacker Dr, Chicago, IL 60601',
-  '88 N Halsted St, Chicago, IL 60661',
-];
+// Address autocomplete suggestions disabled until Google Maps integration is wired.
+// Empty array = AddressInput renders as a plain text input — users type their real
+// address rather than being shown placeholder Chicago suggestions they might pick.
+const ADDRESS_BANK = [];
 
-function AddressInput({ value, onChange, placeholder = 'Search address', hint = 'Powered by Google Maps' }) {
+function AddressInput({ value, onChange, placeholder = 'Type your address' }) {
+  // Autocomplete is disabled until Google Maps is wired (Ben provisioning key).
+  // Until then this is a plain text input that calls onChange on every keystroke.
   const [q, setQ] = F_us(value || '');
-  const [open, setOpen] = F_us(false);
   React.useEffect(() => { setQ(value || ''); }, [value]);
-  const wrapRef = F_ur(null);
-  F_ue(() => {
-    if (!open) return;
-    const onClick = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
-  const matches = q.trim().length === 0 ? ADDRESS_BANK.slice(0, 6) :
-    ADDRESS_BANK.filter(a => a.toLowerCase().includes(q.toLowerCase())).slice(0, 6);
-  const pick = (addr) => { setQ(addr); onChange && onChange(addr); setOpen(false); };
+  const update = (val) => { setQ(val); onChange && onChange(val); };
   return (
-    <div ref={wrapRef} style={{ position: 'relative' }}>
-      <div style={{ position: 'relative' }}>
-        <F_I.MapPin size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
-        <input className="input" style={{ paddingLeft: 36 }} value={q} placeholder={placeholder}
-          onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} />
-      </div>
-      {open ? (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: 'var(--color-canvas)', border: '1px solid var(--color-hairline)', borderRadius: 12, boxShadow: 'var(--shadow-modal)', zIndex: 100, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
-          {matches.length === 0 ? <p style={{ margin: 0, padding: 14, fontSize: 13, color: 'var(--color-muted)', textAlign: 'center' }}>No matches</p> :
-           matches.map(addr => (
-            <button key={addr} type="button" onClick={() => pick(addr)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', border: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer', borderBottom: '1px solid var(--color-hairline)', fontSize: 13.5 }}>
-              <F_I.MapPin size={14} style={{ color: 'var(--rosy-coral)', flex: 'none' }} />
-              <span>{addr}</span>
-            </button>
-          ))}
-          <div style={{ padding: '8px 14px', fontSize: 11, color: 'var(--color-muted-soft)', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ color: '#4285F4', fontWeight: 700, fontFamily: 'sans-serif' }}>G</span>
-            {hint}
-          </div>
-        </div>
-      ) : null}
+    <div style={{ position: 'relative' }}>
+      <F_I.MapPin size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
+      <input className="input" style={{ paddingLeft: 36 }} value={q} placeholder={placeholder}
+        onChange={(e) => update(e.target.value)} />
     </div>
   );
 }
