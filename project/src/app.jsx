@@ -420,8 +420,15 @@ function App() {
 
   const handleSignOut = async () => {
     signingOutRef.current = true;
-    const minSplash = new Promise(r => setTimeout(r, 700));
-    try { if (window.sb) await window.sb.auth.signOut({ scope: 'global' }); } catch (e) { console.warn('signOut error:', e); }
+    const minSplash = new Promise(r => setTimeout(r, 400));
+    // Bound the signOut call — scope:'global' or a stale JWT can hang the server roundtrip indefinitely.
+    const timed = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r({ timedOut: true }), ms))]);
+    try {
+      if (window.sb) {
+        const result = await timed(window.sb.auth.signOut(), 1500);
+        if (result && result.timedOut) console.warn('signOut timed out — proceeding with local clear');
+      }
+    } catch (e) { console.warn('signOut error:', e); }
     await minSplash;
     // Hard-clear any Supabase tokens that survived the SDK call so a reload
     // can't re-hydrate the session and bounce us back to onboarding.
