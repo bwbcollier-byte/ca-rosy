@@ -708,6 +708,7 @@ function App() {
               <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 24 }}>Welcome to Rosy{currentUser?.first ? ', ' + currentUser.first : ''}!</h2>
               <p style={{ margin: '12px 0 24px', color: 'var(--color-muted)', fontSize: 14.5 }}>Your {currentUser?.role || 'account'} is ready. Take a quick 60-second tour to see what's possible — we'll show you everything.</p>
               <button className="btn btn-coral btn-lg" style={{ width: '100%' }} onClick={() => setTourOpen(true)}>Take the tour</button>
+              <button className="btn-link" style={{ marginTop: 12, fontSize: 13.5, background: 'transparent', border: 0, color: 'var(--color-muted)', cursor: 'pointer' }} onClick={() => setWelcomeOpen(false)}>Skip for now</button>
             </div>
           </div>
         ) : null}

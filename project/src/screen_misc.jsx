@@ -471,8 +471,12 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
         const { data, error } = await fn.call(window.sb.auth, { email, password: pw });
         if (error) throw error;
         if (mode === 'signup' && !data?.session) {
-          toast.push({ kind: 'info', title: 'Check your inbox', body: 'Click the link to confirm your email, then log in.' });
+          toast.push({ kind: 'info', title: 'Check your inbox', body: `We sent a confirmation link to ${email}. Click it, then come back here to log in.` });
           setSubmitting(false);
+          // Flip to login mode + keep the email so the user can sign in right away
+          // once they've clicked the confirmation link.
+          setMode('login');
+          setPw('');
           return;
         }
       }

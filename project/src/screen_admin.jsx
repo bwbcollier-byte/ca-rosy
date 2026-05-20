@@ -1257,9 +1257,13 @@ function SettingsPrivacy({ role }) {
   );
 }
 
-// US-format phone normaliser used for validation feedback.
+// Phone normaliser. Leaves international numbers (anything starting with +)
+// untouched so non-US users aren't forced into a US format.
 function formatUSPhone(raw) {
-  const d = (raw || '').replace(/\D/g, '').slice(0, 11);
+  const s = (raw || '').trim();
+  if (!s) return '';
+  if (s.startsWith('+')) return s.replace(/[^\d+ ]/g, '');
+  const d = s.replace(/\D/g, '').slice(0, 11);
   if (!d) return '';
   const has1 = d.length === 11 && d.startsWith('1');
   const core = has1 ? d.slice(1) : d;

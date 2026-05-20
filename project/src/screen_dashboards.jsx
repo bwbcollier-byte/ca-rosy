@@ -159,8 +159,10 @@ function getDateStrip() {
 function StripeConnectBanner({ user }) {
   const [status, setStatus] = SD_us(null); // null = unknown, false = not connected, true = ready
   const [loading, setLoading] = SD_us(false);
+  const toast = useToast();
   SD_ue(() => {
-    if (!user?.id) return;
+    // Admins don't need Stripe Connect — hide banner entirely for them.
+    if (!user?.id || user?.role === 'admin') return;
     let cancel = false;
     (async () => {
       try {
@@ -171,7 +173,8 @@ function StripeConnectBanner({ user }) {
       } catch (e) { /* ignore */ }
     })();
     return () => { cancel = true; };
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
+  if (user?.role === 'admin') return null;
   if (status === true) return null; // already connected
   const onboard = async () => {
     if (!user?.id || !user?.email) { return; }
@@ -188,9 +191,9 @@ function StripeConnectBanner({ user }) {
       });
       const d = await r.json();
       if (d?.url) { window.location.href = d.url; return; }
-      alert('Stripe is not configured: ' + (d?.error || 'unknown'));
+      toast.push({ kind: 'warning', title: "We can't connect to Stripe right now", body: 'Please try again in a moment.' });
     } catch (e) {
-      alert('Could not start Stripe Connect: ' + e.message);
+      toast.push({ kind: 'error', title: "Couldn't open Stripe", body: 'Check your connection and try again.' });
     } finally { setLoading(false); }
   };
   return (
