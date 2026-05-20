@@ -566,12 +566,14 @@ function OnboardingPage({ onComplete }) {
   const [tc, setTc] = SX_us(false);
   const [tcOpen, setTcOpen] = SX_us(false);
   const [stripeOpen, setStripeOpen] = SX_us(false);
+  // Captured from TCModal — signature data URL, timestamp, optional W-9.
+  const [termsPayload, setTermsPayload] = SX_us(null);
   const toast = useToast();
   const hasRole = role.vendor || role.worker;
   // Build the formData payload for the parent — picks the primary role's form (vendor wins when both).
   const finishComplete = () => {
     const primary = role.vendor ? 'vendor' : 'worker';
-    const formData = role.vendor ? vendorData : workerData;
+    const formData = { ...(role.vendor ? vendorData : workerData), terms: termsPayload };
     onComplete(primary, formData);
   };
 
@@ -641,7 +643,7 @@ function OnboardingPage({ onComplete }) {
         </div>
       ) : null}
 
-      <TCModal open={tcOpen} onClose={() => setTcOpen(false)} onAgree={() => { setTc(true); setTcOpen(false); toast.push({ kind: 'success', title: 'Terms accepted' }); }} role={role.vendor ? 'vendor' : 'worker'} />
+      <TCModal open={tcOpen} onClose={() => setTcOpen(false)} onAgree={(payload) => { setTermsPayload(payload || null); setTc(true); setTcOpen(false); toast.push({ kind: 'success', title: 'Terms accepted' }); }} role={role.vendor ? 'vendor' : 'worker'} />
 
       <Modal open={stripeOpen} onClose={() => setStripeOpen(false)} title="" size="md"
         footer={<><button className="btn btn-ghost" onClick={() => { setStripeOpen(false); finishComplete(); }}>Skip for now</button><button className="btn btn-coral" onClick={() => { setStripeOpen(false); toast.push({ kind: 'success', title: 'Connected to Stripe' }); finishComplete(); }}>Continue to Stripe</button></>}>
@@ -672,7 +674,8 @@ function OnboardingPage({ onComplete }) {
 }
 
 function TCModal({ open, onClose, onAgree, role }) {
-  const [signed, setSigned] = SX_us(false);
+  // signature is now a data URL (PNG) when signed, null when cleared.
+  const [signature, setSignature] = SX_us(null);
   const [readAck, setReadAck] = SX_us(false);
   // Worker W-9 / TIN form state
   const [wName, setWName] = SX_us('');
@@ -685,19 +688,37 @@ function TCModal({ open, onClose, onAgree, role }) {
   const [wEin, setWEin] = SX_us('');
   React.useEffect(() => {
     if (!open) {
-      setSigned(false); setReadAck(false);
+      setSignature(null); setReadAck(false);
       setWName(''); setWBusiness(''); setWClass(''); setWClassOther(''); setWExempt(''); setWFatca(''); setWSsn(''); setWEin('');
     }
   }, [open]);
 
   const workerValid = wName.trim() && wClass && (wSsn.trim() || wEin.trim());
+  const signed = !!signature;
   const valid = role === 'vendor'
     ? (signed && readAck)
     : (signed && readAck && workerValid);
 
+  const handleAgree = () => {
+    onAgree({
+      signatureUrl: signature,
+      termsAcceptedAt: new Date().toISOString(),
+      w9: role === 'worker' ? {
+        name: wName.trim() || null,
+        business_name: wBusiness.trim() || null,
+        tax_class: wClass || null,
+        tax_class_other: wClassOther.trim() || null,
+        exempt_payee_code: wExempt.trim() || null,
+        fatca_code: wFatca.trim() || null,
+        ssn: wSsn.trim() || null,
+        ein: wEin.trim() || null,
+      } : null,
+    });
+  };
+
   return (
     <Modal open={open} onClose={onClose} title={role === 'vendor' ? 'Rosy Recruits — Vendor Terms & Conditions' : 'Rosy Recruits — Worker Terms & Conditions'} size="lg"
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-coral" disabled={!valid} onClick={onAgree}>I agree</button></>}>
+      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-coral" disabled={!valid} onClick={handleAgree}>I agree</button></>}>
       {role === 'vendor' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13.5, lineHeight: 1.6 }}>
           <p style={{ margin: 0 }}>Welcome! Please review the terms below. By clicking "I Agree", you confirm that you understand and accept all terms.</p>
@@ -785,7 +806,7 @@ function TCModal({ open, onClose, onAgree, role }) {
         <span>I've read and understand these terms{role === 'worker' ? ' and certify that the W-9 information above is correct' : ''}.</span>
       </label>
       <div style={{ marginTop: 8 }}>
-        <SignaturePad onChange={setSigned} />
+        <SignaturePad onChange={setSignature} />
       </div>
       {!valid ? <p style={{ margin: '12px 0 0', fontSize: 12.5, color: 'var(--color-muted)', textAlign: 'center' }}>{role === 'worker' && !workerValid ? 'Fill in your name, tax classification, and SSN or EIN above. ' : ''}{!readAck ? 'Check the box and ' : ''}sign above to continue.</p> : null}
     </Modal>

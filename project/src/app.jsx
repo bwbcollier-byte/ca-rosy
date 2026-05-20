@@ -339,6 +339,7 @@ function App() {
                 // rr_profiles row already exists (created by rr_handle_new_user trigger).
                 // UPDATE rather than UPSERT — UPSERT fails the NOT-NULL check on email
                 // before the conflict can redirect to the update path.
+                const terms = formData?.terms || null;
                 const profilePayload = {
                   role: pickedRole, onboarding_complete: true, verified: false,
                   first_name: formData?.first || null,
@@ -349,6 +350,13 @@ function App() {
                   avatar_url: formData?.photo || null,
                   street, city: cityVal, state: stateVal, zip: zipVal,
                   geo_address: addr || null,
+                  terms_accepted: !!terms,
+                  terms_accepted_at: terms?.termsAcceptedAt || null,
+                  vendor_signature_url: pickedRole === 'vendor' ? (terms?.signatureUrl || null) : null,
+                  worker_signature_url: pickedRole === 'worker' ? (terms?.signatureUrl || null) : null,
+                  w9_signature_url:     pickedRole === 'worker' ? (terms?.signatureUrl || null) : null,
+                  w9_completed:         pickedRole === 'worker' ? !!terms?.w9 : false,
+                  w9_data:              pickedRole === 'worker' ? (terms?.w9 || null) : null,
                 };
                 const { error: pErr } = await window.sb.from('rr_profiles').update(profilePayload).eq('id', me.id);
                 if (pErr) console.warn('rr_profiles update failed:', pErr.message);
@@ -363,6 +371,7 @@ function App() {
                     business_address: addr || null,
                     logo_url: formData?.photo || null,
                     service_categories: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
+                    show_business_hours: !!formData?.hours,
                   };
                   const { error: vErr } = await window.sb.from('rr_vendor_profiles').upsert(vendorPayload, { onConflict: 'id' });
                   if (vErr) console.warn('rr_vendor_profiles upsert failed:', vErr.message);
@@ -481,6 +490,7 @@ function App() {
                 const zipVal = m && m[4] ? m[4].trim() : null;
                 // UPDATE not UPSERT — the trigger already created the row; UPSERT fails
                 // the NOT-NULL email constraint before conflict resolution.
+                const terms = formData?.terms || null;
                 await window.sb.from('rr_profiles').update({
                   role: pickedRole, onboarding_complete: true, verified: false,
                   first_name: formData?.first || null,
@@ -491,6 +501,13 @@ function App() {
                   avatar_url: formData?.photo || null,
                   street, city: cityVal, state: stateVal, zip: zipVal,
                   geo_address: addr || null,
+                  terms_accepted: !!terms,
+                  terms_accepted_at: terms?.termsAcceptedAt || null,
+                  vendor_signature_url: pickedRole === 'vendor' ? (terms?.signatureUrl || null) : null,
+                  worker_signature_url: pickedRole === 'worker' ? (terms?.signatureUrl || null) : null,
+                  w9_signature_url:     pickedRole === 'worker' ? (terms?.signatureUrl || null) : null,
+                  w9_completed:         pickedRole === 'worker' ? !!terms?.w9 : false,
+                  w9_data:              pickedRole === 'worker' ? (terms?.w9 || null) : null,
                 }).eq('id', sessionUserId);
                 if (pickedRole === 'vendor') {
                   await window.sb.from('rr_vendor_profiles').upsert({
@@ -501,6 +518,7 @@ function App() {
                     business_address: addr || null,
                     logo_url: formData?.photo || null,
                     service_categories: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
+                    show_business_hours: !!formData?.hours,
                   }, { onConflict: 'id' });
                 }
                 if (pickedRole === 'worker') {

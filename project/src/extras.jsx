@@ -47,16 +47,22 @@ function SignaturePad({ value, onChange, height = 160 }) {
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
     last.current = p;
-    if (!hasInk) { setHasInk(true); onChange && onChange(true); }
+    if (!hasInk) { setHasInk(true); }
   };
-  const end = () => { drawing.current = false; };
+  const end = () => {
+    if (!drawing.current) return;
+    drawing.current = false;
+    // Emit the actual signature image as a data URL on every stroke end so
+    // the parent can persist it. Truthy = has-ink, falsy = cleared.
+    try { onChange && onChange(canvasRef.current.toDataURL('image/png')); } catch (e) {}
+  };
 
   const clear = () => {
     const cvs = canvasRef.current;
     const ctx = cvs.getContext('2d');
     ctx.clearRect(0, 0, cvs.width, cvs.height);
     setHasInk(false);
-    onChange && onChange(false);
+    onChange && onChange(null);
   };
 
   return (
