@@ -2246,11 +2246,28 @@ function PageEmails() {
     setDraft({ subject: t.subject, body: t.body, live: t.live });
     setEditMode('html');
   };
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     const updated = { ...templates[editId], subject: draft.subject, body: draft.body, live: draft.live, lastEdited: new Date().toISOString().slice(0, 10) };
     const next = { ...templates, [editId]: updated };
     setTemplates(next);
     window.RosyStores.emailTemplates = next;
+    // Persist to rr_email_templates so changes survive a refresh + are available to
+    // the server-side send-email function. Upsert by slug.
+    try {
+      if (window.sb) {
+        const { error } = await window.sb.from('rr_email_templates').upsert({
+          slug: editId, name: updated.name || editId, subject: draft.subject,
+          body_html: draft.body, is_active: !!draft.live,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'slug' });
+        if (error) throw error;
+      }
+    } catch (e) {
+      console.warn('rr_email_templates upsert failed:', e.message);
+      toast.push({ kind: 'warning', title: 'Saved locally only', body: "Couldn't persist to the database — refresh will revert. " + (e.message || '') });
+      setEditId(null);
+      return;
+    }
     setEditId(null);
     toast.push({ kind: 'success', title: 'Template saved', body: 'Outgoing emails using this template will update immediately.' });
   };
@@ -2322,9 +2339,24 @@ function PageEmails() {
       </Modal>
       {testModalOpen ? (
         <Modal open={testModalOpen} onClose={() => setTestModalOpen(false)} title="Send test email" size="sm"
-          footer={<><button className="btn btn-ghost" onClick={() => setTestModalOpen(false)}>Cancel</button><button className="btn btn-coral" disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)} onClick={() => { setTestModalOpen(false); toast.push({ kind: 'success', title: 'Test email sent', body: `Sent to ${testEmail}` }); setTestEmail(''); }}>Send</button></>}>
+          footer={<><button className="btn btn-ghost" onClick={() => setTestModalOpen(false)}>Cancel</button><button className="btn btn-coral" disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)} onClick={async () => {
+            const to = testEmail;
+            setTestModalOpen(false);
+            try {
+              const r = await window.RosySendEmail?.({
+                slug: editId || 'test', to,
+                subject: draft.subject || 'Rosy Recruits test',
+                html: draft.body || '<p>(no body)</p>',
+                vars: { first_name: 'Test', role: 'vendor', event_name: 'Sample event', event_date: '2026-06-01', call_time: '09:00', venue_name: 'Sample Venue', hourly_rate: '35', worker_first: 'Worker', worker_name: 'Worker Name', worker_rating: '4.8', worker_gigs: '12', amount: '100', invoice: 'INV-0001', reason: 'Sample', filed_by: 'Admin', inviter_name: 'Admin', invite_url: 'https://rosy-demo.vercel.app/#auth', verification_url: 'https://rosy-demo.vercel.app/#auth', maps_url: 'https://maps.google.com', venue_address: '123 Sample St', venue_city: 'Anywhere', lead_name: 'Lead', gig_type: 'Lead', gigs_count: '3', hours: '12', earned: '450', upcoming_count: '2' },
+              });
+              if (r?.ok !== false) toast.push({ kind: 'success', title: 'Test email sent', body: `Sent to ${to}` });
+              else toast.push({ kind: 'warning', title: 'Test email failed', body: 'Check the console for details.' });
+            } catch (e) { toast.push({ kind: 'error', title: 'Test email failed', body: e.message || 'Try again.' }); }
+            setTestEmail('');
+          }}>Send</button></>}>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Send to</label>
           <input className="input" placeholder="you@studio.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
+          <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>Demo mode redirects the message to the staging inbox.</p>
         </Modal>
       ) : null}
     </div>
@@ -2441,32 +2473,68 @@ function PageGallery() {
 
 function PagePlatformSettings() {
   const toast = useToast();
+  const [rows, setRows] = SP_us([]);
+  const [drafts, setDrafts] = SP_us({});
+  const [loading, setLoading] = SP_us(true);
+  const [saving, setSaving] = SP_us(false);
+  SP_ue(() => {
+    let cancel = false;
+    (async () => {
+      if (!window.sb) { setLoading(false); return; }
+      try {
+        const { data, error } = await window.sb.from('rr_platform_settings').select('*').order('key');
+        if (error) throw error;
+        if (cancel) return;
+        setRows(data || []);
+        setDrafts(Object.fromEntries((data || []).map(r => [r.key, r.value])));
+      } catch (e) { console.warn('platform_settings load failed:', e.message); }
+      finally { if (!cancel) setLoading(false); }
+    })();
+    return () => { cancel = true; };
+  }, []);
+  const dirty = rows.some(r => drafts[r.key] !== r.value);
+  const save = async () => {
+    if (saving || !dirty || !window.sb) return;
+    setSaving(true);
+    const changed = rows.filter(r => drafts[r.key] !== r.value);
+    try {
+      for (const r of changed) {
+        const { error } = await window.sb.from('rr_platform_settings').update({ value: drafts[r.key], updated_at: new Date().toISOString() }).eq('key', r.key);
+        if (error) throw error;
+      }
+      setRows(rs => rs.map(r => ({ ...r, value: drafts[r.key] })));
+      toast.push({ kind: 'success', title: `${changed.length} ${changed.length === 1 ? 'setting' : 'settings'} saved` });
+    } catch (e) { toast.push({ kind: 'error', title: "Couldn't save", body: e.message || 'Try again.' }); }
+    finally { setSaving(false); }
+  };
+  // Group by inferred bucket from the key prefix.
+  const buckets = {};
+  rows.forEach(r => {
+    const bucket = r.key.startsWith('rate_') ? 'Default gig rates' : r.key.includes('fee') || r.key.includes('hold') ? 'Fees & holds' : 'Other';
+    (buckets[bucket] = buckets[bucket] || []).push(r);
+  });
   return (
     <div className="content fade-up">
       <div className="section-heading">
         <h2>Platform settings</h2>
-        <button className="btn btn-coral" onClick={() => toast.push({ kind: 'info', title: 'Saved (preview)', body: 'Backend wiring coming soon — changes are session-only for now.' })}>Save changes</button>
+        <button className="btn btn-coral" disabled={!dirty || saving} onClick={save}>{saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}</button>
       </div>
-      <div className="grid-2">
-        <div className="card">
-          <h3 className="card-title" style={{ marginBottom: 14 }}>Default gig rates</h3>
-          {Object.entries(SP_D.GIG_TYPES).map(([k, v]) => (
-            <div key={k} className="field" style={{ marginBottom: 12 }}>
-              <label className="field-label">{k}</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input className="input" defaultValue={v.hourly} style={{ width: 100 }} />
-                <span style={{ alignSelf: 'center', color: 'var(--color-muted)', fontSize: 13 }}>$/hr default</span>
-              </div>
+      {loading ? <div className="card" style={{ color: 'var(--color-muted)' }}>Loading…</div> : (
+        <div className="grid-2">
+          {Object.entries(buckets).map(([title, group]) => (
+            <div key={title} className="card">
+              <h3 className="card-title" style={{ marginBottom: 14 }}>{title}</h3>
+              {group.map(r => (
+                <div key={r.key} className="field" style={{ marginBottom: 12 }}>
+                  <label className="field-label">{r.label || r.key}</label>
+                  <input className="input" value={drafts[r.key] ?? ''} onChange={(e) => setDrafts(d => ({ ...d, [r.key]: e.target.value }))} />
+                  {r.description ? <p className="field-hint">{r.description}</p> : null}
+                </div>
+              ))}
             </div>
           ))}
         </div>
-        <div className="card">
-          <h3 className="card-title" style={{ marginBottom: 14 }}>Fees</h3>
-          <div className="field" style={{ marginBottom: 12 }}><label className="field-label">Vendor platform fee</label><input className="input" defaultValue="6.0%" /></div>
-          <div className="field" style={{ marginBottom: 12 }}><label className="field-label">Worker take rate</label><input className="input" defaultValue="92%" /></div>
-          <div className="field"><label className="field-label">Stripe Connect fee</label><input className="input" defaultValue="2.9% + $0.30" /></div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

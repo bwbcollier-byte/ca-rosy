@@ -464,17 +464,17 @@ function PageBroadcast() {
   const [body, setBody] = AX_us('');
   const [schedule, setSchedule] = AX_us('now');
   const [scheduleTime, setScheduleTime] = AX_us('');
-  const [sent, setSent] = AX_us([
-    { id: 's1', audience: 'all',     subject: 'Stripe instant payouts now live in 5 cities', sent: '2026-05-08 09:14', reach: 1842 },
-    { id: 's2', audience: 'workers', subject: 'New Lead rate of $50/hr — effective June 1',  sent: '2026-04-22 14:00', reach: 1284 },
-    { id: 's3', audience: 'vendors', subject: 'Sunday office hours: Q2 product roadmap',     sent: '2026-04-14 10:00', reach: 412  },
-  ]);
+  // No persistent broadcast history yet — start empty so the table reflects
+  // actual sends from this session rather than fake archive entries.
+  const [sent, setSent] = AX_us([]);
 
+  // Real audience counts pulled from the live USERS list.
+  const _users = window.RosyData?.USERS || [];
   const audienceCounts = {
-    all:     1842,
-    vendors: 412,
-    workers: 1284,
-    admins:  4,
+    all:     _users.filter(u => u.email).length,
+    vendors: _users.filter(u => u.role === 'vendor' && u.email).length,
+    workers: _users.filter(u => u.role === 'worker' && u.email).length,
+    admins:  _users.filter(u => u.role === 'admin' && u.email).length,
   };
 
   const send = async () => {
