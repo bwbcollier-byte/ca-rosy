@@ -209,6 +209,54 @@ function App() {
     return () => window.removeEventListener('rosy:start-tour', fn);
   }, []);
 
+  // ============================================================
+  // LOGOUT — hoisted ABOVE every early return so the splash can't orphan.
+  // Runs when mode === 'logout' or route === 'logout'. Hard escape at 3s.
+  // ============================================================
+  A_ue(() => {
+    const isLogout = mode === 'logout' || (mode === 'app' && route === 'logout');
+    if (!isLogout) return;
+    signingOutRef.current = true;
+    console.log('[logout] starting');
+    let escapeFired = false;
+    const escape = setTimeout(() => {
+      escapeFired = true;
+      console.warn('[logout] hard escape — forcing reload to marketing');
+      try {
+        Object.keys(localStorage).filter(k => k.startsWith('sb-') || k.startsWith('supabase.')).forEach(k => localStorage.removeItem(k));
+        Object.keys(sessionStorage).filter(k => k.startsWith('sb-') || k.startsWith('supabase.')).forEach(k => sessionStorage.removeItem(k));
+      } catch (e) {}
+      window.location.replace(window.location.pathname + '#marketing');
+      setTimeout(() => window.location.reload(), 50);
+    }, 2500);
+    (async () => {
+      const timed = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r({ timedOut: true }), ms))]);
+      try {
+        if (window.sb) {
+          const result = await timed(window.sb.auth.signOut(), 1200);
+          if (result && result.timedOut) console.warn('[logout] signOut timed out — proceeding with local clear');
+        }
+      } catch (e) { console.warn('[logout] signOut error:', e); }
+      if (escapeFired) return;
+      // Local clear regardless of signOut outcome.
+      try {
+        Object.keys(localStorage).filter(k => k.startsWith('sb-') || k.startsWith('supabase.')).forEach(k => localStorage.removeItem(k));
+        Object.keys(sessionStorage).filter(k => k.startsWith('sb-') || k.startsWith('supabase.')).forEach(k => sessionStorage.removeItem(k));
+      } catch (e) {}
+      clearTimeout(escape);
+      setSession(null);
+      setProfileFromDb(null);
+      setRole('admin');
+      setRoute('dashboard');
+      setMarketingSub('home');
+      try { window.location.hash = 'marketing'; } catch (e) {}
+      setMode('marketing');
+      setTimeout(() => { signingOutRef.current = false; }, 100);
+      console.log('[logout] complete');
+    })();
+    return () => { clearTimeout(escape); };
+  }, [mode, route]);
+
   // ---------- Mode switches ----------
   if (mode === 'marketing') {
     return (
@@ -459,13 +507,7 @@ function App() {
     setTimeout(() => { signingOutRef.current = false; }, 100);
   };
 
-  // Logout via URL — supports #logout (clean bookmark) and #app/logout (in-app deeplink).
-  // Lets users sign out from anywhere by typing /#logout or following a logout link.
-  A_ue(() => {
-    if (mode === 'logout' || (mode === 'app' && route === 'logout')) {
-      handleSignOut();
-    }
-  }, [mode, route]);
+  // URL-based logout is now handled by the hoisted effect above (before early returns).
 
   // Verification gate — signed-in non-admins with verified === false see only a pending-approval popup.
   const needsVerification = !!sessionUser && sessionUser.role !== 'admin' && sessionUser.verified !== true;
