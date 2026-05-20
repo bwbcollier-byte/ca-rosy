@@ -779,7 +779,7 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
         <Avatar name={user.name} size="xl" />
         <div style={{ flex: 1 }}>
           <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, letterSpacing: '-0.02em' }}>{editing ? draft.name : user.name}</h3>
-          <p style={{ margin: '4px 0 12px', color: 'var(--color-muted)', fontSize: 14 }}>{(editing ? draft.company : user.company)} · {(editing ? draft.city : user.city)}</p>
+          <p style={{ margin: '4px 0 12px', color: 'var(--color-muted)', fontSize: 14 }}>{(() => { const c = editing ? draft.company : user.company; const loc = editing ? draft.city : user.city; const parts = [c, loc].filter(Boolean); return parts.length ? parts.join(' · ') : (user.onboarding_complete ? '—' : 'Profile not yet completed'); })()}</p>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <Badge kind={user.status === 'active' ? 'Active' : 'Inactive'}>{user.status === 'active' ? 'Active' : 'Inactive'}</Badge>
             <span style={{ textTransform: 'capitalize', color: 'var(--color-muted)', fontSize: 13 }}>{user.role}</span>
@@ -858,10 +858,8 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
             <KV label="Role" value={<span style={{ textTransform: 'capitalize' }}>{user.role}</span>} />
           </div>
           <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Bio</h4>
-          <p style={{ margin: 0, color: 'var(--color-body)', fontSize: 14, lineHeight: 1.55 }}>
-            {(() => { const first = user.first || (user.name || '').split(' ')[0] || 'They'; return user.role === 'worker'
-              ? `${first} brings ${user.gigs ?? 0} gigs of experience to high-end floral events — specializing in installations, tablescapes, and on-day execution. Reliable, calm under pressure, takes direction well.`
-              : `${user.company || first} is a ${user.city || 'Chicagoland'}-based floral studio serving the Chicagoland area. Specialties: weddings, brand activations, editorial work.`; })()}
+          <p style={{ margin: 0, color: user.bio ? 'var(--color-body)' : 'var(--color-muted)', fontSize: 14, lineHeight: 1.55, fontStyle: user.bio ? 'normal' : 'italic' }}>
+            {user.bio || (user.onboarding_complete ? 'No bio yet.' : 'This user has not completed onboarding yet — no profile info available.')}
           </p>
         </>
       )}

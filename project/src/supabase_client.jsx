@@ -100,7 +100,7 @@ function buildUsers(profiles, vendors, workers) {
       phone:   p.phone || null,
       title:   p.title || null,
       bio:     p.bio || v?.business_description || null,
-      company: v?.company_name || p.title || (p.role === 'admin' ? 'Rosy Recruits' : 'Freelancer'),
+      company: v?.company_name || p.title || (p.role === 'admin' ? 'Rosy Recruits' : null),
       status:  p.status || 'active',
       verified: p.verified === false ? false : (p.verified === true ? true : null),
       onboarding_complete: !!p.onboarding_complete,
