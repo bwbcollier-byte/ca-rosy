@@ -80,7 +80,7 @@ function GigChip({ type }) {
 }
 
 /* ---------- Stat card ---------- */
-function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', showStrip = true, animate = true, primary = false }) {
+function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', showStrip = true, animate = true, primary = false, period, sublabel }) {
   const [display, setDisplay] = useState(animate ? 0 : value);
   useEffect(() => {
     if (!animate) { setDisplay(value); return; }
@@ -109,7 +109,7 @@ function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', sho
             {Icon ? <Icon size={16} /> : null}
             {label}
           </span>
-          <span style={{ fontSize: 11, color: 'var(--color-muted-soft)' }}>Last 30 Days</span>
+          <span style={{ fontSize: 11, color: 'var(--color-muted-soft)' }}>{period || 'Last 30 Days'}</span>
         </div>
         <div className="stat-value-row">
           <div className="stat-value">{formatted}</div>
@@ -120,8 +120,9 @@ function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', sho
             </span>
           ) : null}
         </div>
+        {sublabel ? <div style={{ fontSize: 11.5, color: 'var(--color-muted)', marginTop: 4 }}>{sublabel}</div> : null}
       </div>
-      <div className="stat-date-strip">{dateStrip || 'May 1st 2026 – June 1st 2026'}</div>
+      {showStrip !== false ? <div className="stat-date-strip">{dateStrip || (() => { const e = new Date(); const s = new Date(); s.setDate(e.getDate() - 30); const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); return `${fmt(s)} – ${fmt(e)}`; })()}</div> : null}
     </div>
   );
 }

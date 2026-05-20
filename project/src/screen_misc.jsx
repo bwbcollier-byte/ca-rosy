@@ -453,7 +453,15 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
     setSubmitting(true);
     try {
       if (mode === 'forgot') {
-        if (window.sb) await window.sb.auth.resetPasswordForEmail(email);
+        // Use our Postmark-branded /api/auth/password-reset endpoint rather than
+        // Supabase's default email (which is unbranded + comes from a Supabase domain).
+        try {
+          await fetch('/api/auth/password-reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          });
+        } catch (e) { /* still show success to avoid leaking which emails exist */ }
         toast.push({ kind: 'success', title: 'Reset link sent', body: 'Check your inbox if an account exists for that address.' });
         setSubmitting(false);
         return;
@@ -483,8 +491,8 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
       </div>
       <div className="auth-form-wrap">
         <form className="auth-form" onSubmit={submit}>
-          <div className="mk-logo" style={{ marginBottom: 8 }}><RoseLogo />Rosy<span className="accent"> Recruits</span></div>
-          <h2 className="display-md" style={{ fontSize: 32 }}>{mode === 'login' ? 'Welcome back.' : mode === 'forgot' ? 'Reset your password.' : 'Create your account.'}</h2>
+          <div className="mk-logo" style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, fontSize: 32, fontWeight: 500, fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}><RoseLogo size={44} />Rosy<span className="accent"> Recruits</span></div>
+          <h2 className="display-md" style={{ fontSize: 32, textAlign: 'center' }}>{mode === 'login' ? 'Welcome back.' : mode === 'forgot' ? 'Reset your password.' : 'Create your account.'}</h2>
           {mode === 'login' ? <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>Log in to manage your events and gigs.</p> :
             mode === 'signup' ? <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>Workers join free. Vendors add a card during onboarding to fund payouts.</p> :
             <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>We'll email a link if there's a matching account.</p>}
@@ -522,8 +530,8 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
                   </div>
                 ))}
               </div>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: 'var(--color-body)' }}>
-                <span className={`checkbox ${agree ? 'checked' : ''}`} onClick={() => setAgree(a => !a)} style={{ marginTop: 2 }}>{agree ? <SX_I.CheckCircle size={12} /> : null}</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 14.5, fontWeight: 500, color: 'var(--color-body-strong)', padding: '14px 16px', background: agree ? 'var(--rosy-teal-soft)' : 'var(--color-surface-soft)', border: `1.5px solid ${agree ? 'var(--rosy-teal)' : 'var(--color-hairline-strong)'}`, borderRadius: 12, cursor: 'pointer', transition: 'background 120ms ease, border-color 120ms ease' }} onClick={() => setAgree(a => !a)}>
+                <span className={`checkbox ${agree ? 'checked' : ''}`} style={{ width: 22, height: 22, flex: 'none' }}>{agree ? <SX_I.CheckCircle size={18} /> : null}</span>
                 <span>I agree to the <a style={{ color: 'var(--rosy-teal-dark)', textDecoration: 'underline' }}>terms of service</a> and <a style={{ color: 'var(--rosy-teal-dark)', textDecoration: 'underline' }}>privacy policy</a>.</span>
               </label>
             </>
@@ -568,13 +576,17 @@ function OnboardingPage({ onComplete }) {
   const [stripeOpen, setStripeOpen] = SX_us(false);
   // Captured from TCModal — signature data URL, timestamp, optional W-9.
   const [termsPayload, setTermsPayload] = SX_us(null);
+  const [submitting, setSubmitting] = SX_us(false);
   const toast = useToast();
   const hasRole = role.vendor || role.worker;
   // Build the formData payload for the parent — picks the primary role's form (vendor wins when both).
-  const finishComplete = () => {
+  const finishComplete = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     const primary = role.vendor ? 'vendor' : 'worker';
     const formData = { ...(role.vendor ? vendorData : workerData), terms: termsPayload };
-    onComplete(primary, formData);
+    try { await onComplete(primary, formData); } catch (e) { console.warn('onComplete failed:', e); }
+    // Keep button disabled — by this point app.jsx has flipped mode away from 'onboarding'.
   };
 
   return (
@@ -637,7 +649,7 @@ function OnboardingPage({ onComplete }) {
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button>
-              <button className="btn btn-coral" disabled={!tc} onClick={finishComplete}>Continue</button>
+              <button className="btn btn-coral" disabled={!tc || submitting} onClick={finishComplete}>{submitting ? 'Saving…' : 'Continue'}</button>
             </div>
           </div>
         </div>
@@ -646,7 +658,7 @@ function OnboardingPage({ onComplete }) {
       <TCModal open={tcOpen} onClose={() => setTcOpen(false)} onAgree={(payload) => { setTermsPayload(payload || null); setTc(true); setTcOpen(false); toast.push({ kind: 'success', title: 'Terms accepted' }); }} role={role.vendor ? 'vendor' : 'worker'} />
 
       <Modal open={stripeOpen} onClose={() => setStripeOpen(false)} title="" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => { setStripeOpen(false); finishComplete(); }}>Skip for now</button><button className="btn btn-coral" onClick={() => { setStripeOpen(false); toast.push({ kind: 'success', title: 'Connected to Stripe' }); finishComplete(); }}>Continue to Stripe</button></>}>
+        footer={<><button className="btn btn-ghost" disabled={submitting} onClick={() => { setStripeOpen(false); finishComplete(); }}>{submitting ? 'Saving…' : 'Skip for now'}</button><button className="btn btn-coral" disabled={submitting} onClick={() => { setStripeOpen(false); toast.push({ kind: 'success', title: 'Connected to Stripe' }); finishComplete(); }}>{submitting ? 'Saving…' : 'Continue to Stripe'}</button></>}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
             <RoseLogo size={36} />
@@ -801,8 +813,8 @@ function TCModal({ open, onClose, onAgree, role }) {
         </div>
       )}
 
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '16px 0 12px', fontSize: 14, cursor: 'pointer' }}>
-        <CheckBox checked={readAck} onChange={setReadAck} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', margin: '16px 0 12px', fontSize: 15, fontWeight: 500, cursor: 'pointer', background: readAck ? 'var(--rosy-teal-soft)' : 'var(--color-surface-soft)', border: `1.5px solid ${readAck ? 'var(--rosy-teal)' : 'var(--color-hairline-strong)'}`, borderRadius: 12, transition: 'background 120ms ease, border-color 120ms ease' }} onClick={(e) => { e.preventDefault(); setReadAck(!readAck); }}>
+        <span className={`checkbox ${readAck ? 'checked' : ''}`} style={{ width: 22, height: 22, flex: 'none' }}>{readAck ? <SX_I.CheckCircle size={18} /> : null}</span>
         <span>I've read and understand these terms{role === 'worker' ? ' and certify that the W-9 information above is correct' : ''}.</span>
       </label>
       <div style={{ marginTop: 8 }}>

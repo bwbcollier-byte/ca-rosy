@@ -797,10 +797,12 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
             <button className="btn btn-ghost btn-sm" onClick={async () => {
               if (!user.email) { toast.push({ kind: 'warning', title: 'No email on file' }); return; }
               try {
-                if (window.sb) {
-                  const { error } = await window.sb.auth.resetPasswordForEmail(user.email, { redirectTo: window.location.origin + '/#auth' });
-                  if (error) throw error;
-                }
+                // Branded Postmark email via our endpoint (not Supabase's default).
+                const r = await fetch('/api/auth/password-reset', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email: user.email }),
+                });
+                if (!r.ok) throw new Error('Reset request failed');
                 toast.push({ kind: 'success', title: 'Password reset sent', body: `Reset email sent to ${user.email}.` });
               } catch (e) {
                 toast.push({ kind: 'error', title: 'Reset failed', body: e.message || 'Try again.' });
@@ -1503,8 +1505,10 @@ function PageAnalytics() {
   const now = new Date();
   const last30 = new Date(now); last30.setDate(now.getDate() - 30);
   const within30 = (dateStr) => { try { return new Date(dateStr) >= last30; } catch (e) { return false; } };
-  const totalRevenue = txs.filter(t => t.status === 'Paid').reduce((s, t) => s + (t.amount || 0), 0);
-  const activeUsers30 = users.filter(u => u.lastActive && within30(u.lastActive)).length || users.filter(u => u.status === 'active').length;
+  const totalRevenueAllTime = txs.filter(t => t.status === 'Paid').reduce((s, t) => s + (t.amount || 0), 0);
+  const totalRevenue30 = txs.filter(t => t.status === 'Paid' && within30(t.date)).reduce((s, t) => s + (t.amount || 0), 0);
+  const activeUsersAllTime = users.filter(u => u.status === 'active').length;
+  const activeUsers30 = users.filter(u => u.lastActive && within30(u.lastActive)).length;
   const newSignups30 = users.filter(u => within30(u.joined)).length;
   const gigsCompleted30 = gigs.filter(g => g.status === 'confirmed' && within30(g.date)).length;
   const allRates = gigs.map(g => g.rate).filter(Boolean);
@@ -1597,8 +1601,8 @@ function PageAnalytics() {
 
       {/* KPI strip */}
       <div className="grid-4" style={{ marginBottom: 16 }}>
-        <StatCard icon={SP_I.DollarSign}  label="Total revenue" value={totalRevenue} prefix="$" />
-        <StatCard icon={SP_I.Users}       label="Active users (30d)" value={activeUsers30} />
+        <StatCard icon={SP_I.DollarSign}  label="Revenue" value={totalRevenueAllTime} prefix="$" period="All time" sublabel={`$${totalRevenue30.toLocaleString()} in last 30 days`} />
+        <StatCard icon={SP_I.Users}       label="Active users" value={activeUsersAllTime} period="All time" sublabel={`${activeUsers30} active in last 30 days`} />
         <StatCard icon={SP_I.UserPlus}    label="New signups (30d)" value={newSignups30} />
         <StatCard icon={SP_I.Briefcase}   label="Gigs completed (30d)" value={gigsCompleted30} />
       </div>
