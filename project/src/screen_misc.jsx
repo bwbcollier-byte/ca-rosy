@@ -828,10 +828,13 @@ function TCModal({ open, onClose, onAgree, role }) {
 function ProfileForm({ role, data, onChange }) {
   // Controlled mode when parent passes data + onChange; falls back to internal state otherwise.
   const controlled = !!(data && onChange);
-  const [_int, _setInt] = SX_us({ photo: null, first: '', last: '', phone: '', title: '', company: '', bio: '', services: [], address: '', hours: false });
+  const defaultDayHours = { mon: { open: '09:00', close: '18:00' }, tue: { open: '09:00', close: '18:00' }, wed: { open: '09:00', close: '18:00' }, thu: { open: '09:00', close: '18:00' }, fri: { open: '09:00', close: '18:00' }, sat: { open: '09:00', close: '18:00' }, sun: { open: '09:00', close: '18:00' } };
+  const [_int, _setInt] = SX_us({ photo: null, first: '', last: '', phone: '', title: '', company: '', bio: '', services: [], address: '', hours: false, dayHours: defaultDayHours });
   const d = controlled ? data : _int;
   const set = (patch) => { if (controlled) onChange({ ...data, ...patch }); else _setInt(prev => ({ ...prev, ...patch })); };
   const photo = d.photo, first = d.first, last = d.last, phone = d.phone, title = d.title, company = d.company, bio = d.bio, services = d.services || [], hours = d.hours;
+  const dayHours = d.dayHours || defaultDayHours;
+  const setDayHours = (day, field, val) => set({ dayHours: { ...dayHours, [day]: { ...(dayHours[day] || { open: '09:00', close: '18:00' }), [field]: val } } });
   const setPhoto = (v) => set({ photo: v });
   const setFirst = (v) => set({ first: v });
   const setLast = (v) => set({ last: v });
@@ -899,11 +902,11 @@ function ProfileForm({ role, data, onChange }) {
           </div>
           {hours ? (
             <div className="card" style={{ background: 'var(--color-surface-soft)' }}>
-              {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
-                <div key={d} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: 12, alignItems: 'center', padding: '6px 0' }}>
-                  <span style={{ fontWeight: 500, fontSize: 13 }}>{d}</span>
-                  <input className="input" type="time" defaultValue="09:00" style={{ height: 36 }} />
-                  <input className="input" type="time" defaultValue="18:00" style={{ height: 36 }} />
+              {[['Mon','mon'],['Tue','tue'],['Wed','wed'],['Thu','thu'],['Fri','fri'],['Sat','sat'],['Sun','sun']].map(([label, key]) => (
+                <div key={key} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: 12, alignItems: 'center', padding: '6px 0' }}>
+                  <span style={{ fontWeight: 500, fontSize: 13 }}>{label}</span>
+                  <input className="input" type="time" value={dayHours[key]?.open || '09:00'} onChange={(e) => setDayHours(key, 'open', e.target.value)} style={{ height: 36 }} />
+                  <input className="input" type="time" value={dayHours[key]?.close || '18:00'} onChange={(e) => setDayHours(key, 'close', e.target.value)} style={{ height: 36 }} />
                 </div>
               ))}
             </div>

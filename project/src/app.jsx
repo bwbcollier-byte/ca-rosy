@@ -372,6 +372,7 @@ function App() {
                     logo_url: formData?.photo || null,
                     service_categories: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
                     show_business_hours: !!formData?.hours,
+                    business_hours: formData?.hours && formData?.dayHours ? formData.dayHours : null,
                   };
                   const { error: vErr } = await window.sb.from('rr_vendor_profiles').upsert(vendorPayload, { onConflict: 'id' });
                   if (vErr) console.warn('rr_vendor_profiles upsert failed:', vErr.message);
@@ -519,6 +520,7 @@ function App() {
                     logo_url: formData?.photo || null,
                     service_categories: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
                     show_business_hours: !!formData?.hours,
+                    business_hours: formData?.hours && formData?.dayHours ? formData.dayHours : null,
                   }, { onConflict: 'id' });
                 }
                 if (pickedRole === 'worker') {

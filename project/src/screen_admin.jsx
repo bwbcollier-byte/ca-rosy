@@ -867,12 +867,34 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
             {user.role !== 'worker' && user.vendorRate != null ? <KV label="Vendor day rate" value={`$${user.vendorRate}/day`} /> : null}
             {user.websiteUrl ? <KV label="Website" value={user.websiteUrl} /> : null}
             {user.role === 'worker' && user.skills ? <KV label="Skills" value={Array.isArray(user.skills) ? user.skills.join(', ') : user.skills} /> : null}
+            {user.serviceCategories && user.serviceCategories.length ? <KV label="Services" value={user.serviceCategories.join(', ')} /> : null}
+            {user.termsAccepted ? <KV label="Terms accepted" value={user.termsAcceptedAt ? new Date(user.termsAcceptedAt).toLocaleDateString() : 'Yes'} /> : null}
+            {user.w9Completed ? <KV label="W-9 on file" value="Yes" /> : null}
             <KV label="Status" value={<span style={{ textTransform: 'capitalize' }}>{user.status}</span>} />
           </div>
           <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Bio</h4>
           <p style={{ margin: 0, color: user.bio ? 'var(--color-body)' : 'var(--color-muted)', fontSize: 14, lineHeight: 1.55, fontStyle: user.bio ? 'normal' : 'italic' }}>
             {user.bio || (user.onboarding_complete ? 'No bio yet.' : 'This user has not completed onboarding yet — no profile info available.')}
           </p>
+          {user.showBusinessHours && user.businessHours ? (
+            <>
+              <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Business hours</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '4px 12px', fontSize: 13, color: 'var(--color-body)' }}>
+                {[['Mon','mon'],['Tue','tue'],['Wed','wed'],['Thu','thu'],['Fri','fri'],['Sat','sat'],['Sun','sun']].map(([label, key]) => (
+                  <React.Fragment key={key}>
+                    <span style={{ fontWeight: 500 }}>{label}</span>
+                    <span style={{ color: 'var(--color-muted)' }}>{user.businessHours[key] ? `${user.businessHours[key].open} – ${user.businessHours[key].close}` : 'Closed'}</span>
+                  </React.Fragment>
+                ))}
+              </div>
+            </>
+          ) : null}
+          {user.vendorSignatureUrl || user.workerSignatureUrl ? (
+            <>
+              <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Signature on file</h4>
+              <img src={user.vendorSignatureUrl || user.workerSignatureUrl} alt="User signature" style={{ maxWidth: 320, maxHeight: 120, background: '#fff', border: '1px solid var(--color-hairline)', borderRadius: 8, padding: 8 }} />
+            </>
+          ) : null}
         </>
       )}
     </Modal>
@@ -1304,30 +1326,35 @@ function SettingsProfile({ user }) {
       services: d.services.split(',').map(s => s.trim()).filter(Boolean),
     });
     window.dispatchEvent(new CustomEvent('rosy:data-changed'));
-    // Best-effort persist
+    // Best-effort persist. Column names match the actual rr_* schema:
+    //   rr_vendor_profiles uses `id` (not user_id), `website_url` (not website).
+    //   rr_worker_profiles uses `id` (not user_id), `hourly_rate` (no rate_min/max).
     try {
       if (window.sb) {
-        await window.sb.from('rr_profiles').update({
+        const { error: pErr } = await window.sb.from('rr_profiles').update({
           first_name: d.first || null, last_name: d.last || null,
           phone: d.phone || null, bio: d.bio || null, avatar_url: d.photo || null,
           title: d.title || null, city: d.city || null, state: d.state || null,
         }).eq('id', user.id);
+        if (pErr) console.warn('rr_profiles update failed:', pErr.message);
         if (role === 'vendor') {
-          await window.sb.from('rr_vendor_profiles').upsert({
-            user_id: user.id, company_name: d.company_name || null,
-            website: d.website || null, business_description: d.business_description || null,
-          }, { onConflict: 'user_id' });
+          const { error: vErr } = await window.sb.from('rr_vendor_profiles').upsert({
+            id: user.id, company_name: d.company_name || null,
+            website_url: d.website || null, business_description: d.business_description || null,
+            business_phone: d.phone || null, logo_url: d.photo || null,
+          }, { onConflict: 'id' });
+          if (vErr) console.warn('rr_vendor_profiles upsert failed:', vErr.message);
         } else if (role === 'worker') {
           const servicesArr = d.services.split(',').map(s => s.trim()).filter(Boolean);
-          await window.sb.from('rr_worker_profiles').upsert({
-            user_id: user.id,
-            rate_min: d.rate_min ? Number(d.rate_min) : null,
-            rate_max: d.rate_max ? Number(d.rate_max) : null,
+          const { error: wErr } = await window.sb.from('rr_worker_profiles').upsert({
+            id: user.id,
+            hourly_rate: d.rate_min ? Number(d.rate_min) : null,
             services: servicesArr,
-          }, { onConflict: 'user_id' });
+          }, { onConflict: 'id' });
+          if (wErr) console.warn('rr_worker_profiles upsert failed:', wErr.message);
         }
       }
-    } catch (e) { console.warn('profile save failed (table may not exist):', e); }
+    } catch (e) { console.warn('profile save failed:', e); }
     toast.push({ kind: 'success', title: 'Profile saved' });
   };
 
