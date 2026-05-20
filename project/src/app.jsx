@@ -8,6 +8,7 @@ function App() {
   // Default first view: marketing (unless URL hash explicitly targets another mode)
   const initial = (() => {
     const h = window.location.hash.replace(/^#/, '');
+    if (h === 'logout' || h === 'app/logout') return 'logout';
     if (h.startsWith('marketing')) return 'marketing';
     if (h.startsWith('auth') || h.startsWith('login') || h.startsWith('signup')) return 'auth';
     if (h.startsWith('onboarding')) return 'onboarding';
@@ -419,7 +420,9 @@ function App() {
 
   const handleSignOut = async () => {
     signingOutRef.current = true;
+    const minSplash = new Promise(r => setTimeout(r, 700));
     try { if (window.sb) await window.sb.auth.signOut({ scope: 'global' }); } catch (e) { console.warn('signOut error:', e); }
+    await minSplash;
     // Hard-clear any Supabase tokens that survived the SDK call so a reload
     // can't re-hydrate the session and bounce us back to onboarding.
     try {
