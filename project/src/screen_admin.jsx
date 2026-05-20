@@ -369,8 +369,8 @@ function PageDisputes() {
           <div className="col" style={{ gap: 14 }}>
             <KV label="Invoice" value={mediate.invoice} />
             <KV label="Amount" value={fmtMoney(mediate.amount)} />
-            <KV label="Worker says" value={mediate.note || 'Hours match my timesheet.'} />
-            <KV label="Vendor says" value="Worker left 2 hours early. We were short on the strike crew." />
+            <KV label="Worker says" value={mediate.note || '—'} />
+            <KV label="Vendor says" value={mediate.vendorNote || '—'} />
             <div className="field"><label className="field-label">Admin notes</label><textarea className="textarea" placeholder="Notes shared with both parties on resolution." /></div>
           </div>
         ) : null}
@@ -380,18 +380,15 @@ function PageDisputes() {
         <Modal open={!!thread} onClose={() => setThread(null)} title={`Thread · ${thread.invoice}`} size="md"
           footer={<button className="btn btn-ghost" onClick={() => setThread(null)}>Close</button>}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[
-              { who: thread.payer, side: 'in', text: 'Hi — when can I expect payment for the May 12 event?', time: '2 days ago' },
-              { who: thread.payee, side: 'out', text: 'Sorry for the delay, end of month is hectic. Releasing today.', time: '2 days ago' },
-              { who: thread.payer, side: 'in', text: "Still don't see it. Stripe says nothing pending.", time: '1 day ago' },
-              { who: thread.payee, side: 'out', text: "Let me check with our bookkeeper, I'll get back today.", time: '1 day ago' },
-              { who: thread.payer, side: 'in', text: 'Filing a dispute — this has gone past 5 business days.', time: '2 hours ago' },
-            ].map((m, i) => (
+            {(thread.messages && thread.messages.length ? thread.messages : []).map((m, i) => (
               <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.side === 'out' ? 'flex-end' : 'flex-start' }}>
                 <span style={{ fontSize: 11.5, color: 'var(--color-muted)', marginBottom: 4 }}>{m.who} · {m.time}</span>
                 <div className={`msg-bubble ${m.side}`}>{m.text}</div>
               </div>
             ))}
+            {!(thread.messages && thread.messages.length) ? (
+              <Empty icon={SP_I.MessageSquare} title="No messages on this thread yet" body="When the worker or vendor messages about this invoice, it'll show here." />
+            ) : null}
           </div>
         </Modal>
       ) : null}

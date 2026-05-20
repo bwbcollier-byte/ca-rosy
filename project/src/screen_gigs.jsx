@@ -463,7 +463,12 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
   const [view, setView] = SG_us('cards');                      // cards | table
   const [filterOpen, setFilterOpen] = SG_us(false);
   const [locOpen, setLocOpen] = SG_us(false);
-  const [city, setCity] = SG_us('Chicago');
+  // Default location filter to the worker's own city (falls back to all if none).
+  const [city, setCity] = SG_us(() => {
+    const c = currentUser?.city;
+    if (!c) return '';
+    return typeof c === 'string' ? c.split(',')[0].trim() : '';
+  });
   const [radius, setRadius] = SG_us(25);
   const events = SG_D.EVENTS.filter(e => e.status === 'open');
   const today = new Date(); today.setHours(0,0,0,0);
@@ -741,7 +746,7 @@ function PageMyGigsWorker({ currentUser, setRoute }) {
   const [tab, setTab] = SG_us('upcoming');
   const [search, setSearch] = SG_us('');
   const [sortBy, setSortBy] = SG_us('date');
-  const today = new Date('2026-05-25');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
   const assignedGigs = currentUser?.id ? SG_D.GIGS.filter(g => g.assignedTo.includes(currentUser.id)) : [];
   // Also surface pending applications as Applied entries (only ones not already assigned)
   const assignedIds = new Set(assignedGigs.map(g => g.id));
