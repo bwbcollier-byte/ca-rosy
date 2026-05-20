@@ -229,7 +229,20 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
 
       {openTx ? (
         <Modal open={!!openTx} onClose={closeTx} title={`Invoice ${openTx.invoice}`} size="md"
-          footer={<><button className="btn btn-ghost" onClick={closeTx}>Close</button><button className="btn btn-coral" onClick={() => { const t = openTx; closeTx(); toast.push({ kind: 'success', title: 'Receipt sent', body: `Sent to ${t.payee}` }); }}>Send receipt</button></>}>
+          footer={<><button className="btn btn-ghost" onClick={closeTx}>Close</button><button className="btn btn-coral" onClick={async () => {
+            const t = openTx;
+            closeTx();
+            const payeeUser = (window.RosyData?.USERS || []).find(u => u.name === t.payee);
+            const to = payeeUser?.email;
+            if (!to) { toast.push({ kind: 'warning', title: 'No email on file', body: `Can't find an email for ${t.payee}.` }); return; }
+            const subject = `Receipt: ${t.invoice} · ${fmtMoney(t.amount)}`;
+            const html = `<!doctype html><html><body style="margin:0;padding:0;background:#FBF7F1;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1F1B16;"><table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#FFFFFF;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><tr><td style="padding:24px 28px 8px;font-family:Georgia,serif;font-size:22px;font-weight:500;">Rosy <span style="color:#F05A56;">Recruits</span></td></tr><tr><td style="padding:8px 28px 4px;"><h1 style="margin:0 0 14px;font-size:24px;">Receipt for ${t.invoice}</h1><table cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.65;color:#3F3933;"><tr><td style="padding:4px 14px 4px 0;color:#6E665D;">Amount</td><td>${fmtMoney(t.amount)}</td></tr><tr><td style="padding:4px 14px 4px 0;color:#6E665D;">Payer</td><td>${t.payer}</td></tr><tr><td style="padding:4px 14px 4px 0;color:#6E665D;">Payee</td><td>${t.payee}</td></tr><tr><td style="padding:4px 14px 4px 0;color:#6E665D;">Date</td><td>${t.date}</td></tr><tr><td style="padding:4px 14px 4px 0;color:#6E665D;">Method</td><td>Stripe Connect</td></tr></table></td></tr><tr><td style="padding:18px 28px 28px;font-size:13px;color:#6E665D;">Thanks for working with Rosy Recruits.</td></tr></table></td></tr></table></body></html>`;
+            try {
+              const r = await window.RosySendEmail?.({ slug: 'worker-paid', to, subject, html, vars: { amount: String(t.amount), event_name: t.invoice, event_date: t.date } });
+              if (r?.ok !== false) toast.push({ kind: 'success', title: 'Receipt sent', body: `Sent to ${t.payee}` });
+              else toast.push({ kind: 'warning', title: "Couldn't send receipt", body: 'Check the console for details.' });
+            } catch (e) { toast.push({ kind: 'error', title: "Couldn't send receipt", body: e.message }); }
+          }}>Send receipt</button></>}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Status</p><Badge kind={openTx.status} /></div>
             <div><p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Amount</p><p className="t-mono-amount" style={{ margin: '4px 0 0', fontSize: 18 }}>{fmtMoney(openTx.amount)}</p></div>
