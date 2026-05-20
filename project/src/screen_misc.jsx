@@ -716,7 +716,20 @@ function TCModal({ open, onClose, onAgree, role }) {
     ? (signed && readAck)
     : (signed && readAck && workerValid);
 
-  const handleAgree = () => {
+  const handleAgree = async () => {
+    // Hash the SSN/EIN with SHA-256 + store only the last 4 digits in the clear.
+    // Avoids plaintext PII at rest. Full TIN never leaves the client.
+    const sha256 = async (s) => {
+      try {
+        const bytes = new TextEncoder().encode(s);
+        const buf = await crypto.subtle.digest('SHA-256', bytes);
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) { return null; }
+    };
+    const ssnDigits = (wSsn || '').replace(/\D/g, '');
+    const einDigits = (wEin || '').replace(/\D/g, '');
+    const ssnHash = ssnDigits ? await sha256(ssnDigits) : null;
+    const einHash = einDigits ? await sha256(einDigits) : null;
     onAgree({
       signatureUrl: signature,
       termsAcceptedAt: new Date().toISOString(),
@@ -727,8 +740,10 @@ function TCModal({ open, onClose, onAgree, role }) {
         tax_class_other: wClassOther.trim() || null,
         exempt_payee_code: wExempt.trim() || null,
         fatca_code: wFatca.trim() || null,
-        ssn: wSsn.trim() || null,
-        ein: wEin.trim() || null,
+        ssn_last4: ssnDigits ? ssnDigits.slice(-4) : null,
+        ssn_hash: ssnHash,
+        ein_last4: einDigits ? einDigits.slice(-4) : null,
+        ein_hash: einHash,
       } : null,
     });
   };
@@ -857,25 +872,15 @@ function ProfileForm({ role, data, onChange }) {
         <div className="field"><label className="field-label">First name</label><input className="input" value={first} onChange={e => setFirst(e.target.value)} placeholder="Jane" /></div>
         <div className="field"><label className="field-label">Last name</label><input className="input" value={last} onChange={e => setLast(e.target.value)} placeholder="Doe" /></div>
       </div>
-      <div className="field"><label className="field-label">Phone number <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(US only)</span></label>
+      <div className="field"><label className="field-label">Phone number</label>
         <input className="input" type="tel" value={phone}
-          onChange={e => {
-            // Auto-format as US (xxx) xxx-xxxx as the user types
-            const d = e.target.value.replace(/\D/g, '').slice(0, 10);
-            let f = d;
-            if (d.length > 6) f = `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
-            else if (d.length > 3) f = `(${d.slice(0,3)}) ${d.slice(3)}`;
-            else if (d.length > 0) f = `(${d}`;
-            setPhone(f);
-          }}
-          placeholder="(555) 555-0100" />
+          onChange={e => setPhone(e.target.value)}
+          placeholder="+1 (555) 555-0100" />
         {(() => {
           const digits = (phone || '').replace(/\D/g, '');
           if (!digits) return null;
-          if (digits.length !== 10) return <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Must be a valid 10-digit US number.</p>;
-          // First digit of area code can't be 0 or 1
-          if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(digits)) return <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Not a valid US phone number.</p>;
-          return <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-teal-dark)' }}>✓ Valid US number</p>;
+          if (digits.length < 7 || digits.length > 15) return <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Enter a valid phone number (7–15 digits).</p>;
+          return <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-teal-dark)' }}>✓ Valid number</p>;
         })()}
       </div>
       <div className="field"><label className="field-label">{role === 'vendor' ? 'Your role at the studio' : 'Your specialty'}</label><input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder={role === 'vendor' ? 'Owner / Creative Director / Lead Designer' : 'Lead designer / Strike crew / Assist'} /></div>

@@ -585,7 +585,7 @@ function canned(context, answers) {
   }
   if (kind === 'profile') {
     return {
-      bio: `${answers.years || '8'} years across floral events in the Chicagoland. Specializing in ${answers.specialty || 'suspended installations and editorial moments'}. Reliable, calm under pressure, takes direction well.`,
+      bio: `${answers.years || '8'} years across floral events. Specializing in ${answers.specialty || 'suspended installations and editorial moments'}. Reliable, calm under pressure, takes direction well.`,
     };
   }
   if (kind === 'contact') {

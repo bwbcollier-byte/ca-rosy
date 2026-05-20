@@ -908,9 +908,11 @@ function PageVenues() {
   const [viewOpen, setViewOpen] = SP_us(null);
   const [editing, setEditing] = SP_us(null);
   const [deleteId, setDeleteId] = SP_us(null);
-  const [venues, setVenues] = SP_us(SP_D.VENUES.map(v => ({ ...v, active: v.active !== false, address: v.address || `${v.name} · ${v.city}`, image: v.image || SP_D.IMAGES.events[(parseInt((v.id.match(/\d+/)?.[0] || '1')) - 1) % SP_D.IMAGES.events.length], parking: v.parking || 'Street parking + nearby lot.', notes: v.notes || 'Standard load-in via rear dock. Single 30A 120V circuit available.' })));
+  // Hydrate from window.RosyData.VENUES (filled by supabase_client buildVenues from rr_venues).
+  const venueSource = () => (window.RosyData?.VENUES || []).map(v => ({ ...v, active: v.active !== false, address: v.address || `${v.name}${v.city ? ' · ' + v.city : ''}`, image: v.image || null, parking: v.parking || '', notes: v.notes || '' }));
+  const [venues, setVenues] = SP_us(venueSource());
   React.useEffect(() => {
-    const sync = () => setVenues(SP_D.VENUES.map(v => ({ ...v, active: v.active !== false, address: v.address || `${v.name} · ${v.city}`, image: v.image || SP_D.IMAGES.events[0], parking: v.parking || '', notes: v.notes || '' })));
+    const sync = () => setVenues(venueSource());
     window.addEventListener('rosy:data-changed', sync);
     return () => window.removeEventListener('rosy:data-changed', sync);
   }, []);
@@ -1265,9 +1267,11 @@ function formatUSPhone(raw) {
   if (core.length <= 6) return `(${core.slice(0,3)}) ${core.slice(3)}`;
   return `(${core.slice(0,3)}) ${core.slice(3,6)}-${core.slice(6,10)}`;
 }
+// Accept any phone number with 7-15 digits (E.164 max). Lets international users
+// onboard without being blocked by the US-only validator.
 function isValidUSPhone(raw) {
   const d = (raw || '').replace(/\D/g, '');
-  return d.length === 10 || (d.length === 11 && d.startsWith('1'));
+  return d.length >= 7 && d.length <= 15;
 }
 
 function SettingsProfile({ user }) {
@@ -1390,8 +1394,7 @@ function SettingsProfile({ user }) {
 
         {role === 'worker' ? (
           <>
-            <div className="field"><label className="field-label">Rate — minimum ($/hr)</label><input className="input" type="number" min={0} value={d.rate_min} onChange={e => set('rate_min', e.target.value)} placeholder="22" /></div>
-            <div className="field"><label className="field-label">Rate — maximum ($/hr)</label><input className="input" type="number" min={0} value={d.rate_max} onChange={e => set('rate_max', e.target.value)} placeholder="50" /></div>
+            <div className="field"><label className="field-label">Hourly rate ($/hr)</label><input className="input" type="number" min={0} value={d.rate_min} onChange={e => set('rate_min', e.target.value)} placeholder="35" /></div>
             <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Services (comma-separated)</label><input className="input" value={d.services} onChange={e => set('services', e.target.value)} placeholder="Lead, Design, Assist, Strike" /></div>
           </>
         ) : null}

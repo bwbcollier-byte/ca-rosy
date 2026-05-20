@@ -89,12 +89,33 @@ const DEFAULT_INVITE_PERMS = {
 
 function PageAdminAssistants() {
   const toast = useToast();
-  const [team, setTeam] = AX_us([
-    { id: 'a1', name: 'Ben Reyes',       email: 'ben@rosyrecruits.com',  preset: 'owner',     perms: DEFAULT_PERMS.owner,     status: 'active', last: 'Active now' },
-    { id: 'a2', name: 'Riley Chen',      email: 'riley@rosyrecruits.com', preset: 'assistant', perms: DEFAULT_PERMS.assistant, status: 'active', last: '2 minutes ago' },
-    { id: 'a3', name: 'Devon Park',      email: 'devon@rosyrecruits.com', preset: 'support',   perms: DEFAULT_PERMS.support,   status: 'active', last: '1 hour ago' },
-    { id: 'a4', name: 'Lila Thompson',   email: 'lila@rosyrecruits.com',  preset: 'assistant', perms: DEFAULT_PERMS.assistant, status: 'invited', last: 'Invited 2 days ago' },
-  ]);
+  // Hydrate from rr_profiles (admins only) — first admin gets owner preset, rest assistant.
+  // Includes pending invites from rr_admin_invites at the bottom.
+  const buildTeam = () => {
+    const users = window.RosyData?.USERS || [];
+    const admins = users.filter(u => u.role === 'admin').map((u, i) => ({
+      id: u.id,
+      name: u.name || (u.email || '').split('@')[0],
+      email: u.email,
+      preset: i === 0 ? 'owner' : 'assistant',
+      perms: i === 0 ? DEFAULT_PERMS.owner : DEFAULT_PERMS.assistant,
+      status: u.status === 'inactive' ? 'inactive' : 'active',
+      last: u.lastActive ? 'Recently active' : 'Active',
+    }));
+    const invites = (window.RosyStores?.adminInvites || []).filter(inv => inv.status === 'pending').map(inv => ({
+      id: inv.id, name: inv.email.split('@')[0], email: inv.email,
+      preset: inv.preset || 'assistant',
+      perms: DEFAULT_PERMS[inv.preset] || DEFAULT_PERMS.assistant,
+      status: 'invited', last: 'Invited',
+    }));
+    return [...admins, ...invites];
+  };
+  const [team, setTeam] = AX_us(buildTeam());
+  AX_ue(() => {
+    const sync = () => setTeam(buildTeam());
+    window.addEventListener('rosy:data-changed', sync);
+    return () => window.removeEventListener('rosy:data-changed', sync);
+  }, []);
   const [editing, setEditing] = AX_us(null);      // permissions editor (gear)
   const [viewing, setViewing] = AX_us(null);      // read-only detail drawer (card click)
   const [inviteOpen, setInviteOpen] = AX_us(false);
@@ -481,7 +502,7 @@ function PageBroadcast() {
     if (schedule === 'schedule') {
       toast.push({ kind: 'info', title: 'Broadcast scheduled', body: `Will send to ${reach} recipients on ${scheduleTime}.` });
     } else if (channels.email) {
-      toast.push({ kind: okCount ? 'success' : 'warning', title: `Email broadcast sent`, body: `${okCount} delivered${failCount ? `, ${failCount} failed` : ''} (demo mode redirects all to ben@pronocoders.com).` });
+      toast.push({ kind: okCount ? 'success' : 'warning', title: `Email broadcast sent`, body: `${okCount} delivered${failCount ? `, ${failCount} failed` : ''}.` });
     } else {
       toast.push({ kind: 'info', title: 'Broadcast queued', body: 'In-app/push/sms channels are placeholders in the demo.' });
     }

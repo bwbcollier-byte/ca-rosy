@@ -93,8 +93,8 @@ function ImageUpload({ value, onChange, label = 'Upload photo', size = 96, round
   const onFile = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
-    if (f.size > 8 * 1024 * 1024) {
-      toast.push({ kind: 'warning', title: 'Image too large', body: `${(f.size / 1024 / 1024).toFixed(1)}MB exceeds the 8MB limit.` });
+    if (f.size > 2 * 1024 * 1024) {
+      toast.push({ kind: 'warning', title: 'Image too large', body: `${(f.size / 1024 / 1024).toFixed(1)}MB exceeds the 2MB limit — please use a smaller photo.` });
       e.target.value = '';
       return;
     }
@@ -110,7 +110,7 @@ function ImageUpload({ value, onChange, label = 'Upload photo', size = 96, round
       <div className="col" style={{ gap: 8 }}>
         <button type="button" className="btn btn-ghost-amber btn-sm" onClick={() => inputRef.current && inputRef.current.click()}><X_I.UploadCloud size={14} />{preview ? 'Replace photo' : label}</button>
         {preview ? <button type="button" className="btn-link" style={{ fontSize: 12, textAlign: 'left', padding: 0 }} onClick={() => { setPreview(null); onChange && onChange(null); }}>Remove</button> : null}
-        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--color-muted-soft)' }}>JPG or PNG, up to 8MB.</p>
+        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--color-muted-soft)' }}>JPG or PNG, up to 2MB.</p>
         <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onFile} />
       </div>
     </div>
@@ -474,11 +474,25 @@ function PageBuildTeam({ currentUser }) {
   const [open, setOpen] = X_us(false);
   const [demoOpen, setDemoOpen] = X_us(false);
   const toast = useToast();
-  const recent = [
-    { event: 'Wheeler Wedding', date: '2026-06-23', team: 7, status: 'Confirmed', cost: 4900 },
-    { event: 'Atelier Press Preview', date: '2026-05-28', team: 3, status: 'Partial', cost: 1240 },
-    { event: 'Wave Hill Garden Brunch', date: '2026-05-18', team: 3, status: 'Completed', cost: 588 },
-  ];
+  // Real recent events for this vendor (or all if admin) from rr_events.
+  const buildRecent = () => {
+    const events = window.RosyData?.EVENTS || [];
+    const gigs   = window.RosyData?.GIGS || [];
+    const mine   = currentUser?.role === 'admin' ? events : events.filter(e => e.vendorId === currentUser?.id);
+    return mine.slice(0, 5).map(e => ({
+      event: e.name || 'Untitled event',
+      date: e.date || '',
+      team: gigs.filter(g => g.eventId === e.id).length,
+      status: e.status === 'confirmed' ? 'Confirmed' : e.status === 'completed' ? 'Completed' : 'Partial',
+      cost: gigs.filter(g => g.eventId === e.id).reduce((s, g) => s + (g.rate || 0) * (g.hours || 4), 0) || 0,
+    }));
+  };
+  const [recent, setRecent] = X_us(buildRecent());
+  X_ue(() => {
+    const sync = () => setRecent(buildRecent());
+    window.addEventListener('rosy:data-changed', sync);
+    return () => window.removeEventListener('rosy:data-changed', sync);
+  }, [currentUser?.id]);
   return (
     <div className="content fade-up">
       <div className="card" style={{ background: 'var(--color-brand-mint)', border: 0, borderRadius: 24, padding: 36, marginBottom: 24 }}>
@@ -531,8 +545,10 @@ function PageBuildTeam({ currentUser }) {
         <table className="rosy-table">
           <thead><tr><th>Event</th><th>Date</th><th>Team size</th><th>Status</th><th>Cost</th><th></th></tr></thead>
           <tbody>
-            {recent.map(r => (
-              <tr key={r.event}>
+            {recent.length === 0 ? (
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 28, color: 'var(--color-muted)', fontSize: 13.5 }}>No recent builds yet. Tap <strong>Build my team</strong> above to create your first.</td></tr>
+            ) : recent.map((r, i) => (
+              <tr key={r.event + i}>
                 <td style={{ fontWeight: 600 }}>{r.event}</td>
                 <td style={{ fontSize: 13, color: 'var(--color-muted)' }}>{fmtDate(r.date, 'mdy-dots')}</td>
                 <td>{r.team} workers</td>

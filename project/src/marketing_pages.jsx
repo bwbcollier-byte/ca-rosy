@@ -109,7 +109,7 @@ function MarketingFooter({ setRoute, goToAuth }) {
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 32, alignItems: 'flex-start' }}>
           <div>
             <div className="mk-logo" style={{ marginBottom: 12 }}><RoseLogo />Rosy<span className="accent"> Recruits</span></div>
-            <p style={{ margin: 0, color: 'var(--color-muted)', fontSize: 13.5, maxWidth: 320 }}>Built in Chicago for floral event teams across Chicagoland, with Stripe Connect for instant worker payouts.</p>
+            <p style={{ margin: 0, color: 'var(--color-muted)', fontSize: 13.5, maxWidth: 320 }}>The hiring and payments platform for floral event studios, with Stripe Connect for instant worker payouts.</p>
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
               <button className="btn btn-coral btn-sm" onClick={() => goToAuth('signup')}>Get started</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setRoute('contact')}>Talk to us</button>
