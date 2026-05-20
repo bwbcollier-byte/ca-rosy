@@ -561,7 +561,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
                     <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>
                     {u.rating ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '2px 8px', background: '#FEF3C7', color: '#92400E', borderRadius: 9999, fontWeight: 600 }}><SP_I.Star size={11} style={{ fill: '#F59E0B' }} />{u.rating}</span> : null}
                   </div>
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>{u.city || '—'}{u.gigs ? ` · ${u.gigs} gigs` : ''}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>{u.cityFmt || '—'}{u.gigs ? ` · ${u.gigs} gigs` : ''}</p>
                 </div>
               </div>
             ))}
@@ -608,7 +608,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
                   </div>
                 </td>
                 <td style={{ fontSize: 13 }}><span style={{ textTransform: 'capitalize', fontWeight: 500 }}>{u.role}</span><br/><span className="t-muted" style={{ fontSize: 12 }}>{u.company}</span></td>
-                <td style={{ fontSize: 13 }}>{u.city}</td>
+                <td style={{ fontSize: 13 }}>{u.cityFmt}</td>
                 <td>{u.rating ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13 }}><SP_I.Star size={12} style={{ color: '#F59E0B', fill: '#F59E0B' }} />{u.rating}</span> : <span className="t-muted">—</span>}</td>
                 <td style={{ fontSize: 13 }}>{u.gigs ?? '—'}</td>
                 <td><Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge></td>
@@ -853,9 +853,19 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
         <>
           <div className="grid-2" style={{ gap: 12 }}>
             <KV label="Email" value={user.email} />
+            <KV label="Phone" value={user.phone || '—'} />
             <KV label="Joined" value={fmtDate(user.joined, 'mdy-dots')} />
-            <KV label="Location" value={user.city} />
             <KV label="Role" value={<span style={{ textTransform: 'capitalize' }}>{user.role}</span>} />
+            {user.role !== 'worker' ? <KV label="Company / studio" value={user.company || '—'} /> : null}
+            {user.title ? <KV label="Title" value={user.title} /> : null}
+            <KV label="Location" value={user.cityFmt || '—'} />
+            {user.street ? <KV label="Street" value={user.street} /> : null}
+            {user.zip ? <KV label="ZIP" value={user.zip} /> : null}
+            {user.role === 'worker' && user.hourlyRate != null ? <KV label="Hourly rate" value={`$${user.hourlyRate}/hr`} /> : null}
+            {user.role !== 'worker' && user.vendorRate != null ? <KV label="Vendor day rate" value={`$${user.vendorRate}/day`} /> : null}
+            {user.websiteUrl ? <KV label="Website" value={user.websiteUrl} /> : null}
+            {user.role === 'worker' && user.skills ? <KV label="Skills" value={Array.isArray(user.skills) ? user.skills.join(', ') : user.skills} /> : null}
+            <KV label="Status" value={<span style={{ textTransform: 'capitalize' }}>{user.status}</span>} />
           </div>
           <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Bio</h4>
           <p style={{ margin: 0, color: user.bio ? 'var(--color-body)' : 'var(--color-muted)', fontSize: 14, lineHeight: 1.55, fontStyle: user.bio ? 'normal' : 'italic' }}>

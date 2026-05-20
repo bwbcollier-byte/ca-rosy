@@ -89,6 +89,7 @@ function buildUsers(profiles, vendors, workers) {
     const v = vById[p.id];
     const w = wById[p.id];
     const name = `${p.first_name || ''} ${p.last_name || ''}`.trim() || (p.email || '').split('@')[0];
+    const cityFmt = p.city ? `${p.city}, ${p.state || ''}`.replace(/, $/, '') : null;
     return {
       id:      p.id,
       name,
@@ -97,15 +98,35 @@ function buildUsers(profiles, vendors, workers) {
       email:   p.email,
       role:    p.role,
       photo:   p.avatar_url || v?.logo_url || null,
-      phone:   p.phone || null,
+      phone:   p.phone || v?.business_phone || null,
       title:   p.title || null,
       bio:     p.bio || v?.business_description || null,
+      description: p.description || v?.business_description || null,
       company: v?.company_name || p.title || (p.role === 'admin' ? 'Rosy Recruits' : null),
       status:  p.status || 'active',
       verified: p.verified === false ? false : (p.verified === true ? true : null),
       onboarding_complete: !!p.onboarding_complete,
       joined:  (p.created_at || '').slice(0, 10),
-      city:    p.city ? `${p.city}, ${p.state || ''}`.replace(/, $/, '') : null,
+      // Address fields — keep raw + formatted so the admin edit form has separate inputs
+      // while the read view can still show "City, State".
+      street:  p.street || null,
+      city:    p.city || null,
+      cityFmt,
+      state:   p.state || null,
+      zip:     p.zip || null,
+      geoAddress: p.geo_address || v?.business_address || null,
+      websiteUrl: v?.website_url || null,
+      // Worker-specific
+      hourlyRate: w?.hourly_rate ?? null,
+      skills:  w?.skills || null,
+      services: w?.services || null,
+      addresses: w?.addresses || null,
+      // Vendor-specific
+      vendorRate: v?.vendor_rate ?? null,
+      businessAddress: v?.business_address || null,
+      businessPhone: v?.business_phone || null,
+      serviceCategories: v?.service_categories || null,
+      // Shared
       rating:  v?.rating || w?.rating || null,
       gigs:    v?.gigs_completed || w?.gigs_completed || null,
     };
