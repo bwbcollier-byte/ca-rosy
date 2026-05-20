@@ -525,7 +525,7 @@ function canned(context, answers) {
   const kind = context.kind;
   if (kind === 'event') {
     return {
-      name: answers.eventName || 'Garden Society Spring Gala',
+      name: answers.eventName || 'Untitled event',
       desc: `A ${answers.style || 'modern garden'} ${answers.kind || 'evening reception'} for ${answers.guests || '180'} guests. ${answers.notes || 'Suspended floral installations over the dance floor, twelve dinner tables with low garden compositions in a peach and ivory palette.'} Strike crew loads out after midnight.`,
     };
   }

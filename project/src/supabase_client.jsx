@@ -125,6 +125,7 @@ function buildUsers(profiles, vendors, workers) {
       workerSignatureUrl: p.worker_signature_url || null,
       w9Completed: p.w9_completed === true,
       w9Data: p.w9_data || null,
+      emailNotifications: p.email_notifications || null,
       // Worker-specific
       hourlyRate: w?.hourly_rate ?? null,
       skills:  w?.skills || null,

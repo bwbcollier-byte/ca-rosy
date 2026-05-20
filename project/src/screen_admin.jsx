@@ -1209,9 +1209,9 @@ function PageSettings({ role, currentUser }) {
         </div>
         <div className="col" style={{ gap: 16 }}>
           {tab === 'profile' ? <SettingsProfile user={currentUser} /> : null}
-          {tab === 'account' ? <SettingsAccount /> : null}
-          {tab === 'notifications' ? <SettingsNotifications /> : null}
-          {tab === 'payouts' ? <SettingsPayouts /> : null}
+          {tab === 'account' ? <SettingsAccount user={currentUser} /> : null}
+          {tab === 'notifications' ? <SettingsNotifications user={currentUser} /> : null}
+          {tab === 'payouts' ? <SettingsPayouts user={currentUser} /> : null}
           {tab === 'privacy' && role !== 'admin' ? <SettingsPrivacy role={role} /> : null}
           {tab === 'team' && role !== 'admin' ? <SettingsTeam /> : null}
           {tab === 'danger' && role !== 'admin' ? <SettingsDanger /> : null}
@@ -1410,19 +1410,63 @@ function SettingsProfile({ user }) {
   );
 }
 
-function SettingsAccount() {
+function SettingsAccount({ user }) {
+  const toast = useToast();
+  const [sending, setSending] = SP_us(false);
+  const sendReset = async () => {
+    if (!user?.email) { toast.push({ kind: 'warning', title: 'No email on file' }); return; }
+    setSending(true);
+    try {
+      const r = await fetch('/api/auth/password-reset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email }),
+      });
+      if (!r.ok) throw new Error('Reset request failed');
+      toast.push({ kind: 'success', title: 'Password reset sent', body: `Check ${user.email} for the link.` });
+    } catch (e) {
+      toast.push({ kind: 'error', title: "Couldn't send reset", body: 'Please try again in a moment.' });
+    } finally { setSending(false); }
+  };
   return (
     <div className="card">
       <h3 className="card-title" style={{ marginBottom: 16 }}>Account</h3>
       <div className="col" style={{ gap: 16 }}>
-        <div className="field"><label className="field-label">Password</label><input className="input" type="password" defaultValue="••••••••••" /></div>
+        <div>
+          <p className="field-label" style={{ marginBottom: 4 }}>Email</p>
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--color-body)' }}>{user?.email || '—'}</p>
+        </div>
+        <div>
+          <p className="field-label" style={{ marginBottom: 4 }}>Password</p>
+          <p style={{ margin: '0 0 10px', fontSize: 13.5, color: 'var(--color-muted)' }}>We'll email you a secure link to set a new password.</p>
+          <button className="btn btn-ghost btn-sm" onClick={sendReset} disabled={sending}>{sending ? 'Sending…' : 'Email me a reset link'}</button>
+        </div>
       </div>
     </div>
   );
 }
 
-function SettingsNotifications() {
-  const [s, setS] = SP_us({ apps: true, msgs: true, payments: true, weekly: false });
+function SettingsNotifications({ user }) {
+  const toast = useToast();
+  // Persisted in rr_profiles.email_notifications jsonb. Default each preference to true.
+  const initial = () => {
+    const stored = user?.emailNotifications || user?.email_notifications || {};
+    return {
+      apps:     stored.apps     !== false,
+      msgs:     stored.msgs     !== false,
+      payments: stored.payments !== false,
+      weekly:   stored.weekly === true,
+    };
+  };
+  const [s, setS] = SP_us(initial());
+  SP_ue(() => { setS(initial()); }, [user?.id]);
+  const save = async (next) => {
+    setS(next);
+    if (!user?.id || !window.sb) return;
+    try {
+      const { error } = await window.sb.from('rr_profiles').update({ email_notifications: next }).eq('id', user.id);
+      if (error) throw error;
+    } catch (e) { toast.push({ kind: 'warning', title: "Couldn't save preferences", body: 'Try again in a moment.' }); }
+  };
   return (
     <div className="card">
       <h3 className="card-title" style={{ marginBottom: 16 }}>Notifications</h3>
@@ -1435,7 +1479,7 @@ function SettingsNotifications() {
         ].map(([k, label]) => (
           <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--color-hairline)' }}>
             <span>{label}</span>
-            <span className={`toggle ${s[k] ? 'on' : ''}`} onClick={() => setS(x => ({ ...x, [k]: !x[k] }))} />
+            <span className={`toggle ${s[k] ? 'on' : ''}`} onClick={() => save({ ...s, [k]: !s[k] })} />
           </div>
         ))}
       </div>
@@ -1443,17 +1487,67 @@ function SettingsNotifications() {
   );
 }
 
-function SettingsPayouts() {
+function SettingsPayouts({ user }) {
+  // Pull live Stripe Connect status. Show real state — connected / not-connected — instead
+  // of a hardcoded "Bank of America ••••3041" placeholder that lied to every user.
+  const toast = useToast();
+  const [status, setStatus] = SP_us(null); // null = loading, false = not connected, object = details
+  const [loading, setLoading] = SP_us(false);
+  SP_ue(() => {
+    if (!user?.id) return;
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/stripe/connect-status?userId=' + encodeURIComponent(user.id));
+        if (!r.ok) { if (!cancel) setStatus(false); return; }
+        const d = await r.json();
+        if (!cancel) setStatus(d.payoutsEnabled ? d : false);
+      } catch (e) { if (!cancel) setStatus(false); }
+    })();
+    return () => { cancel = true; };
+  }, [user?.id]);
+  const openOnboarding = async () => {
+    if (!user?.id || !user?.email) return;
+    setLoading(true);
+    try {
+      const r = await fetch('/api/stripe/connect-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id, email: user.email,
+          returnUrl: window.location.origin + '/#app/settings?stripe=connected',
+          refreshUrl: window.location.origin + '/#app/settings?stripe=refresh',
+        }),
+      });
+      const d = await r.json();
+      if (d?.url) { window.location.href = d.url; return; }
+      toast.push({ kind: 'warning', title: "Couldn't open Stripe", body: 'Please try again in a moment.' });
+    } catch (e) {
+      toast.push({ kind: 'error', title: "Couldn't open Stripe", body: 'Check your connection and try again.' });
+    } finally { setLoading(false); }
+  };
   return (
     <div className="card">
       <h3 className="card-title" style={{ marginBottom: 16 }}>Payouts</h3>
-      <div style={{ background: 'var(--rosy-teal-soft)', border: '1px solid var(--rosy-teal-border)', borderRadius: 12, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-        <div>
-          <p style={{ margin: 0, fontWeight: 600 }}>Stripe Connect — Connected</p>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--rosy-teal-dark)' }}>Payouts to Bank of America ••••3041 · 1–2 business days</p>
+      {status === null ? (
+        <div style={{ padding: 16, color: 'var(--color-muted)', fontSize: 13.5 }}>Checking Stripe connection…</div>
+      ) : status === false ? (
+        <div style={{ background: 'var(--color-surface-soft)', border: '1px dashed var(--color-hairline-strong)', borderRadius: 12, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+          <div>
+            <p style={{ margin: 0, fontWeight: 600 }}>Stripe Connect — Not connected</p>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-muted)' }}>Connect your bank to {user?.role === 'vendor' ? 'fund gigs' : 'receive payouts'}. Takes ~2 minutes.</p>
+          </div>
+          <button className="btn btn-coral btn-sm" onClick={openOnboarding} disabled={loading}>{loading ? 'Opening Stripe…' : 'Connect Stripe'}</button>
         </div>
-        <button className="btn btn-ghost-teal btn-sm">Manage in Stripe</button>
-      </div>
+      ) : (
+        <div style={{ background: 'var(--rosy-teal-soft)', border: '1px solid var(--rosy-teal-border)', borderRadius: 12, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+          <div>
+            <p style={{ margin: 0, fontWeight: 600 }}>Stripe Connect — Connected</p>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--rosy-teal-dark)' }}>{status?.bankLast4 ? `Payouts to bank ••••${status.bankLast4}` : 'Payouts ready'} · 1–2 business days</p>
+          </div>
+          <button className="btn btn-ghost-teal btn-sm" onClick={openOnboarding}>Manage in Stripe</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1473,16 +1567,39 @@ function SettingsDanger() {
 function PageAudit() {
   const toast = useToast();
   const [search, setSearch] = SP_us('');
-  const entries = [
-    { who: 'Ben Reyes',    what: 'Released disputed payment Atelier #4015-D',  when: '2 minutes ago', kind: 'payment' },
-    { who: 'Mariana Cruz', what: 'Created event "Wheeler Wedding"',            when: '14 minutes ago', kind: 'event' },
-    { who: 'Naomi Park',   what: 'Confirmed gig: Carter–Liang Reception (Lead)', when: '1 hour ago', kind: 'gig' },
-    { who: 'System',       what: 'Auto-approved hours for 6 completed gigs',   when: '3 hours ago', kind: 'system' },
-    { who: 'Theo Akande',  what: 'Updated company profile for Floral Forge',   when: '5 hours ago', kind: 'profile' },
-    { who: 'Henry Lim',    what: 'Filed dispute on Atelier #4015-D',           when: 'Yesterday',    kind: 'payment' },
-    { who: 'Ben Reyes',    what: 'Suspended user: spam-account-2025',          when: 'Yesterday',    kind: 'admin' },
-    { who: 'System',       what: 'Stripe payout batch processed ($24,180)',    when: '2 days ago',   kind: 'system' },
-  ];
+  // Hydrate from rr_audit_log instead of the hardcoded demo entries.
+  const [entries, setEntries] = SP_us([]);
+  SP_ue(() => {
+    let cancel = false;
+    (async () => {
+      if (!window.sb) return;
+      try {
+        const { data, error } = await window.sb.from('rr_audit_log')
+          .select('id, admin_id, action, target_type, target_id, details, created_at')
+          .order('created_at', { ascending: false }).limit(200);
+        if (error) { console.warn('rr_audit_log fetch failed:', error.message); return; }
+        if (cancel) return;
+        const users = window.RosyData?.USERS || [];
+        const byId = Object.fromEntries(users.map(u => [u.id, u]));
+        const fmtAgo = (iso) => { try { const t = (Date.now() - new Date(iso)) / 1000; if (t < 60) return 'Just now'; if (t < 3600) return `${Math.round(t/60)}m ago`; if (t < 86400) return `${Math.round(t/3600)}h ago`; return `${Math.round(t/86400)}d ago`; } catch (e) { return ''; } };
+        const kindFor = (action, target) => {
+          if (target === 'rr_gigs' || /gig/i.test(action)) return 'gig';
+          if (target === 'rr_events' || /event/i.test(action)) return 'event';
+          if (target === 'rr_profiles' || /profile/i.test(action)) return 'profile';
+          if (/payment|payout|stripe/i.test(action)) return 'payment';
+          if (/suspend|delete|restore/i.test(action)) return 'admin';
+          return 'system';
+        };
+        setEntries(data.map(r => ({
+          who: byId[r.admin_id]?.name || (r.admin_id ? 'Admin' : 'System'),
+          what: r.details?.summary || `${r.action || 'updated'} ${r.target_type || ''}${r.target_id ? ' ' + String(r.target_id).slice(0, 8) : ''}`.trim(),
+          when: fmtAgo(r.created_at),
+          kind: kindFor(r.action || '', r.target_type || ''),
+        })));
+      } catch (e) { console.warn('audit log load failed:', e); }
+    })();
+    return () => { cancel = true; };
+  }, []);
   const colorByKind = { payment: 'var(--rosy-teal-soft)', event: 'var(--color-brand-peach)', gig: 'var(--rosy-teal-soft)', system: 'var(--color-surface-card)', profile: 'var(--color-surface-soft)', admin: 'var(--rosy-coral-soft)' };
   const filtered = entries.filter(e => {
     if (!search.trim()) return true;
