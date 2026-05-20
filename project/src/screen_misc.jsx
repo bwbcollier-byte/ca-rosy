@@ -585,8 +585,13 @@ function OnboardingPage({ onComplete }) {
     setSubmitting(true);
     const primary = role.vendor ? 'vendor' : 'worker';
     const formData = { ...(role.vendor ? vendorData : workerData), terms: termsPayload };
+    // Hard escape — if app.jsx hangs, re-enable the button after 5s so the user isn't trapped.
+    const escape = setTimeout(() => setSubmitting(false), 5000);
     try { await onComplete(primary, formData); } catch (e) { console.warn('onComplete failed:', e); }
-    // Keep button disabled — by this point app.jsx has flipped mode away from 'onboarding'.
+    clearTimeout(escape);
+    // App.jsx flips mode immediately so this component unmounts; the line below only
+    // matters if something prevented that, in which case the user gets the button back.
+    setSubmitting(false);
   };
 
   return (

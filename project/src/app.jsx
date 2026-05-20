@@ -298,10 +298,16 @@ function App() {
         <OnboardingPage onComplete={async (pickedRole, formData) => {
           // Pin role from the onboarding pick so the user lands on THEIR dashboard, not admin.
           if (pickedRole) setRole(pickedRole);
-          // Drop a personal welcome notification so the bell badge lights up immediately AND
-          // a row lands in Supabase so a reload still has it.
+          // FLIP THE SCREEN IMMEDIATELY — DB writes happen in background below so the
+          // Continue button doesn't sit at "Saving…" while large data-URL photo + signature
+          // bytes upload to Supabase + Postmark sends the welcome email.
+          setMode('app');
+          setRoute('dashboard');
+          setWelcomeOpen(true);
           const me = sessionUserFromData || { first: formData?.first || '', role: pickedRole, id: sessionUserId };
           const meFirst = (formData?.first) || me?.first || (me?.name || '').split(' ')[0] || '';
+          // Bound any single DB await to 8s — if Supabase stalls we don't trap the UI.
+          const timed = (p, ms = 8000) => Promise.race([p, new Promise(r => setTimeout(() => r({ timedOut: true }), ms))]);
           const niceRole = (me?.role || pickedRole || 'account').replace(/^./, c => c.toUpperCase());
           // Pull title/body from the shared notification template so the platform
           // has a single source of truth (admins can edit it later).
@@ -323,9 +329,10 @@ function App() {
             });
             window.dispatchEvent(new CustomEvent('rosy:data-changed'));
             if (window.sb && me?.id) {
-              await window.sb.from('rr_notifications').insert({
+              // Fire-and-forget — none of this should block the UI from advancing.
+              timed(window.sb.from('rr_notifications').insert({
                 user_id: me.id, type: 'welcome', title, body, link: '#tour', read: false,
-              });
+              }));
               // Persist profile completion + role + onboarding form data so the
               // verification gate fires immediately AND the user's name/photo/bio show up.
               try {
@@ -358,8 +365,10 @@ function App() {
                   w9_completed:         pickedRole === 'worker' ? !!terms?.w9 : false,
                   w9_data:              pickedRole === 'worker' ? (terms?.w9 || null) : null,
                 };
-                const { error: pErr } = await window.sb.from('rr_profiles').update(profilePayload).eq('id', me.id);
-                if (pErr) console.warn('rr_profiles update failed:', pErr.message);
+                // Fire-and-forget — the UI has already advanced to /app/dashboard above.
+                // We use timed() to keep the awaits bounded and report errors via console
+                // without blocking on Supabase / network stalls.
+                timed(window.sb.from('rr_profiles').update(profilePayload).eq('id', me.id)).then(r => { if (r?.error) console.warn('rr_profiles update failed:', r.error.message); else if (r?.timedOut) console.warn('rr_profiles update timed out'); });
 
                 // Vendor-specific profile row.
                 if (pickedRole === 'vendor') {
@@ -374,8 +383,7 @@ function App() {
                     show_business_hours: !!formData?.hours,
                     business_hours: formData?.hours && formData?.dayHours ? formData.dayHours : null,
                   };
-                  const { error: vErr } = await window.sb.from('rr_vendor_profiles').upsert(vendorPayload, { onConflict: 'id' });
-                  if (vErr) console.warn('rr_vendor_profiles upsert failed:', vErr.message);
+                  timed(window.sb.from('rr_vendor_profiles').upsert(vendorPayload, { onConflict: 'id' })).then(r => { if (r?.error) console.warn('rr_vendor_profiles upsert failed:', r.error.message); else if (r?.timedOut) console.warn('rr_vendor_profiles upsert timed out'); });
                 }
                 if (pickedRole === 'worker') {
                   const workerPayload = {
@@ -383,8 +391,7 @@ function App() {
                     services: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
                     addresses: addr ? [addr] : null,
                   };
-                  const { error: wErr } = await window.sb.from('rr_worker_profiles').upsert(workerPayload, { onConflict: 'id' });
-                  if (wErr) console.warn('rr_worker_profiles upsert failed:', wErr.message);
+                  timed(window.sb.from('rr_worker_profiles').upsert(workerPayload, { onConflict: 'id' })).then(r => { if (r?.error) console.warn('rr_worker_profiles upsert failed:', r.error.message); else if (r?.timedOut) console.warn('rr_worker_profiles upsert timed out'); });
                 }
 
                 // Reflect in-memory too so the gate + admin view see the new data without waiting for hydration
@@ -401,22 +408,20 @@ function App() {
                   window.dispatchEvent(new CustomEvent('rosy:data-changed'));
                 }
               } catch (e) { console.warn('profile upsert failed:', e); }
-              // Send Postmark welcome email (demo-mode redirects to ben@pronocoders.com)
+              // Send Postmark welcome email — fire-and-forget so a slow Postmark call
+              // can't block the user behind "Saving…".
               try {
                 const slug = pickedRole === 'vendor' ? 'welcome-vendor' : 'welcome-worker';
                 if (window.RosySendEmail) {
-                  await window.RosySendEmail({
+                  window.RosySendEmail({
                     slug,
                     to: me.email,
                     vars: { first_name: me.first || me.name || 'there', role: pickedRole },
-                  });
+                  }).catch(e => console.warn('welcome email failed:', e));
                 }
               } catch (e) { console.warn('welcome email failed:', e); }
             }
           } catch (e) { console.warn('welcome notif failed:', e); }
-          setMode('app');
-          setRoute('dashboard');
-          setWelcomeOpen(true);
         }} />
       </ToastHost>
     );
@@ -481,6 +486,12 @@ function App() {
         <ToastHost>
           <OnboardingPage onComplete={async (pickedRole, formData) => {
             if (pickedRole) setRole(pickedRole);
+            // FLIP THE SCREEN IMMEDIATELY — DB writes happen in background.
+            setProfileFromDb(p => ({ ...(p || {}), role: pickedRole, onboarding_complete: true, verified: false, id: sessionUserId }));
+            setMode('app');
+            setRoute('dashboard');
+            window.location.hash = 'app/dashboard';
+            const timed = (p, ms = 8000) => Promise.race([p, new Promise(r => setTimeout(() => r({ timedOut: true }), ms))]);
             try {
               if (window.sb && sessionUserId) {
                 const addr = (formData?.address || '').trim();
@@ -489,10 +500,8 @@ function App() {
                 const cityVal = m ? m[2].trim() : (addr || null);
                 const stateVal = m ? m[3].trim() : null;
                 const zipVal = m && m[4] ? m[4].trim() : null;
-                // UPDATE not UPSERT — the trigger already created the row; UPSERT fails
-                // the NOT-NULL email constraint before conflict resolution.
                 const terms = formData?.terms || null;
-                await window.sb.from('rr_profiles').update({
+                timed(window.sb.from('rr_profiles').update({
                   role: pickedRole, onboarding_complete: true, verified: false,
                   first_name: formData?.first || null,
                   last_name:  formData?.last  || null,
@@ -509,9 +518,9 @@ function App() {
                   w9_signature_url:     pickedRole === 'worker' ? (terms?.signatureUrl || null) : null,
                   w9_completed:         pickedRole === 'worker' ? !!terms?.w9 : false,
                   w9_data:              pickedRole === 'worker' ? (terms?.w9 || null) : null,
-                }).eq('id', sessionUserId);
+                }).eq('id', sessionUserId)).then(r => { if (r?.error) console.warn('rr_profiles update failed:', r.error.message); else if (r?.timedOut) console.warn('rr_profiles update timed out'); });
                 if (pickedRole === 'vendor') {
-                  await window.sb.from('rr_vendor_profiles').upsert({
+                  timed(window.sb.from('rr_vendor_profiles').upsert({
                     id: sessionUserId,
                     company_name: formData?.company || null,
                     business_description: formData?.bio || null,
@@ -521,21 +530,17 @@ function App() {
                     service_categories: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
                     show_business_hours: !!formData?.hours,
                     business_hours: formData?.hours && formData?.dayHours ? formData.dayHours : null,
-                  }, { onConflict: 'id' });
+                  }, { onConflict: 'id' })).then(r => { if (r?.error) console.warn('rr_vendor_profiles upsert failed:', r.error.message); else if (r?.timedOut) console.warn('rr_vendor_profiles upsert timed out'); });
                 }
                 if (pickedRole === 'worker') {
-                  await window.sb.from('rr_worker_profiles').upsert({
+                  timed(window.sb.from('rr_worker_profiles').upsert({
                     id: sessionUserId,
                     services: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
                     addresses: addr ? [addr] : null,
-                  }, { onConflict: 'id' });
+                  }, { onConflict: 'id' })).then(r => { if (r?.error) console.warn('rr_worker_profiles upsert failed:', r.error.message); else if (r?.timedOut) console.warn('rr_worker_profiles upsert timed out'); });
                 }
-                setProfileFromDb(p => ({ ...(p || {}), role: pickedRole, onboarding_complete: true, verified: false, id: sessionUserId }));
               }
             } catch (e) { console.warn(e); }
-            setMode('app');
-            setRoute('dashboard');
-            window.location.hash = 'app/dashboard';
           }} />
         </ToastHost>
       );
