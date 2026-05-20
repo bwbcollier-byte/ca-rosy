@@ -420,8 +420,18 @@ function App() {
 
   const handleSignOut = async () => {
     signingOutRef.current = true;
+    // Hard escape — if anything below hangs, force a full reload to marketing after 3s.
+    const escape = setTimeout(() => {
+      console.warn('[logout] hard escape — forcing reload to marketing');
+      try {
+        Object.keys(localStorage).filter(k => k.startsWith('sb-') || k.startsWith('supabase.')).forEach(k => localStorage.removeItem(k));
+        Object.keys(sessionStorage).filter(k => k.startsWith('sb-') || k.startsWith('supabase.')).forEach(k => sessionStorage.removeItem(k));
+      } catch (e) {}
+      window.location.replace(window.location.pathname + '#marketing');
+      setTimeout(() => window.location.reload(), 50);
+    }, 3000);
     const minSplash = new Promise(r => setTimeout(r, 400));
-    // Bound the signOut call — scope:'global' or a stale JWT can hang the server roundtrip indefinitely.
+    // Bound the signOut call — a stale JWT can hang the server roundtrip indefinitely.
     const timed = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r({ timedOut: true }), ms))]);
     try {
       if (window.sb) {
@@ -430,6 +440,7 @@ function App() {
       }
     } catch (e) { console.warn('signOut error:', e); }
     await minSplash;
+    clearTimeout(escape);
     // Hard-clear any Supabase tokens that survived the SDK call so a reload
     // can't re-hydrate the session and bounce us back to onboarding.
     try {
