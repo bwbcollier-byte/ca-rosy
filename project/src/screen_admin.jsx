@@ -1196,7 +1196,7 @@ function PageSettings({ role, currentUser }) {
   // Admin sees a streamlined set — no Privacy & Data, Team, or Danger Zone.
   const tabs = role === 'admin'
     ? ['profile','account','notifications','payouts']
-    : ['profile','account','notifications','payouts','privacy','team','danger'];
+    : ['profile','account','notifications','payouts','privacy','danger'];
   React.useEffect(() => { if (!tabs.includes(tab)) setTab('profile'); }, [role]);
   return (
     <div className="content fade-up">
@@ -1214,7 +1214,7 @@ function PageSettings({ role, currentUser }) {
           {tab === 'payouts' ? <SettingsPayouts user={currentUser} /> : null}
           {tab === 'privacy' && role !== 'admin' ? <SettingsPrivacy role={role} /> : null}
           {tab === 'team' && role !== 'admin' ? <SettingsTeam /> : null}
-          {tab === 'danger' && role !== 'admin' ? <SettingsDanger /> : null}
+          {tab === 'danger' && role !== 'admin' ? <SettingsDanger user={currentUser} /> : null}
         </div>
       </div>
     </div>
@@ -1553,12 +1553,41 @@ function SettingsPayouts({ user }) {
 }
 
 function SettingsTeam() { return <div className="card"><h3 className="card-title">Team</h3><Empty icon={SP_I.Users} title="No teammates yet" body="Invite collaborators to manage this account." cta={<button className="btn btn-coral btn-sm"><SP_I.UserPlus size={14} />Invite</button>} /></div>; }
-function SettingsDanger() {
+function SettingsDanger({ user }) {
+  const toast = useToast();
+  const [confirmOpen, setConfirmOpen] = SP_us(false);
+  const [confirmText, setConfirmText] = SP_us('');
+  const [deleting, setDeleting] = SP_us(false);
+  const canDelete = confirmText.trim().toLowerCase() === 'delete';
+  const doDelete = async () => {
+    if (!user?.id || !canDelete) return;
+    setDeleting(true);
+    try {
+      // Soft-delete: mark profile inactive and sign the user out. Hard delete of
+      // auth.users + cascading rows requires service-role and is done by an admin.
+      if (window.sb) {
+        const { error } = await window.sb.from('rr_profiles').update({ status: 'inactive' }).eq('id', user.id);
+        if (error) throw error;
+        try { await window.sb.auth.signOut(); } catch (e) {}
+      }
+      toast.push({ kind: 'success', title: 'Account scheduled for deletion', body: 'Our team will remove your data within 7 days. Signing you out.' });
+      setTimeout(() => { window.location.hash = 'marketing'; window.location.reload(); }, 1200);
+    } catch (e) {
+      toast.push({ kind: 'error', title: "Couldn't delete account", body: e.message || 'Please contact support.' });
+      setDeleting(false);
+    }
+  };
   return (
     <div className="card" style={{ borderColor: 'var(--rosy-coral)' }}>
       <h3 className="card-title" style={{ color: 'var(--rosy-coral)', marginBottom: 12 }}>Danger zone</h3>
       <p style={{ margin: 0, fontSize: 13.5, color: 'var(--color-muted)', marginBottom: 16 }}>Permanently delete your account and all associated data. This can't be undone.</p>
-      <button className="btn btn-danger">Delete account</button>
+      <button className="btn btn-danger" onClick={() => setConfirmOpen(true)}>Delete account</button>
+      <Modal open={confirmOpen} onClose={() => { setConfirmOpen(false); setConfirmText(''); }} title="Delete your account?" size="md"
+        footer={<><button className="btn btn-ghost" onClick={() => { setConfirmOpen(false); setConfirmText(''); }}>Cancel</button><button className="btn btn-danger" disabled={!canDelete || deleting} onClick={doDelete}>{deleting ? 'Deleting…' : 'Delete forever'}</button></>}>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>This will deactivate your profile immediately and queue your data for permanent deletion within 7 days. Vendors with open gigs must close them first.</p>
+        <p style={{ margin: '14px 0 6px', fontSize: 13.5, fontWeight: 600 }}>Type <code>delete</code> to confirm:</p>
+        <input className="input" value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="delete" autoFocus />
+      </Modal>
     </div>
   );
 }

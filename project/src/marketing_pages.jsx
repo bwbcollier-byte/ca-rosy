@@ -510,7 +510,23 @@ function MkContactPage() {
   useSiteContentTick();
   const toast = useToast();
   const [form, setForm] = MP_us({ name: '', email: '', topic: 'sales', body: '' });
-  const submit = (e) => { e.preventDefault(); toast.push({ kind: 'success', title: 'Message sent', body: 'We\'ll be back to you within one business day.' }); setForm({ name: '', email: '', topic: 'sales', body: '' }); };
+  const [sending, setSending] = MP_us(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (sending) return;
+    setSending(true);
+    try {
+      const r = await fetch('/api/contact', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (!r.ok) throw new Error('Send failed');
+      toast.push({ kind: 'success', title: 'Message sent', body: "We'll be back to you within one business day." });
+      setForm({ name: '', email: '', topic: 'sales', body: '' });
+    } catch (err) {
+      toast.push({ kind: 'error', title: "Couldn't send message", body: 'Please try again in a moment.' });
+    } finally { setSending(false); }
+  };
   return (
     <>
       <section style={{ padding: '72px 32px 0' }}>
@@ -525,7 +541,7 @@ function MkContactPage() {
           <div className="card">
             <h3 className="card-title" style={{ marginBottom: 16 }}>Send a message</h3>
             <form className="col" style={{ gap: 14 }} onSubmit={submit}>
-              <div className="field"><label className="field-label">Your name</label><input className="input" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Mariana Cruz" /></div>
+              <div className="field"><label className="field-label">Your name</label><input className="input" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Your name" /></div>
               <div className="field"><label className="field-label">Email</label><input className="input" required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="you@studio.com" /></div>
               <div className="field"><label className="field-label">Topic</label>
                 <select className="select" value={form.topic} onChange={e => setForm({ ...form, topic: e.target.value })}>
@@ -536,7 +552,7 @@ function MkContactPage() {
                 </select>
               </div>
               <div className="field"><label className="field-label">Message</label><textarea className="textarea" required value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} placeholder="What can we help with?" /></div>
-              <button className="btn btn-coral" type="submit" disabled={!form.name.trim() || !form.email.trim() || !form.body.trim()}>Send message</button>
+              <button className="btn btn-coral" type="submit" disabled={sending || !form.name.trim() || !form.email.trim() || !form.body.trim()}>{sending ? 'Sending…' : 'Send message'}</button>
             </form>
           </div>
           <div className="col" style={{ gap: 18 }}>

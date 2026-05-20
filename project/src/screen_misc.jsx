@@ -53,9 +53,9 @@ function PageInbox({ currentUser }) {
         senderId: meId, recipientId: conv?.with, content: text,
       });
     } catch (e) { console.warn('message send failed:', e); }
-    setTimeout(() => {
-      setLocalMessages(ms => [...ms, { senderId: conv?.with, recipientId: meId, text: 'Got it — talk soon.', time: 'Just now', day: 'Today' }]);
-    }, 900);
+    // No auto-reply — the recipient replies when they reply. (Removed the fake
+    // "Got it — talk soon." demo bot that injected ghost messages into real
+    // conversations.)
   };
   // Helper: render-time "me/them" decision against the live session user
   const whoOf = (m) => (m.who === 'me' || m.who === 'them') ? m.who : (m.senderId === meId ? 'me' : 'them');
