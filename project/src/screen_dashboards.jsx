@@ -264,10 +264,10 @@ function DashboardAdmin({ user, setRoute, statStrip, statAnim }) {
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
       </div>
       <div className="grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={SD_I.Users}        label="All Workers"    value={allUsers.filter(u => u.role !== 'admin').length} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.UsersRound}   label="Total Workers"  value={workers.length}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.Building2}    label="All Vendors"    value={vendors.length}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.UserX}        label="Inactive Users" value={inactive.length} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.Users}        label="Total users"    value={allUsers.filter(u => u.role !== 'admin').length} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.UsersRound}   label="Workers"        value={workers.length}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.Building2}    label="Vendors"        value={vendors.length}  dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.UserX}        label="Inactive"       value={inactive.length} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
       </div>
       <div className="grid-dash">
         <div className="col" style={{ gap: 20 }}>

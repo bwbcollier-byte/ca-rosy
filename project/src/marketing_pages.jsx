@@ -416,17 +416,36 @@ function MkAboutPage({ goToAuth }) {
           </div>
         </div>
       </section>
-      <section className="mk-section" style={{ paddingTop: 0 }}>
-        <h2 className="display-md" style={{ marginBottom: 24 }}>By the numbers.</h2>
-        <div className="grid-4">
-          {[['1,284','Active workers'],['412','Vendor studios'],['8,640','Gigs filled'],['$2.4M','Paid out in 2025']].map(([n, l]) => (
-            <div key={l} className="card" style={{ background: 'var(--color-surface-soft)' }}>
-              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 44, letterSpacing: '-0.02em' }}>{n}</p>
-              <p style={{ margin: '4px 0 0', fontSize: 13.5, color: 'var(--color-muted)' }}>{l}</p>
+      {(() => {
+        // Live counts. Hide the section entirely if there's nothing to brag about
+        // yet — better to omit than to show fake numbers like the prior 1,284/412 demo data.
+        const D = window.RosyData || {};
+        const users = D.USERS || [];
+        const workers = users.filter(u => u.role === 'worker').length;
+        const vendors = users.filter(u => u.role === 'vendor').length;
+        const gigs = (D.GIGS || []).filter(g => g.status === 'completed').length;
+        const paidOut = (D.TRANSACTIONS || []).filter(t => t.status === 'Paid').reduce((s, t) => s + (t.amount || 0), 0);
+        const stats = [
+          [workers.toString(), 'Active workers'],
+          [vendors.toString(), 'Vendor studios'],
+          [gigs.toString(), 'Gigs filled'],
+          [`$${paidOut.toLocaleString()}`, 'Paid out'],
+        ];
+        if (workers + vendors + gigs + paidOut === 0) return null;
+        return (
+          <section className="mk-section" style={{ paddingTop: 0 }}>
+            <h2 className="display-md" style={{ marginBottom: 24 }}>By the numbers.</h2>
+            <div className="grid-4">
+              {stats.map(([n, l]) => (
+                <div key={l} className="card" style={{ background: 'var(--color-surface-soft)' }}>
+                  <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 44, letterSpacing: '-0.02em' }}>{n}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: 13.5, color: 'var(--color-muted)' }}>{l}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          </section>
+        );
+      })()}
       <CTABand goToAuth={goToAuth} />
     </>
   );
