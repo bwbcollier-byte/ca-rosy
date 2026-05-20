@@ -295,13 +295,13 @@ function App() {
   if (mode === 'onboarding') {
     return (
       <ToastHost>
-        <OnboardingPage onComplete={async (pickedRole) => {
+        <OnboardingPage onComplete={async (pickedRole, formData) => {
           // Pin role from the onboarding pick so the user lands on THEIR dashboard, not admin.
           if (pickedRole) setRole(pickedRole);
           // Drop a personal welcome notification so the bell badge lights up immediately AND
           // a row lands in Supabase so a reload still has it.
-          const me = sessionUserFromData || { first: '', role: pickedRole, id: sessionUserId };
-          const meFirst = me?.first || (me?.name || '').split(' ')[0] || '';
+          const me = sessionUserFromData || { first: formData?.first || '', role: pickedRole, id: sessionUserId };
+          const meFirst = (formData?.first) || me?.first || (me?.name || '').split(' ')[0] || '';
           const niceRole = (me?.role || pickedRole || 'account').replace(/^./, c => c.toUpperCase());
           // Pull title/body from the shared notification template so the platform
           // has a single source of truth (admins can edit it later).
@@ -326,15 +326,67 @@ function App() {
               await window.sb.from('rr_notifications').insert({
                 user_id: me.id, type: 'welcome', title, body, link: '#tour', read: false,
               });
-              // Persist profile completion + role + unverified status so the
-              // verification gate fires immediately after onboarding.
+              // Persist profile completion + role + onboarding form data so the
+              // verification gate fires immediately AND the user's name/photo/bio show up.
               try {
-                await window.sb.from('rr_profiles').upsert({
+                // Parse "Street, City, State ZIP" address strings if we have a free-text address.
+                const addr = (formData?.address || '').trim();
+                const m = addr.match(/^(.*?),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})?$/);
+                const street = m ? m[1].trim() : null;
+                const cityVal = m ? m[2].trim() : (addr || null);
+                const stateVal = m ? m[3].trim() : null;
+                const zipVal = m && m[4] ? m[4].trim() : null;
+                const profilePayload = {
                   id: me.id, role: pickedRole, onboarding_complete: true, verified: false,
-                }, { onConflict: 'id' });
-                // Reflect in-memory too so the gate appears without waiting for hydration
+                  first_name: formData?.first || null,
+                  last_name:  formData?.last  || null,
+                  phone:      formData?.phone || null,
+                  title:      formData?.title || null,
+                  bio:        formData?.bio   || null,
+                  avatar_url: formData?.photo || null,
+                  street, city: cityVal, state: stateVal, zip: zipVal,
+                  geo_address: addr || null,
+                };
+                const { error: pErr } = await window.sb.from('rr_profiles').upsert(profilePayload, { onConflict: 'id' });
+                if (pErr) console.warn('rr_profiles upsert failed:', pErr.message);
+
+                // Vendor-specific profile row.
+                if (pickedRole === 'vendor') {
+                  const vendorPayload = {
+                    id: me.id,
+                    company_name: formData?.company || null,
+                    business_description: formData?.bio || null,
+                    business_phone: formData?.phone || null,
+                    business_address: addr || null,
+                    logo_url: formData?.photo || null,
+                    service_categories: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
+                  };
+                  const { error: vErr } = await window.sb.from('rr_vendor_profiles').upsert(vendorPayload, { onConflict: 'id' });
+                  if (vErr) console.warn('rr_vendor_profiles upsert failed:', vErr.message);
+                }
+                if (pickedRole === 'worker') {
+                  const workerPayload = {
+                    id: me.id,
+                    services: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
+                    addresses: addr ? [addr] : null,
+                  };
+                  const { error: wErr } = await window.sb.from('rr_worker_profiles').upsert(workerPayload, { onConflict: 'id' });
+                  if (wErr) console.warn('rr_worker_profiles upsert failed:', wErr.message);
+                }
+
+                // Reflect in-memory too so the gate + admin view see the new data without waiting for hydration
                 const u = (window.RosyData.USERS || []).find(x => x.id === me.id);
-                if (u) { u.role = pickedRole; u.verified = false; window.dispatchEvent(new CustomEvent('rosy:data-changed')); }
+                if (u) {
+                  u.role = pickedRole; u.verified = false;
+                  if (formData?.first) u.first = formData.first;
+                  if (formData?.last)  u.last  = formData.last;
+                  if (formData?.first || formData?.last) u.name = `${formData.first || ''} ${formData.last || ''}`.trim();
+                  if (formData?.photo) u.photo = formData.photo;
+                  if (formData?.phone) u.phone = formData.phone;
+                  if (formData?.bio)   u.bio   = formData.bio;
+                  if (formData?.company) u.company = formData.company;
+                  window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+                }
               } catch (e) { console.warn('profile upsert failed:', e); }
               // Send Postmark welcome email (demo-mode redirects to ben@pronocoders.com)
               try {
@@ -414,13 +466,45 @@ function App() {
     if (!profileFromDb.role || !profileFromDb.onboarding_complete) {
       return (
         <ToastHost>
-          <OnboardingPage onComplete={async (pickedRole) => {
+          <OnboardingPage onComplete={async (pickedRole, formData) => {
             if (pickedRole) setRole(pickedRole);
             try {
               if (window.sb && sessionUserId) {
+                const addr = (formData?.address || '').trim();
+                const m = addr.match(/^(.*?),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})?$/);
+                const street = m ? m[1].trim() : null;
+                const cityVal = m ? m[2].trim() : (addr || null);
+                const stateVal = m ? m[3].trim() : null;
+                const zipVal = m && m[4] ? m[4].trim() : null;
                 await window.sb.from('rr_profiles').upsert({
                   id: sessionUserId, role: pickedRole, onboarding_complete: true, verified: false,
+                  first_name: formData?.first || null,
+                  last_name:  formData?.last  || null,
+                  phone:      formData?.phone || null,
+                  title:      formData?.title || null,
+                  bio:        formData?.bio   || null,
+                  avatar_url: formData?.photo || null,
+                  street, city: cityVal, state: stateVal, zip: zipVal,
+                  geo_address: addr || null,
                 }, { onConflict: 'id' });
+                if (pickedRole === 'vendor') {
+                  await window.sb.from('rr_vendor_profiles').upsert({
+                    id: sessionUserId,
+                    company_name: formData?.company || null,
+                    business_description: formData?.bio || null,
+                    business_phone: formData?.phone || null,
+                    business_address: addr || null,
+                    logo_url: formData?.photo || null,
+                    service_categories: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
+                  }, { onConflict: 'id' });
+                }
+                if (pickedRole === 'worker') {
+                  await window.sb.from('rr_worker_profiles').upsert({
+                    id: sessionUserId,
+                    services: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
+                    addresses: addr ? [addr] : null,
+                  }, { onConflict: 'id' });
+                }
                 setProfileFromDb(p => ({ ...(p || {}), role: pickedRole, onboarding_complete: true, verified: false, id: sessionUserId }));
               }
             } catch (e) { console.warn(e); }

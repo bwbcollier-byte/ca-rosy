@@ -560,11 +560,20 @@ function OnboardingPage({ onComplete }) {
   // can pin the demo role (signed-in role is already pinned via the session).
   const [step, setStep] = SX_us(1);
   const [role, setRole] = SX_us({ vendor: false, worker: false });
+  const blankFormData = { photo: null, first: '', last: '', phone: '', title: '', company: '', bio: '', services: [], address: '', hours: false };
+  const [vendorData, setVendorData] = SX_us(blankFormData);
+  const [workerData, setWorkerData] = SX_us(blankFormData);
   const [tc, setTc] = SX_us(false);
   const [tcOpen, setTcOpen] = SX_us(false);
   const [stripeOpen, setStripeOpen] = SX_us(false);
   const toast = useToast();
   const hasRole = role.vendor || role.worker;
+  // Build the formData payload for the parent — picks the primary role's form (vendor wins when both).
+  const finishComplete = () => {
+    const primary = role.vendor ? 'vendor' : 'worker';
+    const formData = role.vendor ? vendorData : workerData;
+    onComplete(primary, formData);
+  };
 
   return (
     <div className="onb-shell">
@@ -604,7 +613,7 @@ function OnboardingPage({ onComplete }) {
                 <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.01em' }}>Vendor Profile</h3>
               </div>
               <div style={{ padding: 24, maxHeight: role.worker ? '40vh' : '60vh', overflowY: 'auto' }}>
-                <ProfileForm role="vendor" />
+                <ProfileForm role="vendor" data={vendorData} onChange={setVendorData} />
               </div>
             </>
           ) : null}
@@ -615,7 +624,7 @@ function OnboardingPage({ onComplete }) {
                 <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, letterSpacing: '-0.01em' }}>Worker Profile</h3>
               </div>
               <div style={{ padding: 24, maxHeight: role.vendor ? '40vh' : '60vh', overflowY: 'auto' }}>
-                <ProfileForm role="worker" />
+                <ProfileForm role="worker" data={workerData} onChange={setWorkerData} />
               </div>
             </>
           ) : null}
@@ -626,7 +635,7 @@ function OnboardingPage({ onComplete }) {
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button>
-              <button className="btn btn-coral" disabled={!tc} onClick={() => { onComplete(role.vendor ? 'vendor' : 'worker'); }}>Continue</button>
+              <button className="btn btn-coral" disabled={!tc} onClick={finishComplete}>Continue</button>
             </div>
           </div>
         </div>
@@ -635,7 +644,7 @@ function OnboardingPage({ onComplete }) {
       <TCModal open={tcOpen} onClose={() => setTcOpen(false)} onAgree={() => { setTc(true); setTcOpen(false); toast.push({ kind: 'success', title: 'Terms accepted' }); }} role={role.vendor ? 'vendor' : 'worker'} />
 
       <Modal open={stripeOpen} onClose={() => setStripeOpen(false)} title="" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => { setStripeOpen(false); onComplete(role.vendor ? 'vendor' : 'worker'); }}>Skip for now</button><button className="btn btn-coral" onClick={() => { setStripeOpen(false); toast.push({ kind: 'success', title: 'Connected to Stripe' }); onComplete(role.vendor ? 'vendor' : 'worker'); }}>Continue to Stripe</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => { setStripeOpen(false); finishComplete(); }}>Skip for now</button><button className="btn btn-coral" onClick={() => { setStripeOpen(false); toast.push({ kind: 'success', title: 'Connected to Stripe' }); finishComplete(); }}>Continue to Stripe</button></>}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
             <RoseLogo size={36} />
@@ -783,18 +792,23 @@ function TCModal({ open, onClose, onAgree, role }) {
   );
 }
 
-function ProfileForm({ role }) {
-  const [hours, setHours] = SX_us(false);
-  const [photo, setPhoto] = SX_us(null);
-  const [first, setFirst] = SX_us('');
-  const [last, setLast] = SX_us('');
-  const [phone, setPhone] = SX_us('');
-  const [title, setTitle] = SX_us('');
-  const [company, setCompany] = SX_us('');
-  const [bio, setBio] = SX_us('');
-  const [services, setServices] = SX_us([]);
+function ProfileForm({ role, data, onChange }) {
+  // Controlled mode when parent passes data + onChange; falls back to internal state otherwise.
+  const controlled = !!(data && onChange);
+  const [_int, _setInt] = SX_us({ photo: null, first: '', last: '', phone: '', title: '', company: '', bio: '', services: [], address: '', hours: false });
+  const d = controlled ? data : _int;
+  const set = (patch) => { if (controlled) onChange({ ...data, ...patch }); else _setInt(prev => ({ ...prev, ...patch })); };
+  const photo = d.photo, first = d.first, last = d.last, phone = d.phone, title = d.title, company = d.company, bio = d.bio, services = d.services || [], hours = d.hours;
+  const setPhoto = (v) => set({ photo: v });
+  const setFirst = (v) => set({ first: v });
+  const setLast = (v) => set({ last: v });
+  const setPhone = (v) => set({ phone: v });
+  const setTitle = (v) => set({ title: v });
+  const setCompany = (v) => set({ company: v });
+  const setBio = (v) => set({ bio: v });
+  const setHours = (fn) => set({ hours: typeof fn === 'function' ? fn(hours) : fn });
   const allServices = ['Install & Breakdown','Onsite Design','D.I.Y. Couples','Studio Clean-Up','Event Consultations'];
-  const toggleService = (s) => setServices(arr => arr.includes(s) ? arr.filter(x => x !== s) : [...arr, s]);
+  const toggleService = (s) => set({ services: services.includes(s) ? services.filter(x => x !== s) : [...services, s] });
   return (
     <div className="col" style={{ gap: 14 }}>
       <ImageUpload value={photo} onChange={setPhoto} label={role === 'vendor' ? 'Upload your studio logo' : 'Upload a profile photo'} size={96} round={role !== 'vendor' ? true : false} />
@@ -842,7 +856,7 @@ function ProfileForm({ role }) {
         </div>
       </div>
       <div className="field"><label className="field-label">{role === 'vendor' ? 'Studio address' : 'Home base'}</label>
-        <AddressInput placeholder={role === 'vendor' ? 'Search your studio address' : 'City or neighborhood'} />
+        <AddressInput value={d.address || ''} onChange={(v) => set({ address: v })} placeholder={role === 'vendor' ? 'Search your studio address' : 'City or neighborhood'} />
       </div>
       {role === 'vendor' ? (
         <>
