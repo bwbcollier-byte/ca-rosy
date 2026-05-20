@@ -591,7 +591,7 @@ function OnboardingPage({ onComplete }) {
 
   return (
     <div className="onb-shell">
-      <div className="mk-logo" style={{ marginBottom: 8 }}><RoseLogo />Rosy<span className="accent"> Recruits</span></div>
+      <div className="mk-logo" style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, fontSize: 32, fontWeight: 500, fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}><RoseLogo size={44} />Rosy<span className="accent"> Recruits</span></div>
       <div className="onb-progress">
         <div className={`dot ${step >= 1 ? 'on' : ''}`} /><div className={`dot ${step >= 2 ? 'on' : ''}`} /><div className={`dot ${step >= 3 ? 'on' : ''}`} />
       </div>
