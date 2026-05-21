@@ -525,7 +525,7 @@ function NotificationPanel({ open, onClose, setRoute, role = 'admin', currentUse
   return ReactDOM.createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 400 }}>
       <div onClick={(e) => e.stopPropagation()}
-        style={{ position: 'absolute', top: 72, right: 32, width: 400, background: 'var(--color-canvas)', border: '1px solid var(--color-hairline)', borderRadius: 16, boxShadow: 'var(--shadow-modal)', overflow: 'hidden' }}>
+        style={{ position: 'absolute', top: 72, right: 'min(32px, 4vw)', left: 'auto', width: 'min(400px, calc(100vw - 24px))', maxWidth: 'min(400px, calc(100vw - 24px))', background: 'var(--color-canvas)', border: '1px solid var(--color-hairline)', borderRadius: 16, boxShadow: 'var(--shadow-modal)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--color-hairline)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h4 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 18 }}>Notifications</h4>
           <button className="btn-link" style={{ fontSize: 12 }} onClick={() => { onClose && onClose(); setRoute && setRoute('notifications'); }}>View all</button>
