@@ -1477,7 +1477,7 @@ function SettingsProfile({ user }) {
 
   const save = async () => {
     if (!user?.id) { toast.push({ kind: 'warning', title: 'Sign in first', body: 'Sign in to save your profile.' }); return; }
-    if (phoneInvalid) { toast.push({ kind: 'warning', title: 'Phone is not a valid US number', body: 'Use a 10-digit US format.' }); return; }
+    if (phoneInvalid) { toast.push({ kind: 'warning', title: 'Enter a valid phone number', body: '7–15 digits.' }); return; }
     // Patch local store + broadcast
     const u = (window.RosyData?.USERS || []).find(x => x.id === user.id);
     if (u) Object.assign(u, {
@@ -1535,8 +1535,10 @@ function SettingsProfile({ user }) {
           <input className="input" type="tel" value={d.phone}
             onChange={e => set('phone', formatUSPhone(e.target.value))}
             placeholder="(555) 555-0100"
+            aria-invalid={phoneInvalid || undefined}
+            aria-describedby={phoneInvalid ? 'settings-phone-err' : undefined}
             style={phoneInvalid ? { borderColor: 'var(--rosy-coral)' } : undefined} />
-          {phoneInvalid ? <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Enter a 10-digit US phone number.</p> : null}
+          {phoneInvalid ? <p id="settings-phone-err" style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Enter a valid phone number (7–15 digits).</p> : null}
         </div>
         <div className="field"><label className="field-label">Title</label><input className="input" value={d.title} onChange={e => set('title', e.target.value)} placeholder={role === 'worker' ? 'Lead designer, Strike crew…' : 'Owner, Lead, Designer…'} /></div>
         <div className="field"><label className="field-label">City</label><input className="input" autoComplete="address-level2" value={d.city} onChange={e => set('city', e.target.value)} placeholder="Chicago" /></div>
