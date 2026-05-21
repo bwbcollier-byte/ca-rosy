@@ -929,12 +929,12 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
             <div><label className="field-label">Title / specialty</label><input className="input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Lead designer, Strike crew…" /></div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-            <div><label className="field-label">Street</label><input className="input" value={draft.street} onChange={(e) => setDraft({ ...draft, street: e.target.value })} /></div>
-            <div><label className="field-label">City</label><input className="input" value={draft.city} onChange={(e) => setDraft({ ...draft, city: e.target.value })} /></div>
-            <div><label className="field-label">State</label><input className="input" value={draft.state} onChange={(e) => setDraft({ ...draft, state: e.target.value })} placeholder="IL" /></div>
+            <div><label className="field-label">Street</label><input className="input" autoComplete="street-address" value={draft.street} onChange={(e) => setDraft({ ...draft, street: e.target.value })} /></div>
+            <div><label className="field-label">City</label><input className="input" autoComplete="address-level2" value={draft.city} onChange={(e) => setDraft({ ...draft, city: e.target.value })} /></div>
+            <div><label className="field-label">State</label><input className="input" autoComplete="address-level1" value={draft.state} onChange={(e) => setDraft({ ...draft, state: e.target.value })} placeholder="IL" /></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: user.role === 'worker' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
-            <div><label className="field-label">ZIP</label><input className="input" value={draft.zip} onChange={(e) => setDraft({ ...draft, zip: e.target.value })} /></div>
+            <div><label className="field-label">ZIP</label><input className="input" inputMode="numeric" autoComplete="postal-code" value={draft.zip} onChange={(e) => setDraft({ ...draft, zip: e.target.value })} /></div>
             {user.role === 'worker' ? (<>
               <div><label className="field-label">Hourly rate ($)</label><input className="input" type="number" min={0} value={draft.hourlyRate} onChange={(e) => setDraft({ ...draft, hourlyRate: e.target.value })} /></div>
               <div><label className="field-label">Skills (comma-separated)</label><input className="input" value={draft.skills} onChange={(e) => setDraft({ ...draft, skills: e.target.value })} placeholder="Lead, Design, Strike" /></div>
@@ -1518,8 +1518,8 @@ function SettingsProfile({ user }) {
           {phoneInvalid ? <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Enter a 10-digit US phone number.</p> : null}
         </div>
         <div className="field"><label className="field-label">Title</label><input className="input" value={d.title} onChange={e => set('title', e.target.value)} placeholder={role === 'worker' ? 'Lead designer, Strike crew…' : 'Owner, Lead, Designer…'} /></div>
-        <div className="field"><label className="field-label">City</label><input className="input" value={d.city} onChange={e => set('city', e.target.value)} placeholder="Chicago" /></div>
-        <div className="field"><label className="field-label">State</label><input className="input" value={d.state} onChange={e => set('state', e.target.value)} placeholder="IL" /></div>
+        <div className="field"><label className="field-label">City</label><input className="input" autoComplete="address-level2" value={d.city} onChange={e => set('city', e.target.value)} placeholder="Chicago" /></div>
+        <div className="field"><label className="field-label">State</label><input className="input" autoComplete="address-level1" value={d.state} onChange={e => set('state', e.target.value)} placeholder="IL" /></div>
         <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" value={d.bio} onChange={e => set('bio', e.target.value)} placeholder="A short summary visible on your public profile." /></div>
 
         {role === 'vendor' ? (
