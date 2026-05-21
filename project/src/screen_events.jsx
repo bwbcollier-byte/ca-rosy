@@ -475,6 +475,7 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
   const [tab, setTab] = SE_us('overview');
   const toast = useToast();
   const [applyGig, setApplyGig] = SE_us(null);
+  const [applying, setApplying] = SE_us(false);
   const [editOpen, setEditOpen] = SE_us(false);
   const [editForm, setEditForm] = SE_us({ name: e.name, desc: e.desc, date: e.date });
   const [editSaving, setEditSaving] = SE_us(false);
@@ -627,8 +628,21 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
         </div>
       ) : null}
 
-      <Modal open={!!applyGig} onClose={() => setApplyGig(null)} title="Apply for this gig" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const g = applyGig; setApplyGig(null); const workerId = currentUser?.id || SE_D.USERS.find(u => u.role === 'worker')?.id; const dup = (SE_D.APPLICATIONS || []).some(a => a.gigId === g.id && a.workerId === workerId && a.status !== 'withdrawn' && a.status !== 'rejected'); if (dup) { toast.push({ kind: 'warning', title: 'Already applied', body: 'You’ve already applied to this gig.' }); return; } try { await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId }); } catch (err) { console.warn(err); toast.push({ kind: 'error', title: 'Apply failed', body: err.message }); return; } toast.push({ kind: 'success', title: 'Application sent', body: `You'll hear from ${vendor?.first || 'the vendor'} soon.` }); }}>Confirm application</button></>}>
+      <Modal open={!!applyGig} onClose={() => { if (!applying) setApplyGig(null); }} title="Apply for this gig" size="md"
+        footer={<><button className="btn btn-ghost" disabled={applying} onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" disabled={applying} onClick={async () => {
+          if (applying) return;
+          const g = applyGig;
+          const workerId = currentUser?.id || SE_D.USERS.find(u => u.role === 'worker')?.id;
+          const dup = (SE_D.APPLICATIONS || []).some(a => a.gigId === g.id && a.workerId === workerId && a.status !== 'withdrawn' && a.status !== 'rejected');
+          if (dup) { toast.push({ kind: 'warning', title: 'Already applied', body: "You've already applied to this gig." }); return; }
+          setApplying(true);
+          try {
+            await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId });
+            toast.push({ kind: 'success', title: 'Application sent', body: `You'll hear from ${vendor?.first || 'the vendor'} soon.` });
+            setApplyGig(null);
+          } catch (err) { console.warn(err); toast.push({ kind: 'error', title: 'Apply failed', body: err.message }); }
+          setApplying(false);
+        }}>{applying ? 'Sending…' : 'Confirm application'}</button></>}>
         {applyGig ? (
           <div>
             <p style={{ margin: '0 0 16px' }}><GigChip type={applyGig.type} /> {e.name}</p>

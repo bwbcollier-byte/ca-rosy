@@ -454,6 +454,7 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
   const seedApplied = Object.fromEntries(myApps.map(a => [a.gigId, true]));
   const [applied, setApplied] = SG_us(seedApplied);
   const [applyGig, setApplyGig] = SG_us(null);
+  const [applying, setApplying] = SG_us(false);
   const [detailGig, setDetailGig] = SG_us(null);
   const [search, setSearch] = SG_us('');
   const [typeFilter, setTypeFilter] = SG_us({ Lead: true, Design: true, Assist: true, Strike: true });
@@ -643,7 +644,20 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
       )}
 
       <Modal open={!!applyGig} onClose={() => setApplyGig(null)} title="Apply for this gig" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" onClick={async () => { const g = applyGig; setApplyGig(null); const dup = (SG_D.APPLICATIONS || []).some(a => a.gigId === g.id && a.workerId === currentUser?.id && a.status !== 'withdrawn' && a.status !== 'rejected'); if (dup) { toast.push({ kind: 'warning', title: 'Already applied', body: 'You’ve already applied to this gig.' }); return; } setApplied(s => ({ ...s, [g.id]: true })); try { await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId: currentUser?.id }); } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Apply failed', body: e.message }); return; } toast.push({ kind: 'success', title: 'Application sent', body: "You'll hear back within 24 hours." }); }}>Confirm application</button></>}>
+        footer={<><button className="btn btn-ghost" disabled={applying} onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" disabled={applying} onClick={async () => {
+          if (applying) return;
+          const g = applyGig;
+          const dup = (SG_D.APPLICATIONS || []).some(a => a.gigId === g.id && a.workerId === currentUser?.id && a.status !== 'withdrawn' && a.status !== 'rejected');
+          if (dup) { toast.push({ kind: 'warning', title: 'Already applied', body: "You've already applied to this gig." }); return; }
+          setApplying(true);
+          setApplied(s => ({ ...s, [g.id]: true }));
+          try {
+            await window.RosyMutate?.applications?.apply({ gigId: g.id, workerId: currentUser?.id });
+            toast.push({ kind: 'success', title: 'Application sent', body: "You'll hear back within 24 hours." });
+            setApplyGig(null);
+          } catch (e) { console.warn(e); toast.push({ kind: 'error', title: 'Apply failed', body: e.message }); setApplied(s => ({ ...s, [g.id]: false })); }
+          setApplying(false);
+        }}>{applying ? 'Sending…' : 'Confirm application'}</button></>}>
         {applyGig ? (
           <div className="col" style={{ gap: 14 }}>
             <GigChip type={applyGig.type} />
@@ -788,6 +802,7 @@ function PageMyGigsWorker({ currentUser, setRoute }) {
   const [mark, setMark] = SG_us(null);
   const [markHours, setMarkHours] = SG_us(8.5);
   const [markNotes, setMarkNotes] = SG_us('');
+  const [markSubmitting, setMarkSubmitting] = SG_us(false);
   const [rate, setRate] = SG_us(null);
   return (
     <div className="content fade-up">
@@ -845,21 +860,25 @@ function PageMyGigsWorker({ currentUser, setRoute }) {
         </table>
       </div>
 
-      <Modal open={!!mark} onClose={() => { setMark(null); setMarkHours(8.5); setMarkNotes(''); }} title="Mark gig complete" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => { setMark(null); setMarkHours(8.5); setMarkNotes(''); }}>Cancel</button><button className="btn btn-coral" onClick={async () => {
+      <Modal open={!!mark} onClose={() => { if (!markSubmitting) { setMark(null); setMarkHours(8.5); setMarkNotes(''); } }} title="Mark gig complete" size="md"
+        footer={<><button className="btn btn-ghost" disabled={markSubmitting} onClick={() => { setMark(null); setMarkHours(8.5); setMarkNotes(''); }}>Cancel</button><button className="btn btn-coral" disabled={markSubmitting || !markHours || Number(markHours) <= 0} onClick={async () => {
+          if (markSubmitting) return;
+          setMarkSubmitting(true);
           const gig = mark;
           const hours = markHours, notes = markNotes;
-          setMark(null); setMarkHours(8.5); setMarkNotes('');
           try {
             const sb = window.sb;
             if (sb && currentUser?.id) {
               const { data } = await sb.from('rr_gig_applications').select('id').eq('gig_id', gig.id).eq('worker_id', currentUser.id).limit(1);
               const appId = data && data[0]?.id;
               if (appId) await window.RosyMutate?.applications?.markComplete({ id: appId, hoursWorked: hours, notes });
+              else { toast.push({ kind: 'warning', title: "Couldn't find your application", body: 'Refresh and try again.' }); setMarkSubmitting(false); return; }
             }
-          } catch (e) { console.warn(e); }
-          toast.push({ kind: 'success', title: 'Submitted', body: 'Vendor has 24h to approve.' });
-        }}>Submit</button></>}>
+            toast.push({ kind: 'success', title: 'Submitted', body: 'Vendor has 24h to approve.' });
+            setMark(null); setMarkHours(8.5); setMarkNotes('');
+          } catch (e) { console.warn(e); toast.push({ kind: 'error', title: "Couldn't submit", body: e.message || 'Try again.' }); }
+          setMarkSubmitting(false);
+        }}>{markSubmitting ? 'Submitting…' : 'Submit'}</button></>}>
         {mark ? (
           <div className="col" style={{ gap: 14 }}>
             <KV label="Event" value={SG_D.EVENTS.find(e => e.id === mark.eventId)?.name} />

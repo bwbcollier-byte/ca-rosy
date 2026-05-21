@@ -84,7 +84,7 @@ function MarketingNavAuthButtons({ goToAuth }) {
   if (hasSession) {
     return (
       <>
-        <button className="btn btn-ghost btn-sm" onClick={async () => { try { await window.sb.auth.signOut(); } catch (e) {} try { localStorage.clear(); sessionStorage.clear(); } catch (e) {} window.location.href = '/'; }}>Log out</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => { window.location.hash = 'logout'; }}>Log out</button>
         <button className="btn btn-coral btn-sm" onClick={() => { window.location.hash = 'app/dashboard'; }}>Open app</button>
       </>
     );
