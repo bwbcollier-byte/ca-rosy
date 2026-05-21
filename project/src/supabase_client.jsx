@@ -332,6 +332,14 @@ window.bootRosyFromSupabase = async function bootRosyFromSupabase() {
       GIGS:          buildGigs(gigs, applications),
       GIG_TYPES:     seed.GIG_TYPES,                              // static
       TRANSACTIONS:  buildTransactions(applications, usersById),
+      // Expose raw applications so admin / vendor screens can render applicant lists,
+      // approve/reject, etc. without re-querying. Keys are snake_case from the DB.
+      APPLICATIONS:  applications.map(a => ({
+        id: a.id, gigId: a.gig_id, workerId: a.worker_id, vendorId: a.vendor_id,
+        status: a.status, paymentStatus: a.payment_status,
+        appliedAt: a.applied_at, confirmedAt: a.confirmed_at, completedAt: a.completed_at,
+        hoursWorked: a.hours_worked, workerNotes: a.worker_notes, vendorNotes: a.vendor_notes,
+      })),
       NOTIFICATIONS: buildNotifications(notifications),
       MESSAGES:      buildMessages(conversations, messages, usersById),
       IMAGES:        seed.IMAGES,                                 // static

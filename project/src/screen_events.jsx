@@ -589,25 +589,38 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
         </div>
       ) : null}
 
-      {tab === 'applications' ? (
-        <div className="card card-flush">
-          {SE_D.USERS.filter(u => u.role === 'worker').slice(0, 4).filter(w => !decided[w.id]).map(w => (
-            <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderBottom: '1px solid var(--color-hairline)' }}>
-              <Avatar name={w.name} size="lg" />
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: 0, fontWeight: 600 }}>{w.name}</p>
-                <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--color-muted)' }}>{w.company} · {w.gigs || 0} gigs · ★ {w.rating || '—'}</p>
-              </div>
-              <span className="pill"><SE_I.Briefcase size={12} style={{ marginRight: 4 }} />Assist</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => { setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${w.first}` }); }}>Message</button>
-              <button className="btn btn-ghost-coral btn-sm" onClick={() => { setDecided(d => ({ ...d, [w.id]: 'rejected' })); toast.push({ kind: 'warning', title: `${w.first} rejected` }); }}>Reject</button>
-              <button className="btn btn-coral btn-sm" onClick={() => { setDecided(d => ({ ...d, [w.id]: 'approved' })); toast.push({ kind: 'success', title: `${w.first} approved`, body: 'They\'ll get an email + push notification.' }); }}>Approve</button>
-            </div>
-          ))}
-          {role === 'worker' ? null : <div style={{ padding: '12px 20px', fontSize: 12, color: 'var(--color-muted)', borderTop: '1px solid var(--color-hairline)' }}>Showing sample applicants — real applications appear here as workers apply to your gigs.</div>}
-          {SE_D.USERS.filter(u => u.role === 'worker').slice(0, 4).every(w => decided[w.id]) ? <div style={{ padding: 28 }}><Empty icon={SE_I.ClipboardList} title="All sample applications reviewed" body="Decisions sent to applicants." /></div> : null}
-        </div>
-      ) : null}
+      {tab === 'applications' ? (() => {
+        // Real applications for this event's gigs (filter by gigIds belonging to this event).
+        const eventGigIds = new Set((window.RosyData?.GIGS || []).filter(g => g.eventId === eventId).map(g => g.id));
+        const apps = (window.RosyData?.APPLICATIONS || []).filter(a => eventGigIds.has(a.gigId) && a.status !== 'withdrawn');
+        const usersById = Object.fromEntries((window.RosyData?.USERS || []).map(u => [u.id, u]));
+        const gigsById  = Object.fromEntries((window.RosyData?.GIGS  || []).map(g => [g.id, g]));
+        return (
+          <div className="card card-flush">
+            {apps.length === 0 ? (
+              <div style={{ padding: 36 }}><Empty icon={SE_I.ClipboardList} title="No applications yet" body="When workers apply to your gigs for this event, they'll appear here." /></div>
+            ) : apps.map(a => {
+              const w = usersById[a.workerId] || {};
+              const g = gigsById[a.gigId] || {};
+              const status = decided[a.id] || a.status;
+              if (status === 'rejected' || status === 'confirmed') return null;
+              return (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderBottom: '1px solid var(--color-hairline)' }}>
+                  <Avatar name={w.name || 'Applicant'} size="lg" />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontWeight: 600 }}>{w.name || 'Applicant'}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--color-muted)' }}>{w.gigs || 0} gigs · ★ {w.rating || '—'}</p>
+                  </div>
+                  <span className="pill"><SE_I.Briefcase size={12} style={{ marginRight: 4 }} />{g.type || 'Gig'}</span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { window.__rosyComposeTo = a.workerId; setRoute && setRoute('inbox'); }}>Message</button>
+                  <button className="btn btn-ghost-coral btn-sm" onClick={async () => { setDecided(d => ({ ...d, [a.id]: 'rejected' })); try { await window.RosyMutate?.applications?.setStatus?.(a.id, 'rejected'); } catch (e) { console.warn(e); } toast.push({ kind: 'warning', title: `${w.first || 'Applicant'} rejected` }); }}>Reject</button>
+                  <button className="btn btn-coral btn-sm" onClick={async () => { setDecided(d => ({ ...d, [a.id]: 'confirmed' })); try { await window.RosyMutate?.applications?.setStatus?.(a.id, 'confirmed'); } catch (e) { console.warn(e); } toast.push({ kind: 'success', title: `${w.first || 'Applicant'} approved`, body: 'They\'ll get an email + push notification.' }); }}>Approve</button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })() : null}
 
       {tab === 'payments' ? (
         <div className="card card-flush">
