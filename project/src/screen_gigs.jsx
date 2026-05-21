@@ -582,7 +582,12 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
                       : isApplied ? (
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                             <Badge kind="Pending">Applied</Badge>
-                            <button className="btn-link" style={{ fontSize: 11.5 }} onClick={async (e) => { e.stopPropagation(); setApplied(s => ({ ...s, [g.id]: false })); try { await window.RosyMutate?.applications?.withdraw({ gigId: g.id, workerId: currentUser?.id }); } catch (e) {} toast.push({ kind: 'warning', title: 'Application withdrawn' }); }}>Withdraw</button>
+                            <button className="btn-link" style={{ fontSize: 11.5 }} onClick={async (e) => {
+                              e.stopPropagation();
+                              setApplied(s => ({ ...s, [g.id]: false }));
+                              try { await window.RosyMutate?.applications?.withdraw({ gigId: g.id, workerId: currentUser?.id }); toast.push({ kind: 'warning', title: 'Application withdrawn' }); }
+                              catch (err) { setApplied(s => ({ ...s, [g.id]: true })); toast.push({ kind: 'error', title: "Couldn't withdraw", body: err.message || 'Try again.' }); }
+                            }}>Withdraw</button>
                           </div>
                         )
                       : full ? <Badge kind="Cancelled">Full</Badge>
