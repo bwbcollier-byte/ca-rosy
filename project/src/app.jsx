@@ -1,6 +1,47 @@
 /* Main App — role switcher, hash router, screen mounting */
 
 const { useState: A_us, useEffect: A_ue } = React;
+
+// Error boundary — catches any uncaught render error and shows a friendly recovery
+// screen instead of white-screening the whole app. Logs to console + sends a
+// best-effort report to /api/dev-issue so we hear about it.
+class RosyErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) {
+    try { console.error('[rosy-boundary]', error, info?.componentStack); } catch (e) {}
+    try {
+      fetch('/api/dev-issue', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Render crash: ' + (error?.message || 'unknown'),
+          severity: 'high',
+          description: (error?.stack || '') + '\n\nComponent stack:\n' + (info?.componentStack || ''),
+          pageUrl: window.location.href,
+          userAgent: navigator.userAgent,
+          viewport: `${window.innerWidth}x${window.innerHeight}`,
+          reporter: 'render-error',
+        }),
+      }).catch(() => {});
+    } catch (e) {}
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'var(--color-canvas)', fontFamily: '-apple-system, Segoe UI, Helvetica, Arial, sans-serif' }}>
+          <div style={{ maxWidth: 480, textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🌹</div>
+            <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, margin: '0 0 12px', color: '#1F1B16' }}>Something went sideways.</h1>
+            <p style={{ margin: '0 0 18px', fontSize: 15, lineHeight: 1.55, color: '#6E665D' }}>The page hit an unexpected error. We've sent a report. Try reloading — your data is safe.</p>
+            <button onClick={() => window.location.reload()} style={{ background: '#F05A56', color: '#fff', border: 0, padding: '12px 24px', borderRadius: 12, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>Reload page</button>
+            <p style={{ margin: '14px 0 0', fontSize: 12, color: '#9C948A' }}>Or <a href="#marketing" style={{ color: '#1D5F66' }}>go home</a>.</p>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 const AI = window.Icons;
 const AD = window.RosyData;
 
@@ -894,7 +935,7 @@ function DevNoteButton({ route, currentUser }) {
       ]);
     }
   } catch (e) { console.warn('Supabase hydration error:', e); }
-  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  ReactDOM.createRoot(document.getElementById('root')).render(<RosyErrorBoundary><App /></RosyErrorBoundary>);
   if (typeof window.subscribeRealtime === 'function') {
     try { window.subscribeRealtime(); } catch (e) { console.warn('Realtime subscribe error:', e); }
   }

@@ -42,6 +42,10 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
     if (newEvent.start && newEvent.end && newEvent.end <= newEvent.start && !newEvent.endDate) {
       toast.push({ kind: 'warning', title: 'End time must be after start time' }); return;
     }
+    // Multi-day: endDate must be on or after start date.
+    if (newEvent.endDate && newEvent.date && newEvent.endDate < newEvent.date) {
+      toast.push({ kind: 'warning', title: 'End date must be on or after start date' }); return;
+    }
     setPublishingEvent(true);
     const draftEvent = { ...newEvent, vendorId: user?.id, status: 'open', gigCount: 0, filledCount: 0 };
     let createdId = null;
