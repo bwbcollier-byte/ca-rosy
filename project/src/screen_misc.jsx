@@ -1076,10 +1076,11 @@ function ProfileForm({ role, data, onChange }) {
         </>
       ) : null}
       <div className="field"><label className="field-label">{role === 'vendor' ? 'Studio description' : 'About you'}</label>
-        <textarea className="textarea" value={bio} onChange={e => setBio(e.target.value)}
+        <textarea className="textarea" value={bio} onChange={e => setBio(e.target.value.slice(0, 1000))} maxLength={1000}
           placeholder={role === 'vendor'
             ? 'A short paragraph couples and brands will see. What kind of work, what style, where you work.'
             : 'A short paragraph vendors will see. Years of experience, your strongest skills, anything that stands out.'} />
+        <p className="field-hint" style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-muted)' }}>{(bio || '').length} / 1000</p>
       </div>
     </div>
   );

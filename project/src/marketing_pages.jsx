@@ -591,7 +591,7 @@ function MkContactPage() {
                   <option value="careers">Careers</option>
                 </select>
               </div>
-              <div className="field"><label className="field-label">Message</label><textarea className="textarea" required value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} placeholder="What can we help with?" /></div>
+              <div className="field"><label className="field-label">Message</label><textarea className="textarea" required maxLength={5000} value={form.body} onChange={e => setForm({ ...form, body: e.target.value.slice(0, 5000) })} placeholder="What can we help with?" /><p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-muted)' }}>{form.body.length} / 5000</p></div>
               <button className="btn btn-coral" type="submit" disabled={sending || !form.name.trim() || !form.email.trim() || !form.body.trim()}>{sending ? 'Sending…' : 'Send message'}</button>
             </form>
           </div>

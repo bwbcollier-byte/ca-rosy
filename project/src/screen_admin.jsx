@@ -1543,13 +1543,13 @@ function SettingsProfile({ user }) {
         <div className="field"><label className="field-label">Title</label><input className="input" value={d.title} onChange={e => set('title', e.target.value)} placeholder={role === 'worker' ? 'Lead designer, Strike crew…' : 'Owner, Lead, Designer…'} /></div>
         <div className="field"><label className="field-label">City</label><input className="input" autoComplete="address-level2" value={d.city} onChange={e => set('city', e.target.value)} placeholder="Chicago" /></div>
         <div className="field"><label className="field-label">State</label><input className="input" autoComplete="address-level1" value={d.state} onChange={e => set('state', e.target.value)} placeholder="IL" /></div>
-        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" value={d.bio} onChange={e => set('bio', e.target.value)} placeholder="A short summary visible on your public profile." /></div>
+        <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" value={d.bio} onChange={e => set('bio', e.target.value.slice(0, 1000))} maxLength={1000} placeholder="A short summary visible on your public profile." /><p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-muted)' }}>{(d.bio || '').length} / 1000</p></div>
 
         {role === 'vendor' ? (
           <>
             <div className="field"><label className="field-label">Company / studio name</label><input className="input" value={d.company_name} onChange={e => set('company_name', e.target.value)} placeholder="Bloom & Fern Studio" /></div>
             <div className="field"><label className="field-label">Website</label><input className="input" type="url" value={d.website} onChange={e => set('website', e.target.value)} placeholder="https://" /></div>
-            <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Business description</label><textarea className="textarea" value={d.business_description} onChange={e => set('business_description', e.target.value)} placeholder="What the studio specializes in, typical events, palette, location service area." /></div>
+            <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Business description</label><textarea className="textarea" value={d.business_description} onChange={e => set('business_description', e.target.value.slice(0, 2000))} maxLength={2000} placeholder="What the studio specializes in, typical events, palette, location service area." /><p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-muted)' }}>{(d.business_description || '').length} / 2000</p></div>
           </>
         ) : null}
 
