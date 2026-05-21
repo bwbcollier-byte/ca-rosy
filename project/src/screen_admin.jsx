@@ -725,7 +725,48 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
 
       <UserDetailModal user={selected} onClose={closeDetail} setRoute={setRoute}
         initialEdit={editing}
-        onSave={(draft) => { setOverrides(o => ({ ...o, [selected.id]: { ...(o[selected.id] || {}), ...draft } })); }} />
+        onSave={async (draft) => {
+          // Optimistic: apply override locally + push into live RosyData so the
+          // page reflects the change immediately.
+          setOverrides(o => ({ ...o, [selected.id]: { ...(o[selected.id] || {}), ...draft } }));
+          const live = (window.RosyData?.USERS || []).find(u => u.id === selected.id);
+          if (live) {
+            Object.assign(live, {
+              photo: draft.photo, first: draft.first, last: draft.last, name: `${draft.first} ${draft.last}`.trim() || live.name,
+              email: draft.email, phone: draft.phone, title: draft.title, bio: draft.bio,
+              street: draft.street, zip: draft.zip,
+              company: draft.company, company_name: draft.company,
+            });
+            window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+          }
+          // Persist to Supabase. Admins bypass the elevation trigger so writes go through.
+          try {
+            if (window.sb) {
+              const { error: pErr } = await window.sb.from('rr_profiles').update({
+                first_name: draft.first || null, last_name: draft.last || null,
+                phone: draft.phone || null, title: draft.title || null,
+                bio: draft.bio || null, avatar_url: draft.photo || null,
+                street: draft.street || null, city: draft.city || null,
+                state: draft.state || null, zip: draft.zip || null,
+              }).eq('id', selected.id);
+              if (pErr) throw pErr;
+              if (selected.role === 'vendor' && draft.company) {
+                await window.sb.from('rr_vendor_profiles').upsert({
+                  id: selected.id, company_name: draft.company,
+                  business_description: draft.bio || null,
+                  business_phone: draft.phone || null,
+                  logo_url: draft.photo || null,
+                }, { onConflict: 'id' });
+              }
+              if (selected.role === 'worker' && draft.hourlyRate) {
+                await window.sb.from('rr_worker_profiles').upsert({
+                  id: selected.id, hourly_rate: Number(draft.hourlyRate) || null,
+                  services: draft.skills ? draft.skills.split(',').map(s => s.trim()).filter(Boolean) : null,
+                }, { onConflict: 'id' });
+              }
+            }
+          } catch (e) { console.warn('admin profile save failed:', e.message); }
+        }} />
 
       <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter" size="md"
         footer={<><button className="btn btn-ghost" onClick={() => { setStatusFilter('all'); setRoleFilter('all'); setRatingFilter('any'); setCityFilter('all'); }}>Reset all</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>

@@ -428,7 +428,7 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
             {[
               ['Account settings', () => setRoute && setRoute('settings')],
               ['Take the tour',    () => window.dispatchEvent(new CustomEvent('rosy:start-tour'))],
-              ['Help & support',   () => window.open('mailto:support@rosyrecruits.com?subject=Help%20with%20Rosy%20Recruits', '_blank', 'noopener')],
+              ['Help & support',   () => { setRoute && setRoute('settings'); window.location.hash = 'marketing/contact'; }],
               ['Log out',          () => onSignOut()],
             ].map(([label, fn]) => (
               <button key={label} className="nav-item" style={{ fontSize: 13 }} onClick={() => { setMenuOpen(false); fn && fn(); }}>{label}</button>
