@@ -734,6 +734,35 @@ window.RosyMutate = {
       if (status === 'paid')      { patch.payment_status = 'paid'; patch.paid_at = new Date().toISOString(); }
       const { error } = await window.sb.from('rr_gig_applications').update(patch).eq('id', id);
       if (error) throw error;
+      // Notify the worker on confirm / reject so they don't have to refresh to see the decision.
+      if (status === 'confirmed' || status === 'rejected') {
+        try {
+          const { data: app } = await window.sb.from('rr_gig_applications')
+            .select('worker_id, gig_id, gigs:gig_id(event_id, gig_type, rate, gig_date, events:event_id(title, venue_id, venues:venue_id(name, city)))')
+            .eq('id', id).maybeSingle();
+          const worker = (window.RosyData.USERS || []).find(u => u.id === app?.worker_id);
+          if (worker?.email && window.RosySendEmail) {
+            const ev = app?.gigs?.events;
+            const venue = ev?.venues;
+            const vars = {
+              worker_first: worker.first || worker.name || 'there',
+              worker_name:  worker.name || worker.email,
+              event_name:   ev?.title || 'your gig',
+              event_date:   app?.gigs?.gig_date || '',
+              call_time:    '',
+              venue_name:   venue?.name || '',
+              venue_city:   venue?.city || '',
+              hourly_rate:  app?.gigs?.rate || '',
+              lead_name:    '',
+              gig_type:     app?.gigs?.gig_type || '',
+            };
+            window.RosySendEmail({
+              slug: status === 'confirmed' ? 'worker-confirmed' : 'worker-rejected',
+              to: worker.email, vars,
+            }).catch(e => console.warn('status email failed:', e.message));
+          }
+        } catch (e) { console.warn('status email lookup failed:', e.message); }
+      }
       return before;
     },
     async setPaymentStatus(id, paymentStatus) {
