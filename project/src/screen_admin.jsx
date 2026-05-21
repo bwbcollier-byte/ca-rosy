@@ -826,7 +826,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
           } finally { setInviteSending(false); }
         }}>{inviteSending ? 'Sending…' : 'Send invite'}</button></>}>
         <div className="col" style={{ gap: 12 }}>
-          <div className="field"><label className="field-label">Email</label><input className="input" placeholder="they@studio.com" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} /></div>
+          <div className="field"><label className="field-label">Email</label><input className="input" type="email" autoComplete="email" placeholder="they@studio.com" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} /></div>
           <div className="field"><label className="field-label">Personal note (optional)</label><textarea className="textarea" value={inviteNote} onChange={e => setInviteNote(e.target.value)} placeholder="Hey — wanted to bring you onto our weekend crew." /></div>
         </div>
       </Modal>
@@ -2584,7 +2584,7 @@ function PageEmails() {
             setTestEmail('');
           }}>Send</button></>}>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Send to</label>
-          <input className="input" placeholder="you@studio.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
+          <input className="input" type="email" autoComplete="email" placeholder="you@studio.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
           <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>Demo mode redirects the message to the staging inbox.</p>
         </Modal>
       ) : null}

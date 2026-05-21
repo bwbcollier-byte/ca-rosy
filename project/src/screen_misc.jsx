@@ -627,14 +627,14 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
 
           <div className="field">
             <label className="field-label">Email</label>
-            <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@yourstudio.com" />
+            <input className="input" type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@yourstudio.com" />
           </div>
 
           {mode !== 'forgot' ? (
             <div className="field">
               <label className="field-label">Password</label>
               <div style={{ position: 'relative' }}>
-                <input className="input" type={show ? 'text' : 'password'} value={pw} onChange={e => setPw(e.target.value)} placeholder="••••••••" style={{ paddingRight: 44 }} />
+                <input className="input" type={show ? 'text' : 'password'} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={pw} onChange={e => setPw(e.target.value)} placeholder="••••••••" style={{ paddingRight: 44 }} />
                 <button type="button" aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} onClick={() => setShow(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, padding: 6, cursor: 'pointer', color: 'var(--color-muted)' }}>{show ? <SX_I.EyeOff size={16} /> : <SX_I.Eye size={16} />}</button>
               </div>
               {mode === 'login' ? <button type="button" className="btn-link" style={{ alignSelf: 'flex-end', fontSize: 12.5, cursor: 'pointer', background: 'transparent', border: 0, padding: 0 }} onClick={() => setMode('forgot')}>Forgot password?</button> : null}
@@ -1021,11 +1021,11 @@ function ProfileForm({ role, data, onChange }) {
     <div className="col" style={{ gap: 14 }}>
       <ImageUpload value={photo} onChange={setPhoto} label={role === 'vendor' ? 'Upload your studio logo' : 'Upload a profile photo'} size={96} round={role !== 'vendor' ? true : false} bucket={role === 'vendor' ? 'rr-logos' : 'rr-avatars'} />
       <div className="grid-2">
-        <div className="field"><label className="field-label">First name</label><input className="input" value={first} onChange={e => setFirst(e.target.value)} placeholder="Jane" /></div>
-        <div className="field"><label className="field-label">Last name</label><input className="input" value={last} onChange={e => setLast(e.target.value)} placeholder="Doe" /></div>
+        <div className="field"><label className="field-label">First name</label><input className="input" autoComplete="given-name" value={first} onChange={e => setFirst(e.target.value)} placeholder="Jane" /></div>
+        <div className="field"><label className="field-label">Last name</label><input className="input" autoComplete="family-name" value={last} onChange={e => setLast(e.target.value)} placeholder="Doe" /></div>
       </div>
       <div className="field"><label className="field-label">Phone number</label>
-        <input className="input" type="tel" value={phone}
+        <input className="input" type="tel" autoComplete="tel" value={phone}
           onChange={e => setPhone(e.target.value)}
           placeholder="+1 (555) 555-0100" />
         {(() => {

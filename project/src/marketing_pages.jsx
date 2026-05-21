@@ -581,8 +581,8 @@ function MkContactPage() {
           <div className="card">
             <h3 className="card-title" style={{ marginBottom: 16 }}>Send a message</h3>
             <form className="col" style={{ gap: 14 }} onSubmit={submit}>
-              <div className="field"><label className="field-label">Your name</label><input className="input" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Your name" /></div>
-              <div className="field"><label className="field-label">Email</label><input className="input" required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="you@studio.com" /></div>
+              <div className="field"><label className="field-label">Your name</label><input className="input" required autoComplete="name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Your name" /></div>
+              <div className="field"><label className="field-label">Email</label><input className="input" required type="email" autoComplete="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="you@studio.com" /></div>
               <div className="field"><label className="field-label">Topic</label>
                 <select className="select" value={form.topic} onChange={e => setForm({ ...form, topic: e.target.value })}>
                   <option value="sales">Sales</option>

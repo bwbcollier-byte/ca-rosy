@@ -255,7 +255,7 @@ function PageAdminAssistants() {
       <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite admin team member" size="md"
         footer={<><button className="btn btn-ghost" onClick={() => setInviteOpen(false)}>Cancel</button><button className="btn btn-coral" onClick={sendInvite}>Send invite</button></>}>
         <div className="col" style={{ gap: 14 }}>
-          <div className="field"><label className="field-label">Email</label><input className="input" placeholder="they@rosyrecruits.com" value={inviteForm.email} onChange={(e) => setInviteForm(f => ({ ...f, email: e.target.value }))} /></div>
+          <div className="field"><label className="field-label">Email</label><input className="input" type="email" autoComplete="email" placeholder="they@rosyrecruits.com" value={inviteForm.email} onChange={(e) => setInviteForm(f => ({ ...f, email: e.target.value }))} /></div>
           <div className="field"><label className="field-label">Starting role</label>
             <select className="select" value={inviteForm.preset} onChange={(e) => setInviteForm(f => ({ ...f, preset: e.target.value }))}>
               {PRESETS.filter(p => p.id !== 'custom').map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
