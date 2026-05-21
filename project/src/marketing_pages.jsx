@@ -300,6 +300,20 @@ function MkGalleryPage() {
 /* ============ Pricing ============ */
 function MkPricingPage({ goToAuth }) {
   const [yearly, setYearly] = MP_us(false);
+  // Live platform fee from rr_platform_settings. Falls back to seed % if not hydrated.
+  const [livePlatformFee, setLivePlatformFee] = MP_us(null);
+  MP_ue(() => {
+    let cancel = false;
+    (async () => {
+      if (!window.sb) return;
+      try {
+        const { data } = await window.sb.from('rr_platform_settings').select('key,value').eq('key', 'platform_fee_percent').single();
+        if (!cancel && data) setLivePlatformFee(Number(data.value) || null);
+      } catch (e) {}
+    })();
+    return () => { cancel = true; };
+  }, []);
+  const workerTake = livePlatformFee != null ? (100 - livePlatformFee) : 92;
   const tiers = [
     { id: 'starter', name: 'Starter',   price: 0,   yprice: 0,   fee: '8%', desc: 'Solo florists and side studios.',  cta: 'Start free',
       features: ['Post unlimited gigs','Up to 4 active events','Stripe Connect payouts','Standard support','Basic analytics'] },
@@ -335,7 +349,7 @@ function MkPricingPage({ goToAuth }) {
                 {t.price != null ? <span style={{ fontSize: 14, color: 'var(--color-muted)', fontFamily: 'var(--font-body)', fontWeight: 400, marginLeft: 4 }}>/mo</span> : null}
               </p>
               <p style={{ margin: '12px 0 18px', fontSize: 12.5, color: 'var(--color-muted)' }}>Platform fee: <strong style={{ color: 'var(--color-ink)' }}>{t.fee}</strong></p>
-              <button className={`btn btn-block ${t.highlight ? 'btn-coral' : 'btn-ghost'}`} onClick={() => t.id === 'ent' ? null : goToAuth('signup')}>{t.cta}</button>
+              <button className={`btn btn-block ${t.highlight ? 'btn-coral' : 'btn-ghost'}`} onClick={() => { if (t.id === 'ent') { window.location.hash = 'marketing/contact'; } else { goToAuth('signup'); } }}>{t.cta}</button>
               <div className="divider" style={{ margin: '20px 0' }} />
               <div className="col" style={{ gap: 8 }}>
                 {t.features.map(f => (
@@ -349,7 +363,7 @@ function MkPricingPage({ goToAuth }) {
           ))}
         </div>
         <div style={{ marginTop: 32, padding: 20, background: 'var(--color-surface-soft)', borderRadius: 16, textAlign: 'center', fontSize: 14, color: 'var(--color-body)' }}>
-          <strong>Workers are always free.</strong> Workers keep 92% of every gig rate. The platform fee above applies only to vendors.
+          <strong>Workers are always free.</strong> Workers keep {workerTake}% of every gig rate. The platform fee above applies only to vendors.
         </div>
       </section>
       <CTABand goToAuth={goToAuth} />

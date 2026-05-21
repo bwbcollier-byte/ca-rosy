@@ -10,6 +10,7 @@ function PageInbox({ currentUser }) {
   const [active, setActive] = SX_us(SX_D.MESSAGES[0]?.id);
   const [draft, setDraft] = SX_us('');
   const [composeOpen, setComposeOpen] = SX_us(false);
+  const [composeSearch, setComposeSearch] = SX_us('');
   const [callOpen, setCallOpen] = SX_us(null); // 'voice' | 'video' | null
   const [threadMenuOpen, setThreadMenuOpen] = SX_us(false);
   const [search, setSearch] = SX_us('');
@@ -150,12 +151,20 @@ function PageInbox({ currentUser }) {
         )}
       </div>
 
-      {composeOpen ? (
-        <Modal open={composeOpen} onClose={() => setComposeOpen(false)} title="New conversation" size="md"
-          footer={<button className="btn btn-ghost" onClick={() => setComposeOpen(false)}>Cancel</button>}>
-          <p style={{ margin: '0 0 14px', fontSize: 13.5, color: 'var(--color-muted)' }}>Pick someone to message:</p>
+      {composeOpen ? (() => {
+        const allOthers = (window.RosyData?.USERS || []).filter(u => u.role !== 'admin' && u.id !== meId && u.email);
+        const matches = composeSearch.trim()
+          ? allOthers.filter(u => [u.name, u.email, u.company].some(s => (s || '').toLowerCase().includes(composeSearch.toLowerCase()))).slice(0, 20)
+          : allOthers.slice(0, 20);
+        return (
+        <Modal open={composeOpen} onClose={() => { setComposeOpen(false); setComposeSearch(''); }} title="New conversation" size="md"
+          footer={<button className="btn btn-ghost" onClick={() => { setComposeOpen(false); setComposeSearch(''); }}>Cancel</button>}>
+          <div className="field" style={{ marginBottom: 14 }}>
+            <input className="input" placeholder="Search by name, company, or email" value={composeSearch} onChange={e => setComposeSearch(e.target.value)} autoFocus />
+          </div>
+          {matches.length === 0 ? <p style={{ margin: 0, padding: 14, fontSize: 13, color: 'var(--color-muted)', textAlign: 'center' }}>{composeSearch.trim() ? 'No matches.' : 'No users yet.'}</p> : null}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 360, overflowY: 'auto' }}>
-            {SX_D.USERS.filter(u => u.role !== 'admin').slice(0, 8).map(u => (
+            {matches.map(u => (
               <button key={u.id} className="btn btn-ghost" style={{ justifyContent: 'flex-start', padding: 10, height: 'auto' }} onClick={async () => {
                   let conv;
                   try {
@@ -173,8 +182,8 @@ function PageInbox({ currentUser }) {
                   }
                   setExtraConvs(arr => [conv, ...arr]);
                   setActive(conv.id);
-                  setComposeOpen(false);
-                  toast.push({ kind: 'success', title: `Conversation started with ${u.first}` });
+                  setComposeOpen(false); setComposeSearch('');
+                  toast.push({ kind: 'success', title: `Conversation started with ${u.first || u.name}` });
                 }}>
                 <Avatar name={u.name} size="md" />
                 <div style={{ textAlign: 'left', marginLeft: 4 }}>
@@ -185,7 +194,8 @@ function PageInbox({ currentUser }) {
             ))}
           </div>
         </Modal>
-      ) : null}
+        );
+      })() : null}
 
       {callOpen ? (
         <Modal open={!!callOpen} onClose={() => setCallOpen(null)} title={callOpen === 'voice' ? 'Voice call' : 'Video call'} size="sm"
@@ -204,8 +214,33 @@ function PageInbox({ currentUser }) {
         <Modal open={threadMenuOpen} onClose={() => setThreadMenuOpen(false)} title="Conversation options" size="sm"
           footer={<button className="btn btn-ghost" onClick={() => setThreadMenuOpen(false)}>Close</button>}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setThreadMenuOpen(false); toast.push({ kind: 'info', title: 'Conversation muted', body: "You won't get notifications from this thread." }); }}><SX_I.Bell size={14} />Mute notifications</button>
-            <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setThreadMenuOpen(false); toast.push({ kind: 'success', title: 'Conversation archived' }); }}><SX_I.Trash2 size={14} />Archive</button>
+            <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => {
+              // Persist mute to localStorage so the bell badge respects it cross-session.
+              try {
+                const k = 'rosy.mutedThreads';
+                const muted = JSON.parse(localStorage.getItem(k) || '[]');
+                if (conv?.id && !muted.includes(conv.id)) { muted.push(conv.id); localStorage.setItem(k, JSON.stringify(muted)); }
+              } catch (e) {}
+              setThreadMenuOpen(false);
+              toast.push({ kind: 'info', title: 'Conversation muted', body: "You won't get notifications from this thread." });
+            }}><SX_I.Bell size={14} />Mute notifications</button>
+            <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={async () => {
+              if (!conv?.id) { setThreadMenuOpen(false); return; }
+              try {
+                if (window.sb) {
+                  const { error } = await window.sb.from('rr_conversations').update({ archived: true, archived_at: new Date().toISOString() }).eq('id', conv.id);
+                  if (error) throw error;
+                }
+                // Remove from local list so the inbox refreshes immediately.
+                setExtraConvs(arr => arr.filter(c => c.id !== conv.id));
+                setActive(null);
+                setThreadMenuOpen(false);
+                toast.push({ kind: 'success', title: 'Conversation archived' });
+              } catch (e) {
+                setThreadMenuOpen(false);
+                toast.push({ kind: 'warning', title: "Couldn't archive", body: e.message || 'The conversation stays in your inbox.' });
+              }
+            }}><SX_I.Trash2 size={14} />Archive</button>
             <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', color: 'var(--color-error)' }} onClick={() => { setThreadMenuOpen(false); toast.push({ kind: 'warning', title: 'Report submitted', body: 'Rosy Trust & Safety will review within 24h.' }); }}><SX_I.AlertTriangle size={14} />Report</button>
           </div>
         </Modal>
@@ -298,11 +333,28 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
                 </button>
               ) : null}
             </div>
-            <div className="mk-hero-stats">
-              <div className="mk-hero-stat"><span className="num">{(window.RosyContent ? window.RosyContent('home','hero_stat1_num','1,284') : '1,284')}</span><span className="lbl">{(window.RosyContent ? window.RosyContent('home','hero_stat1_lbl','active workers') : 'active workers')}</span></div>
-              <div className="mk-hero-stat"><span className="num">{(window.RosyContent ? window.RosyContent('home','hero_stat2_num','412') : '412')}</span><span className="lbl">{(window.RosyContent ? window.RosyContent('home','hero_stat2_lbl','vendor studios') : 'vendor studios')}</span></div>
-              <div className="mk-hero-stat"><span className="num">{(window.RosyContent ? window.RosyContent('home','hero_stat3_num','$284k') : '$284k')}</span><span className="lbl">{(window.RosyContent ? window.RosyContent('home','hero_stat3_lbl','paid this month') : 'paid this month')}</span></div>
-            </div>
+            {(() => {
+              // Live hero stats — read from window.RosyData so we never lie. Hide
+              // the stat strip when we have nothing real to show yet.
+              const D = window.RosyData || {};
+              const users = D.USERS || [];
+              const workers = users.filter(u => u.role === 'worker').length;
+              const vendors = users.filter(u => u.role === 'vendor').length;
+              const paidMonth = (D.TRANSACTIONS || []).filter(t => {
+                if (t.status !== 'Paid' || !t.date) return false;
+                const d = new Date(t.date);
+                const now = new Date();
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+              }).reduce((s, t) => s + (t.amount || 0), 0);
+              if (workers + vendors + paidMonth === 0) return null;
+              return (
+                <div className="mk-hero-stats">
+                  <div className="mk-hero-stat"><span className="num">{workers.toLocaleString()}</span><span className="lbl">active workers</span></div>
+                  <div className="mk-hero-stat"><span className="num">{vendors.toLocaleString()}</span><span className="lbl">vendor studios</span></div>
+                  <div className="mk-hero-stat"><span className="num">${paidMonth.toLocaleString()}</span><span className="lbl">paid this month</span></div>
+                </div>
+              );
+            })()}
           </div>
           <div className="mk-hero-art">
             <img src={SX_D.IMAGES.marketingHero} alt="Floral installation" />
@@ -930,7 +982,7 @@ function ProfileForm({ role, data, onChange }) {
         </div>
       </div>
       <div className="field"><label className="field-label">{role === 'vendor' ? 'Studio address' : 'Home base'}</label>
-        <AddressInput value={d.address || ''} onChange={(v) => set({ address: v })} placeholder={role === 'vendor' ? 'Search your studio address' : 'City or neighborhood'} />
+        <AddressInput value={d.address || ''} onChange={(v, meta) => set({ address: v, addressParts: meta?.parts || null, addressLatLng: meta ? { lat: meta.lat, lng: meta.lng } : null })} placeholder={role === 'vendor' ? 'Search your studio address' : 'City or neighborhood'} />
       </div>
       {role === 'vendor' ? (
         <>

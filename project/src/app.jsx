@@ -341,28 +341,31 @@ function App() {
               try {
                 // Parse "Street, City, State ZIP" address strings if we have a free-text address.
                 const addr = (formData?.address || '').trim();
-                // Permissive parse — split on commas + look for "ST 12345" tail.
-                // Captures street/city/state/zip when present; falls back gracefully otherwise.
-                const parsed = (() => {
-                  if (!addr) return { street: null, city: null, state: null, zip: null };
+                // Prefer Google Places structured fields (set by AddressInput when the
+                // user selects a suggestion). Fall back to a permissive comma-split for
+                // free-typed addresses.
+                let street = null, cityVal = null, stateVal = null, zipVal = null;
+                if (formData?.addressParts) {
+                  street   = formData.addressParts.street || null;
+                  cityVal  = formData.addressParts.city   || null;
+                  stateVal = formData.addressParts.state  || null;
+                  zipVal   = formData.addressParts.zip    || null;
+                } else if (addr) {
                   const parts = addr.split(',').map(s => s.trim()).filter(Boolean);
                   const tail = parts[parts.length - 1] || '';
                   const stZipMatch = tail.match(/^([A-Z]{2})\s+(\d{4,6})$/i) || tail.match(/^([A-Z]{2})$/i);
-                  let street = null, city = null, state = null, zip = null;
                   if (stZipMatch) {
-                    state = stZipMatch[1].toUpperCase();
-                    zip = stZipMatch[2] || null;
-                    if (parts.length >= 3) { street = parts.slice(0, -2).join(', '); city = parts[parts.length - 2]; }
-                    else if (parts.length === 2) { city = parts[0]; }
+                    stateVal = stZipMatch[1].toUpperCase();
+                    zipVal = stZipMatch[2] || null;
+                    if (parts.length >= 3) { street = parts.slice(0, -2).join(', '); cityVal = parts[parts.length - 2]; }
+                    else if (parts.length === 2) { cityVal = parts[0]; }
                   } else if (parts.length === 1) {
-                    city = parts[0];
+                    cityVal = parts[0];
                   } else {
                     street = parts.slice(0, -1).join(', ');
-                    city = parts[parts.length - 1];
+                    cityVal = parts[parts.length - 1];
                   }
-                  return { street, city, state, zip };
-                })();
-                const street = parsed.street, cityVal = parsed.city, stateVal = parsed.state, zipVal = parsed.zip;
+                }
                 // rr_profiles row already exists (created by rr_handle_new_user trigger).
                 // UPDATE rather than UPSERT — UPSERT fails the NOT-NULL check on email
                 // before the conflict can redirect to the update path.
@@ -520,28 +523,31 @@ function App() {
             try {
               if (window.sb && sessionUserId) {
                 const addr = (formData?.address || '').trim();
-                // Permissive parse — split on commas + look for "ST 12345" tail.
-                // Captures street/city/state/zip when present; falls back gracefully otherwise.
-                const parsed = (() => {
-                  if (!addr) return { street: null, city: null, state: null, zip: null };
+                // Prefer Google Places structured fields (set by AddressInput when the
+                // user selects a suggestion). Fall back to a permissive comma-split for
+                // free-typed addresses.
+                let street = null, cityVal = null, stateVal = null, zipVal = null;
+                if (formData?.addressParts) {
+                  street   = formData.addressParts.street || null;
+                  cityVal  = formData.addressParts.city   || null;
+                  stateVal = formData.addressParts.state  || null;
+                  zipVal   = formData.addressParts.zip    || null;
+                } else if (addr) {
                   const parts = addr.split(',').map(s => s.trim()).filter(Boolean);
                   const tail = parts[parts.length - 1] || '';
                   const stZipMatch = tail.match(/^([A-Z]{2})\s+(\d{4,6})$/i) || tail.match(/^([A-Z]{2})$/i);
-                  let street = null, city = null, state = null, zip = null;
                   if (stZipMatch) {
-                    state = stZipMatch[1].toUpperCase();
-                    zip = stZipMatch[2] || null;
-                    if (parts.length >= 3) { street = parts.slice(0, -2).join(', '); city = parts[parts.length - 2]; }
-                    else if (parts.length === 2) { city = parts[0]; }
+                    stateVal = stZipMatch[1].toUpperCase();
+                    zipVal = stZipMatch[2] || null;
+                    if (parts.length >= 3) { street = parts.slice(0, -2).join(', '); cityVal = parts[parts.length - 2]; }
+                    else if (parts.length === 2) { cityVal = parts[0]; }
                   } else if (parts.length === 1) {
-                    city = parts[0];
+                    cityVal = parts[0];
                   } else {
                     street = parts.slice(0, -1).join(', ');
-                    city = parts[parts.length - 1];
+                    cityVal = parts[parts.length - 1];
                   }
-                  return { street, city, state, zip };
-                })();
-                const street = parsed.street, cityVal = parsed.city, stateVal = parsed.state, zipVal = parsed.zip;
+                }
                 const terms = formData?.terms || null;
                 timed(window.sb.from('rr_profiles').update({
                   role: pickedRole, onboarding_complete: true, verified: false,

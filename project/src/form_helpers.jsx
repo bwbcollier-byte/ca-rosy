@@ -446,7 +446,23 @@ function AddressInput({ value, onChange, placeholder = 'Type your address' }) {
           const place = ac.getPlace();
           const formatted = place?.formatted_address || place?.name || inputRef.current.value;
           setQ(formatted);
-          onChange && onChange(formatted, { place });
+          // Parse structured address components from Google so consumers can store
+          // street/city/state/zip without a fragile regex on the formatted string.
+          const parts = { street: '', street_number: '', route: '', city: '', state: '', zip: '', country: '' };
+          (place?.address_components || []).forEach(c => {
+            const t = c.types || [];
+            if (t.includes('street_number')) parts.street_number = c.long_name;
+            if (t.includes('route'))          parts.route = c.long_name;
+            if (t.includes('locality'))       parts.city  = c.long_name;
+            if (t.includes('postal_town') && !parts.city) parts.city = c.long_name;
+            if (t.includes('administrative_area_level_1')) parts.state = c.short_name;
+            if (t.includes('postal_code'))    parts.zip   = c.long_name;
+            if (t.includes('country'))        parts.country = c.short_name;
+          });
+          parts.street = `${parts.street_number} ${parts.route}`.trim();
+          const lat = place?.geometry?.location?.lat?.();
+          const lng = place?.geometry?.location?.lng?.();
+          onChange && onChange(formatted, { place, parts, lat, lng });
         });
         acRef.current = ac;
       } catch (e) { console.warn('Places Autocomplete attach failed:', e); }
