@@ -655,15 +655,17 @@ function App() {
     const root = { label: 'Dashboard', onClick: () => setRoute('dashboard') };
     const section = { label: title, onClick: subId ? () => setRoute(baseRoute) : undefined };
     if (!subId) return [root, section];
-    let leaf = subId;
+    // Default to a truncated id so the breadcrumb doesn't show a full UUID
+    // when the data hasn't hydrated yet.
+    let leaf = subId && subId.length > 10 ? subId.slice(0, 8) + '…' : subId;
     if (baseRoute === 'events') {
-      const ev = AD.EVENTS.find(e => e.id === subId);
+      const ev = (window.RosyData?.EVENTS || []).find(e => e.id === subId);
       if (ev) leaf = ev.name;
     } else if (baseRoute === 'users' || baseRoute === 'workers' || baseRoute === 'vendors') {
-      const u = AD.USERS.find(x => x.id === subId);
+      const u = (window.RosyData?.USERS || []).find(x => x.id === subId);
       if (u) leaf = u.name;
     } else if (baseRoute === 'payments') {
-      const t = AD.TRANSACTIONS.find(x => x.id === subId);
+      const t = (window.RosyData?.TRANSACTIONS || []).find(x => x.id === subId);
       if (t) leaf = t.invoice;
     }
     return [root, section, { label: leaf }];
