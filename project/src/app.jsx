@@ -818,7 +818,7 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
   if (baseRoute === 'admin-team')    return <PageAdminAssistants />;
   if (baseRoute === 'broadcast')     return <PageBroadcast />;
   if (baseRoute === 'notif-rules')   return <PageNotificationRules />;
-  if (baseRoute === 'settings') return <PageSettings role={role} currentUser={currentUser} />;
+  if (baseRoute === 'settings') return <PageSettings role={role} currentUser={currentUser} initialTab={subId} setRoute={setRoute} />;
   if (baseRoute === 'audit')    return <PageAudit />;
   if (baseRoute === 'analytics')return <PageAnalytics />;
   if (baseRoute === 'faqs')         return window.PageFAQs ? <window.PageFAQs /> : null;

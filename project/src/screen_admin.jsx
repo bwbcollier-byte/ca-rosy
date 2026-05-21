@@ -1290,20 +1290,27 @@ function VenueDetailModal({ venue, onClose, onEdit }) {
 }
 
 /* ============ Settings ============ */
-function PageSettings({ role, currentUser }) {
-  const [tab, setTab] = SP_us('profile');
-  // Admin sees a streamlined set — no Privacy & Data, Team, or Danger Zone.
+function PageSettings({ role, currentUser, initialTab, setRoute }) {
+  // Tabs live in the URL as settings:<tab> so refresh preserves the user's
+  // selection. setRoute(settings:account) updates the hash; reading initialTab
+  // on mount + on prop change keeps internal state in sync.
   const tabs = role === 'admin'
     ? ['profile','account','notifications','payouts']
     : ['profile','account','notifications','payouts','privacy','danger'];
+  const [tab, setTab] = SP_us(tabs.includes(initialTab) ? initialTab : 'profile');
+  React.useEffect(() => { if (tabs.includes(initialTab) && initialTab !== tab) setTab(initialTab); }, [initialTab]);
   React.useEffect(() => { if (!tabs.includes(tab)) setTab('profile'); }, [role]);
+  const selectTab = (s) => {
+    setTab(s);
+    if (setRoute) setRoute('settings:' + s);
+  };
   return (
     <div className="content fade-up">
       <div className="section-heading"><h2>Settings</h2></div>
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 32 }}>
         <div className="col" style={{ gap: 4 }}>
           {tabs.map(s => (
-            <button key={s} onClick={() => setTab(s)} className={`nav-item ${tab===s ? 'active' : ''}`} style={{ textTransform: 'capitalize' }}>{s === 'danger' ? 'Danger zone' : s === 'privacy' ? 'Privacy & data' : s}</button>
+            <button key={s} onClick={() => selectTab(s)} className={`nav-item ${tab===s ? 'active' : ''}`} style={{ textTransform: 'capitalize' }}>{s === 'danger' ? 'Danger zone' : s === 'privacy' ? 'Privacy & data' : s}</button>
           ))}
         </div>
         <div className="col" style={{ gap: 16 }}>
