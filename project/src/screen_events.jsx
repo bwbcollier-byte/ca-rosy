@@ -35,6 +35,13 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
   const [publishingEvent, setPublishingEvent] = SE_us(false);
   const publishEvent = async () => {
     if (publishingEvent) return;
+    // Don't allow events in the past.
+    const todayIso = new Date().toISOString().slice(0, 10);
+    if (newEvent.date && newEvent.date < todayIso) { toast.push({ kind: 'warning', title: 'Event date must be today or in the future' }); return; }
+    // End time must be after start time on the same day. (Multi-day events use endDate.)
+    if (newEvent.start && newEvent.end && newEvent.end <= newEvent.start && !newEvent.endDate) {
+      toast.push({ kind: 'warning', title: 'End time must be after start time' }); return;
+    }
     setPublishingEvent(true);
     const draftEvent = { ...newEvent, vendorId: user?.id, status: 'open', gigCount: 0, filledCount: 0 };
     let createdId = null;
@@ -334,7 +341,7 @@ function NewEventForm({ value = {}, onChange = () => {}, onCreateVenue }) {
       <div className="field"><label className="field-label">Event name *</label><input className="input" value={value.name || ''} onChange={e => upd('name', e.target.value)} placeholder="e.g. Carter Garden Brunch" /></div>
       <div className="field"><label className="field-label">Description *</label><textarea className="textarea" value={value.desc || ''} onChange={e => upd('desc', e.target.value)} placeholder="Paint the room. What's the palette, scope, vibe?" /></div>
       <div className="grid-2">
-        <div className="field"><label className="field-label">Start date</label><input className="input" type="date" value={value.date || ''} onChange={e => upd('date', e.target.value)} /></div>
+        <div className="field"><label className="field-label">Start date</label><input className="input" type="date" min={new Date().toISOString().slice(0, 10)} value={value.date || ''} onChange={e => upd('date', e.target.value)} /></div>
         <div className="field"><label className="field-label">End date <span className="t-muted" style={{ fontWeight: 400 }}>(optional, for multi-day events)</span></label><input className="input" type="date" value={value.endDate || ''} min={value.date || undefined} onChange={e => upd('endDate', e.target.value)} /></div>
       </div>
       <div className="grid-2">

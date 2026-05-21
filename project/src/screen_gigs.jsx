@@ -87,6 +87,9 @@ function PageGigsVendor({ user, role, setRoute }) {
     if (!addForm?.eventId) { toast.push({ kind: 'warning', title: 'Pick an event' }); return; }
     if (!addForm?.type) { toast.push({ kind: 'warning', title: 'Pick a gig type' }); return; }
     if (!addForm?.date) { toast.push({ kind: 'warning', title: 'Pick a date' }); return; }
+    // Don't allow gigs in the past.
+    const todayIso = new Date().toISOString().slice(0, 10);
+    if (addForm.date < todayIso) { toast.push({ kind: 'warning', title: 'Gig date must be today or in the future' }); return; }
     if (!addForm?.start || !addForm?.end) { toast.push({ kind: 'warning', title: 'Enter start + end times' }); return; }
     if (!addForm?.rate || Number(addForm.rate) <= 0) { toast.push({ kind: 'warning', title: 'Enter a positive hourly rate' }); return; }
     if (!addForm?.spots || Number(addForm.spots) <= 0) { toast.push({ kind: 'warning', title: 'Enter a positive spot count' }); return; }
@@ -430,7 +433,7 @@ function AddGigForm({ value, onChange, events }) {
         </div>
       </div>
       <div className="grid-2">
-        <div className="field"><label className="field-label">Date</label><input className="input" type="date" value={value.date} onChange={e => set({ date: e.target.value })} /></div>
+        <div className="field"><label className="field-label">Date</label><input className="input" type="date" min={new Date().toISOString().slice(0, 10)} value={value.date} onChange={e => set({ date: e.target.value })} /></div>
         <div className="field"><label className="field-label">Spots</label><input className="input" type="number" min={1} value={value.spots} onChange={e => set({ spots: e.target.value })} /></div>
       </div>
       <div className="grid-2">

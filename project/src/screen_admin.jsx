@@ -1249,7 +1249,7 @@ function VenueFormModal({ open, onClose, venue, onSave }) {
         <div className="field"><label className="field-label">Name *</label><input className="input" placeholder="e.g. Carter Garden Estate" value={f.name} onChange={e => upd('name', e.target.value)} /></div>
         <div className="grid-2">
           <div className="field"><label className="field-label">City *</label><input className="input" placeholder="Chicago, IL" value={f.city} onChange={e => upd('city', e.target.value)} /></div>
-          <div className="field"><label className="field-label">Capacity *</label><input className="input" type="number" placeholder="200" value={f.capacity} onChange={e => upd('capacity', e.target.value)} /></div>
+          <div className="field"><label className="field-label">Capacity *</label><input className="input" type="number" min={1} placeholder="200" value={f.capacity} onChange={e => upd('capacity', e.target.value)} /></div>
         </div>
         <div className="field"><label className="field-label">Address *</label>
           <AddressInput value={f.address} onChange={v => upd('address', v)} placeholder="Start typing a street address" />

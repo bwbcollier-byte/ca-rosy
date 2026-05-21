@@ -483,7 +483,7 @@ function BuildMyTeamWizard({ open, onClose }) {
             <div><p style={{ margin: 0, fontWeight: 500 }}>Only suggest from my favorites</p><p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--color-muted)' }}>Workers you've previously rated 5★.</p></div>
             <span className={`toggle ${config.favoriteOnly ? 'on' : ''}`} onClick={() => update('favoriteOnly', !config.favoriteOnly)} />
           </div>
-          <div className="field"><label className="field-label">Budget cap (optional)</label><input className="input" type="number" value={config.budget} onChange={e => update('budget', +e.target.value)} /></div>
+          <div className="field"><label className="field-label">Budget cap (optional)</label><input className="input" type="number" min={0} value={config.budget} onChange={e => update('budget', +e.target.value)} /></div>
         </div>
       ) : null}
 
