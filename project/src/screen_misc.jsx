@@ -228,7 +228,7 @@ function PageInbox({ currentUser }) {
               if (!conv?.id) { setThreadMenuOpen(false); return; }
               try {
                 if (window.sb) {
-                  const { error } = await window.sb.from('rr_conversations').update({ archived: true, archived_at: new Date().toISOString() }).eq('id', conv.id);
+                  const { error } = await window.sb.from('rr_conversations').update({ is_visible: false }).eq('id', conv.id);
                   if (error) throw error;
                 }
                 // Remove from local list so the inbox refreshes immediately.
@@ -241,7 +241,16 @@ function PageInbox({ currentUser }) {
                 toast.push({ kind: 'warning', title: "Couldn't archive", body: e.message || 'The conversation stays in your inbox.' });
               }
             }}><SX_I.Trash2 size={14} />Archive</button>
-            <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', color: 'var(--color-error)' }} onClick={() => { setThreadMenuOpen(false); toast.push({ kind: 'warning', title: 'Report submitted', body: 'Rosy Trust & Safety will review within 24h.' }); }}><SX_I.AlertTriangle size={14} />Report</button>
+            <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', color: 'var(--color-error)' }} onClick={async () => {
+              setThreadMenuOpen(false);
+              try {
+                const reporterName = currentUser?.name || currentUser?.email || 'Unknown';
+                const subject = `Conversation report from ${reporterName}`;
+                const html = `<p><strong>Reporter:</strong> ${reporterName} (${currentUser?.email || 'no email'})</p><p><strong>Conversation:</strong> ${conv?.id || 'unknown'}</p><p><strong>Other party:</strong> ${conv?.name || conv?.with || 'unknown'}</p><p>Please review the conversation for Terms of Service violations.</p>`;
+                await window.RosySendEmail?.({ slug: 'trust-report', to: 'trust@rosyrecruits.com', subject, html, vars: {} });
+                toast.push({ kind: 'warning', title: 'Report submitted', body: 'Rosy Trust & Safety will review within 24h.' });
+              } catch (e) { toast.push({ kind: 'error', title: "Couldn't submit report", body: e.message }); }
+            }}><SX_I.AlertTriangle size={14} />Report</button>
           </div>
         </Modal>
       ) : null}

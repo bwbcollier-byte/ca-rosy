@@ -1321,8 +1321,16 @@ function PageSettings({ role, currentUser }) {
 
 function SettingsPrivacy({ role, user }) {
   const toast = useToast();
-  const [hideOldRatings, setHideOldRatings] = SP_us(false);
-  const [noindex, setNoindex] = SP_us(false);
+  // Persist to localStorage scoped to the user so toggles survive refresh.
+  const key = (k) => `rosy.privacy.${user?.id || 'anon'}.${k}`;
+  const [hideOldRatings, setHideOldRatings] = SP_us(() => {
+    try { return localStorage.getItem(key('hideOldRatings')) === '1'; } catch (e) { return false; }
+  });
+  const [noindex, setNoindex] = SP_us(() => {
+    try { return localStorage.getItem(key('noindex')) === '1'; } catch (e) { return false; }
+  });
+  SP_ue(() => { try { localStorage.setItem(key('hideOldRatings'), hideOldRatings ? '1' : '0'); } catch (e) {} }, [hideOldRatings, user?.id]);
+  SP_ue(() => { try { localStorage.setItem(key('noindex'), noindex ? '1' : '0'); } catch (e) {} }, [noindex, user?.id]);
   const exportMyData = async () => {
     if (!user?.id) { toast.push({ kind: 'warning', title: 'Sign in first' }); return; }
     try {

@@ -63,6 +63,7 @@ const USER_TRIGGER_SLUGS = new Set([
   'welcome-vendor', 'welcome-worker', 'verified',
   'application-received', 'worker-confirmed', 'worker-paid',
   'worker-rejected', 'day-of-event',
+  'invite-user', 'trust-report',
 ]);
 
 const ALLOWED_ORIGINS = new Set([
