@@ -1,5 +1,39 @@
 /* Extra components: SignaturePad, ImageUpload, BuildMyTeam wizard, NotificationCenter, Checkbox */
 
+/* Demo / Test mode banner — fixed bottom strip on every screen, dismissible per session.
+   Tells the client (and Tonya / Mariana) that this build is a staging environment so any
+   data they enter is safe to throw away + outgoing emails route to ben@pronocoders.com. */
+function DemoModeBanner() {
+  const [dismissed, setDismissed] = React.useState(() => {
+    try { return sessionStorage.getItem('rosy.demoBanner.dismissed') === '1'; } catch (e) { return false; }
+  });
+  if (dismissed) return null;
+  const dismiss = () => {
+    try { sessionStorage.setItem('rosy.demoBanner.dismissed', '1'); } catch (e) {}
+    setDismissed(true);
+  };
+  return (
+    <div role="status" aria-label="Demo mode" style={{
+      position: 'fixed', left: 16, bottom: 16, zIndex: 9000,
+      maxWidth: 340, display: 'flex', alignItems: 'flex-start', gap: 10,
+      background: '#FFF4D6', border: '1px solid #E0C97A', borderRadius: 12,
+      padding: '10px 14px 10px 12px', boxShadow: '0 6px 20px rgba(0,0,0,0.08)',
+      fontFamily: '-apple-system, Segoe UI, Helvetica, Arial, sans-serif',
+    }}>
+      <span aria-hidden style={{ width: 22, height: 22, borderRadius: 9999, background: '#E0C97A', color: '#7A5800', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}>!</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#7A5800' }}>Demo / staging environment</p>
+        <p style={{ margin: '2px 0 0', fontSize: 12, lineHeight: 1.4, color: '#7A5800' }}>Test data only. Outgoing emails route to the staging inbox.</p>
+      </div>
+      <button onClick={dismiss} aria-label="Dismiss demo banner" style={{ background: 'transparent', border: 0, cursor: 'pointer', padding: 2, color: '#7A5800', flex: 'none' }}>
+        <X_I.X size={14} />
+      </button>
+    </div>
+  );
+}
+Object.assign(window, { DemoModeBanner });
+
+
 const { useRef: X_ur, useEffect: X_ue, useState: X_us } = React;
 const X_I = window.Icons;
 const X_D = window.RosyData;

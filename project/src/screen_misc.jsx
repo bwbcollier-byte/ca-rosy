@@ -584,8 +584,32 @@ function OnboardingPage({ onComplete }) {
   const toast = useToast();
   const hasRole = role.vendor || role.worker;
   // Build the formData payload for the parent — picks the primary role's form (vendor wins when both).
+  // Validate every onboarding field that must be present before we submit.
+  // Returns null on success, or a {title, body} object describing the first
+  // missing field so we can toast the user rather than dropping their changes.
+  const validateOnboarding = () => {
+    const primary = role.vendor ? 'vendor' : 'worker';
+    const fd = primary === 'vendor' ? vendorData : workerData;
+    if (!fd.first?.trim()) return { title: 'First name is required' };
+    if (!fd.last?.trim())  return { title: 'Last name is required' };
+    if (!fd.phone?.trim()) return { title: 'Phone number is required' };
+    const phoneDigits = (fd.phone || '').replace(/\D/g, '');
+    if (phoneDigits.length < 7 || phoneDigits.length > 15) return { title: 'Enter a valid phone number', body: '7–15 digits.' };
+    if (!fd.address?.trim()) return { title: 'Address is required', body: primary === 'vendor' ? 'Studio address.' : 'Home base or service area.' };
+    if (primary === 'vendor') {
+      if (!fd.company?.trim()) return { title: 'Company / studio name is required' };
+      if (!fd.bio?.trim() || fd.bio.trim().length < 20) return { title: 'Studio description is required', body: 'At least 20 characters so workers know what you do.' };
+    } else {
+      if (!fd.title?.trim()) return { title: 'Specialty / title is required', body: 'e.g. Lead designer, Strike crew.' };
+      if (!fd.bio?.trim() || fd.bio.trim().length < 20) return { title: 'Bio is required', body: 'At least 20 characters so vendors know your experience.' };
+    }
+    if (!termsPayload) return { title: 'Sign the terms above', body: 'Open the terms modal, draw your signature, and tap I agree.' };
+    return null;
+  };
   const finishComplete = async () => {
     if (submitting) return;
+    const err = validateOnboarding();
+    if (err) { toast.push({ kind: 'warning', title: err.title, body: err.body }); return; }
     setSubmitting(true);
     const primary = role.vendor ? 'vendor' : 'worker';
     const formData = { ...(role.vendor ? vendorData : workerData), terms: termsPayload };

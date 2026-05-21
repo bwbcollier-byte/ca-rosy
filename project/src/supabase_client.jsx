@@ -282,7 +282,12 @@ function buildMessages(conversations, messages, usersById) {
 }
 
 function buildFaqs(rows) {
-  return rows.map(f => ({ q: f.question, a: f.answer }));
+  // Keep both shapes — UI expects {q, a}; admin page needs raw rr_faqs columns.
+  return rows.map(f => ({
+    q: f.question, a: f.answer,
+    id: f.id, question: f.question, answer: f.answer,
+    sort_order: f.sort_order, is_visible: f.is_visible,
+  }));
 }
 
 function buildTestimonials(rows) {

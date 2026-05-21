@@ -261,6 +261,7 @@ function App() {
   if (mode === 'marketing') {
     return (
       <ToastHost>
+        {window.DemoModeBanner ? <window.DemoModeBanner /> : null}
         <MarketingPage
           goToApp={() => setMode('app')}
           goToAuth={(m) => { setAuthMode(m || 'login'); setMode('auth'); }}
@@ -288,6 +289,7 @@ function App() {
     };
     return (
       <ToastHost>
+        {window.DemoModeBanner ? <window.DemoModeBanner /> : null}
         <AuthPage mode={authMode} setMode={setAuthMode} goToApp={goToApp} />
       </ToastHost>
     );
@@ -295,6 +297,7 @@ function App() {
   if (mode === 'onboarding') {
     return (
       <ToastHost>
+        {window.DemoModeBanner ? <window.DemoModeBanner /> : null}
         <OnboardingPage onComplete={async (pickedRole, formData) => {
           // Pin role from the onboarding pick so the user lands on THEIR dashboard, not admin.
           if (pickedRole) setRole(pickedRole);
@@ -448,6 +451,7 @@ function App() {
   if (mode === 'logout' || (mode === 'app' && route === 'logout')) {
     return (
       <ToastHost>
+        {window.DemoModeBanner ? <window.DemoModeBanner /> : null}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 18, color: 'var(--color-muted)' }}>
           <div style={{ width: 36, height: 36, borderRadius: 9999, border: '3px solid var(--color-hairline)', borderTopColor: 'var(--rosy-coral)', animation: 'spin 0.9s linear infinite' }} />
           <p style={{ margin: 0, fontSize: 13.5 }}>Signing you out…</p>
@@ -490,6 +494,8 @@ function App() {
     if (!profileFromDb || profileFromDb.id !== sessionUserId) {
       return (
         <ToastHost>
+          {window.DemoModeBanner ? <window.DemoModeBanner /> : null}
+        {window.DemoModeBanner ? <window.DemoModeBanner /> : null}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 18, color: 'var(--color-muted)' }}>
             <div style={{ width: 36, height: 36, borderRadius: 9999, border: '3px solid var(--color-hairline)', borderTopColor: 'var(--rosy-coral)', animation: 'spin 0.9s linear infinite' }} />
             <p style={{ margin: 0, fontSize: 13.5 }}>Loading your account…</p>
@@ -501,6 +507,8 @@ function App() {
     if (!profileFromDb.role || !profileFromDb.onboarding_complete) {
       return (
         <ToastHost>
+          {window.DemoModeBanner ? <window.DemoModeBanner /> : null}
+        {window.DemoModeBanner ? <window.DemoModeBanner /> : null}
           <OnboardingPage onComplete={async (pickedRole, formData) => {
             if (pickedRole) setRole(pickedRole);
             // FLIP THE SCREEN IMMEDIATELY — DB writes happen in background.
@@ -807,6 +815,7 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
   if (baseRoute === 'settings') return <PageSettings role={role} currentUser={currentUser} />;
   if (baseRoute === 'audit')    return <PageAudit />;
   if (baseRoute === 'analytics')return <PageAnalytics />;
+  if (baseRoute === 'faqs')         return window.PageFAQs ? <window.PageFAQs /> : null;
   if (baseRoute === 'site-content') return <PageSiteContent />;
   if (baseRoute === 'emails')   return <PageEmails />;
   if (baseRoute === 'gallery')  return <PageGallery />;

@@ -84,10 +84,12 @@ function PageGigsVendor({ user, role, setRoute }) {
   const [addSaving, setAddSaving] = SG_us(false);
   const submitAdd = async () => {
     if (addSaving) return;
-    if (!addForm?.eventId || !addForm?.type) {
-      toast.push({ kind: 'warning', title: 'Pick an event and gig type' });
-      return;
-    }
+    if (!addForm?.eventId) { toast.push({ kind: 'warning', title: 'Pick an event' }); return; }
+    if (!addForm?.type) { toast.push({ kind: 'warning', title: 'Pick a gig type' }); return; }
+    if (!addForm?.date) { toast.push({ kind: 'warning', title: 'Pick a date' }); return; }
+    if (!addForm?.start || !addForm?.end) { toast.push({ kind: 'warning', title: 'Enter start + end times' }); return; }
+    if (!addForm?.rate || Number(addForm.rate) <= 0) { toast.push({ kind: 'warning', title: 'Enter a positive hourly rate' }); return; }
+    if (!addForm?.spots || Number(addForm.spots) <= 0) { toast.push({ kind: 'warning', title: 'Enter a positive spot count' }); return; }
     const ev = SG_D.EVENTS.find(e => e.id === addForm.eventId);
     if (!ev?.vendorId) {
       toast.push({ kind: 'warning', title: 'Sign in required', body: 'Sign in to post a gig under your studio.' });

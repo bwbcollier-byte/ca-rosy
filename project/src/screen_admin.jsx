@@ -2180,6 +2180,119 @@ const SITE_CONTENT_SCHEMA = {
 };
 window.SITE_CONTENT_SCHEMA = SITE_CONTENT_SCHEMA;
 
+function PageFAQs() {
+  const toast = useToast();
+  const [items, setItems] = SP_us([]);
+  const [loading, setLoading] = SP_us(true);
+  const [saving, setSaving] = SP_us({});
+  const [editing, setEditing] = SP_us(null); // id of row being edited
+  const [draft, setDraft] = SP_us({ question: '', answer: '', sort_order: 0, is_visible: true });
+  const [adding, setAdding] = SP_us(false);
+  const load = async () => {
+    setLoading(true);
+    try {
+      if (!window.sb) { setItems([]); setLoading(false); return; }
+      const { data, error } = await window.sb.from('rr_faqs').select('*').order('sort_order', { ascending: true });
+      if (error) throw error;
+      setItems(data || []);
+    } catch (e) { console.warn('rr_faqs load failed:', e.message); toast.push({ kind: 'error', title: "Couldn't load FAQs", body: e.message }); }
+    setLoading(false);
+  };
+  SP_ue(() => { load(); }, []);
+  const saveRow = async (row) => {
+    setSaving(s => ({ ...s, [row.id]: true }));
+    try {
+      const { error } = await window.sb.from('rr_faqs').update({
+        question: row.question, answer: row.answer,
+        sort_order: row.sort_order ?? 0, is_visible: row.is_visible !== false,
+      }).eq('id', row.id);
+      if (error) throw error;
+      setEditing(null);
+      toast.push({ kind: 'success', title: 'FAQ saved' });
+      load();
+    } catch (e) { toast.push({ kind: 'error', title: "Couldn't save", body: e.message }); }
+    setSaving(s => ({ ...s, [row.id]: false }));
+  };
+  const toggleVisible = async (row) => {
+    setSaving(s => ({ ...s, [row.id]: true }));
+    try {
+      const next = !(row.is_visible !== false);
+      const { error } = await window.sb.from('rr_faqs').update({ is_visible: next }).eq('id', row.id);
+      if (error) throw error;
+      setItems(arr => arr.map(x => x.id === row.id ? { ...x, is_visible: next } : x));
+    } catch (e) { toast.push({ kind: 'error', title: "Couldn't update", body: e.message }); }
+    setSaving(s => ({ ...s, [row.id]: false }));
+  };
+  const deleteRow = async (row) => {
+    if (!window.confirm(`Delete this FAQ?\n\n${row.question}`)) return;
+    try {
+      const { error } = await window.sb.from('rr_faqs').delete().eq('id', row.id);
+      if (error) throw error;
+      setItems(arr => arr.filter(x => x.id !== row.id));
+      toast.push({ kind: 'success', title: 'FAQ deleted' });
+    } catch (e) { toast.push({ kind: 'error', title: "Couldn't delete", body: e.message }); }
+  };
+  const addRow = async () => {
+    if (!draft.question.trim() || !draft.answer.trim()) { toast.push({ kind: 'warning', title: 'Question + answer required' }); return; }
+    setAdding(true);
+    try {
+      const { error } = await window.sb.from('rr_faqs').insert({
+        question: draft.question.trim(), answer: draft.answer.trim(),
+        sort_order: items.length, is_visible: true,
+      });
+      if (error) throw error;
+      setDraft({ question: '', answer: '', sort_order: 0, is_visible: true });
+      toast.push({ kind: 'success', title: 'FAQ added' });
+      load();
+    } catch (e) { toast.push({ kind: 'error', title: "Couldn't add", body: e.message }); }
+    setAdding(false);
+  };
+  return (
+    <div className="content fade-up">
+      <div className="section-heading"><h2>FAQs</h2><span style={{ fontSize: 13, color: 'var(--color-muted)' }}>Visible on the marketing /help page</span></div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 className="card-title" style={{ marginBottom: 12 }}>Add an FAQ</h3>
+        <div className="col" style={{ gap: 10 }}>
+          <div className="field"><label className="field-label">Question</label><input className="input" value={draft.question} onChange={e => setDraft(d => ({ ...d, question: e.target.value }))} placeholder="How do payouts work?" /></div>
+          <div className="field"><label className="field-label">Answer</label><textarea className="textarea" rows={3} value={draft.answer} onChange={e => setDraft(d => ({ ...d, answer: e.target.value }))} placeholder="Plain-language answer the public will see." /></div>
+          <div><button className="btn btn-coral btn-sm" disabled={adding || !draft.question.trim() || !draft.answer.trim()} onClick={addRow}>{adding ? 'Adding…' : 'Add FAQ'}</button></div>
+        </div>
+      </div>
+      <div className="card card-flush">
+        {loading ? <div style={{ padding: 28, color: 'var(--color-muted)' }}>Loading…</div> : items.length === 0 ? (
+          <Empty icon={SP_I.HelpCircle} title="No FAQs yet" body="Add your first question above so it shows up on the help page." />
+        ) : items.map(row => (
+          <div key={row.id} style={{ padding: '14px 18px', borderBottom: '1px solid var(--color-hairline)' }}>
+            {editing === row.id ? (
+              <div className="col" style={{ gap: 8 }}>
+                <input className="input" value={row.question} onChange={e => setItems(arr => arr.map(x => x.id === row.id ? { ...x, question: e.target.value } : x))} />
+                <textarea className="textarea" rows={3} value={row.answer} onChange={e => setItems(arr => arr.map(x => x.id === row.id ? { ...x, answer: e.target.value } : x))} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-coral btn-sm" disabled={saving[row.id]} onClick={() => saveRow(row)}>{saving[row.id] ? 'Saving…' : 'Save'}</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(null); load(); }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: 14.5 }}>{row.question}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-muted)', lineHeight: 1.55 }}>{row.answer}</p>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                  <button className="btn btn-ghost btn-sm" disabled={saving[row.id]} onClick={() => toggleVisible(row)}>{row.is_visible === false ? 'Show' : 'Hide'}</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditing(row.id)}>Edit</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => deleteRow(row)} style={{ color: 'var(--rosy-coral)' }}>Delete</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+window.PageFAQs = PageFAQs;
+
 function PageSiteContent() {
   const toast = useToast();
   const [page, setPage] = SP_us('home');

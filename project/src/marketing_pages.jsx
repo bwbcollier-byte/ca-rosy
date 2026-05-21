@@ -360,8 +360,14 @@ function MkPricingPage({ goToAuth }) {
 /* ============ FAQ ============ */
 function MkFAQPage({ goToAuth, setRoute }) {
   useSiteContentTick();
+  // Prefer live admin-managed FAQs from window.RosyData.FAQS (hydrated from rr_faqs).
+  // Falls back to the seed list only on cold-boot before hydration completes.
+  const liveFaqs = (window.RosyData?.FAQS || [])
+    .filter(f => f.is_visible !== false)
+    .map(f => ({ q: f.question, a: f.answer }));
+  const startingItems = liveFaqs.length ? liveFaqs : MP_D.FAQS;
   const groups = [
-    { h: 'Getting started', items: MP_D.FAQS },
+    { h: 'Getting started', items: startingItems },
     { h: 'Payments & taxes', items: [
       { q: C('faq','faq1_q','When do workers get paid?'), a: C('faq','faq1_a','Within 48 hours of vendor-approved hours, via Stripe Connect direct deposit.') },
       { q: C('faq','faq2_q','Are 1099s automatic?'),      a: C('faq','faq2_a','Yes. If you earn more than $600 in a calendar year, Rosy generates and mails your 1099-NEC by Jan 31.') },

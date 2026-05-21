@@ -238,7 +238,7 @@ function PageEventsVendor({ user, role, setRoute, viewMode, density }) {
                 { key: 'notes', label: 'Anything we should know?', type: 'textarea', placeholder: 'Palette, installation scope, special requests...' },
               ]}
               onFill={(d) => { setNewEvent(s => ({ ...s, name: d.name || s.name, desc: d.desc || s.desc })); }} />
-            <button className="btn btn-coral" disabled={publishingEvent || !newEvent.name.trim() || !newEvent.desc.trim()} onClick={publishEvent}>{publishingEvent ? 'Publishing…' : 'Publish Event'}</button>
+            <button className="btn btn-coral" disabled={publishingEvent || !newEvent.name?.trim() || !newEvent.desc?.trim() || !newEvent.date || !newEvent.start || !newEvent.end || !newEvent.venueId} onClick={publishEvent}>{publishingEvent ? 'Publishing…' : 'Publish Event'}</button>
           </>
         }>
         <NewEventForm value={newEvent} onChange={setNewEvent}

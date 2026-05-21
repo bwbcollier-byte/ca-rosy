@@ -268,6 +268,7 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, curr
       ]},
       { section: 'CONTENT', items: [
         { id: 'site-content', label: 'Site Content',     icon: Ic.FileText },
+        { id: 'faqs',         label: 'FAQs',              icon: Ic.HelpCircle },
         { id: 'emails',       label: 'Email Templates',  icon: Ic.Mail },
         { id: 'gallery',      label: 'Gallery',          icon: Ic.Image },
       ]},
