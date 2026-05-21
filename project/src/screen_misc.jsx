@@ -545,7 +545,7 @@ function FAQItem({ q, a }) {
   const [open, setOpen] = SX_us(false);
   return (
     <div style={{ background: 'var(--color-canvas)', border: '1px solid var(--color-hairline)', borderRadius: 12 }}>
-      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', background: 'transparent', border: 0, padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', textAlign: 'left', fontSize: 16, fontWeight: 600, color: 'var(--color-ink)' }}>
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open} style={{ width: '100%', background: 'transparent', border: 0, padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', textAlign: 'left', fontSize: 16, fontWeight: 600, color: 'var(--color-ink)' }}>
         {q}
         <SX_I.ChevronDown size={18} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms ease' }} />
       </button>

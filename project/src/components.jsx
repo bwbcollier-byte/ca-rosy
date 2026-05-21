@@ -698,7 +698,7 @@ function SortMenu({ value, onChange, options }) {
   const current = options.find(o => o[0] === value)?.[1] || 'Sort';
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <button className="btn btn-ghost btn-sm" onClick={() => setOpen(o => !o)}><Ic.ArrowUpDown size={14} />{current}<Ic.ChevronDown size={12} /></button>
+      <button className="btn btn-ghost btn-sm" onClick={() => setOpen(o => !o)} aria-haspopup="listbox" aria-expanded={open}><Ic.ArrowUpDown size={14} />{current}<Ic.ChevronDown size={12} /></button>
       {open ? (
         <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: 'var(--color-canvas)', border: '1px solid var(--color-hairline)', borderRadius: 12, boxShadow: 'var(--shadow-modal)', padding: 6, minWidth: 180, zIndex: 100 }}>
           {options.map(([id, label]) => (
