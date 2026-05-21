@@ -244,7 +244,7 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
             <div className="field"><label className="field-label">Reason</label>
               <select className="select" value={disputeReason} onChange={e => setDisputeReason(e.target.value)}><option>Hours mismatch</option><option>No-show</option><option>Quality of work</option><option>Other</option></select>
             </div>
-            <div className="field"><label className="field-label">Describe what happened</label><textarea className="textarea" value={disputeDescription} onChange={e => setDisputeDescription(e.target.value)} placeholder="Be specific. Include dates, times, what was agreed, and what occurred." /></div>
+            <div className="field"><label className="field-label">Describe what happened</label><textarea className="textarea" maxLength={2000} value={disputeDescription} onChange={e => setDisputeDescription(e.target.value.slice(0, 2000))} placeholder="Be specific. Include dates, times, what was agreed, and what occurred." /></div>
             <div className="field"><label className="field-label">Evidence (optional)</label>
               <div style={{ border: '2px dashed var(--color-hairline-strong)', borderRadius: 12, padding: 18, textAlign: 'center', background: 'var(--color-surface-soft)' }}>
                 <SP_I.UploadCloud size={22} style={{ color: 'var(--color-muted)' }} />
@@ -961,7 +961,7 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
               <option value="active">Active</option><option value="inactive">Inactive</option><option value="pending">Pending</option><option value="suspended">Suspended</option>
             </select>
           </div>
-          <div><label className="field-label">Bio</label><textarea className="textarea" rows={4} value={draft.bio} onChange={(e) => setDraft({ ...draft, bio: e.target.value })} placeholder="A short summary that vendors / workers will see on this profile." /></div>
+          <div><label className="field-label">Bio</label><textarea className="textarea" rows={4} maxLength={1000} value={draft.bio} onChange={(e) => setDraft({ ...draft, bio: e.target.value.slice(0, 1000) })} placeholder="A short summary that vendors / workers will see on this profile." /></div>
         </div>
       ) : (
         <>

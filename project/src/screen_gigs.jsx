@@ -460,7 +460,7 @@ function AddGigForm({ value, onChange, events }) {
           <select className="select" value={value.priority} onChange={e => set({ priority: e.target.value })}><option>Medium</option><option>High</option><option>Low</option></select>
         </div>
       </div>
-      <div className="field"><label className="field-label">Description</label><textarea className="textarea" value={value.description} onChange={e => set({ description: e.target.value })} /></div>
+      <div className="field"><label className="field-label">Description</label><textarea className="textarea" maxLength={2000} value={value.description} onChange={e => set({ description: e.target.value.slice(0, 2000) })} /></div>
     </div>
   );
 }

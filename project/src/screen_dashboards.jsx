@@ -120,7 +120,7 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
             <option value="high">High — blocks workflow / data loss</option>
           </select>
         </div>
-        <div><label className="field-label">What's wrong?</label><textarea className="textarea" rows={5} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What did you expect to happen? What actually happened? Steps to reproduce." /></div>
+        <div><label className="field-label">What's wrong?</label><textarea className="textarea" rows={5} maxLength={5000} value={desc} onChange={(e) => setDesc(e.target.value.slice(0, 5000))} placeholder="What did you expect to happen? What actually happened? Steps to reproduce." /></div>
         <div>
           <label className="field-label">Screenshot <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
           <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
