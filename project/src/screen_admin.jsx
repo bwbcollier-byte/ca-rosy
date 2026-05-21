@@ -979,6 +979,12 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
             {user.role !== 'worker' && user.vendorRate != null ? <KV label="Vendor day rate" value={`$${user.vendorRate}/day`} /> : null}
             {user.websiteUrl ? <KV label="Website" value={user.websiteUrl} /> : null}
             {user.role === 'worker' && user.skills ? <KV label="Skills" value={Array.isArray(user.skills) ? user.skills.join(', ') : user.skills} /> : null}
+            {(() => {
+              if (user.role !== 'worker' || !window.effectiveWorkerAddress) return null;
+              const eff = window.effectiveWorkerAddress(user.addresses);
+              if (!eff || eff.is_default) return null;
+              return <KV label="Travelling today" value={`${eff.label}${eff.city ? ' · ' + eff.city : ''}${eff.end_date ? ' (until ' + eff.end_date + ')' : ''}`} />;
+            })()}
             {user.serviceCategories && user.serviceCategories.length ? <KV label="Services" value={user.serviceCategories.join(', ')} /> : null}
             {user.termsAccepted ? <KV label="Terms accepted" value={user.termsAcceptedAt ? new Date(user.termsAcceptedAt).toLocaleDateString() : 'Yes'} /> : null}
             {user.w9Completed ? <KV label="W-9 on file" value="Yes" /> : null}
@@ -1563,7 +1569,152 @@ function SettingsProfile({ user }) {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
         <button className="btn btn-coral" onClick={save}>Save changes</button>
       </div>
+      {role === 'worker' ? <TravelAddresses user={user} /> : null}
     </div>
+  );
+}
+
+/* ============ Travel addresses (worker-only Settings section) ============
+   Workers can save multiple addresses with optional date ranges so when they're
+   travelling for a gig, the platform shows their effective city on that day —
+   gig-post filters, profile card, etc. */
+function TravelAddresses({ user }) {
+  const toast = useToast();
+  const seed = () => (window.normalizeAddresses ? window.normalizeAddresses(user?.addresses) : (Array.isArray(user?.addresses) ? user.addresses : []));
+  const [items, setItems] = SP_us(seed());
+  SP_ue(() => { setItems(seed()); }, [user?.id]);
+  const [addOpen, setAddOpen] = SP_us(false);
+  const [editing, setEditing] = SP_us(null);
+  const [saving, setSaving] = SP_us(false);
+
+  const persist = async (next) => {
+    if (!user?.id || !window.sb) { setItems(next); return; }
+    setSaving(true);
+    try {
+      const { error } = await window.sb.from('rr_worker_profiles').upsert({ id: user.id, addresses: next }, { onConflict: 'id' });
+      if (error) throw error;
+      setItems(next);
+      // Reflect in live RosyData so the gigs page picks up the new city immediately.
+      const u = (window.RosyData?.USERS || []).find(x => x.id === user.id);
+      if (u) { u.addresses = next; window.dispatchEvent(new CustomEvent('rosy:data-changed')); }
+    } catch (e) { toast.push({ kind: 'error', title: "Couldn't save", body: e.message }); }
+    setSaving(false);
+  };
+
+  const upsertAddress = async (addr) => {
+    const isNew = !addr.id || !items.some(a => a.id === addr.id);
+    const finalAddr = { ...addr, id: addr.id || ('addr_' + Math.random().toString(36).slice(2, 9)) };
+    let next = isNew ? [...items, finalAddr] : items.map(a => a.id === finalAddr.id ? finalAddr : a);
+    // Enforce single is_default.
+    if (finalAddr.is_default) next = next.map(a => ({ ...a, is_default: a.id === finalAddr.id }));
+    await persist(next);
+    setAddOpen(false); setEditing(null);
+    toast.push({ kind: 'success', title: isNew ? 'Address added' : 'Address updated' });
+  };
+  const deleteAddress = async (id) => {
+    const next = items.filter(a => a.id !== id);
+    // Always keep at least one is_default if any rows remain.
+    if (next.length && !next.some(a => a.is_default)) next[0].is_default = true;
+    await persist(next);
+    toast.push({ kind: 'success', title: 'Address removed' });
+  };
+  const setDefault = async (id) => {
+    await persist(items.map(a => ({ ...a, is_default: a.id === id })));
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const isActiveTravel = (a) => a.start_date && a.end_date && a.start_date <= today && today <= a.end_date;
+  const isUpcomingTravel = (a) => a.start_date && a.start_date > today;
+  const isPastTravel = (a) => a.end_date && a.end_date < today;
+
+  return (
+    <div className="card" style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <h3 className="card-title" style={{ marginBottom: 4 }}>Travel addresses</h3>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--color-muted)' }}>Add a temporary address while you're working out of town. Gig posts will filter to that city on those dates.</p>
+        </div>
+        <button className="btn btn-coral btn-sm" disabled={saving} onClick={() => { setEditing(null); setAddOpen(true); }}><SP_I.Plus size={14} />Add address</button>
+      </div>
+      {items.length === 0 ? (
+        <Empty icon={SP_I.MapPin} title="No addresses yet" body="Add your home base + any travel addresses with date ranges." />
+      ) : (
+        <div className="col" style={{ gap: 10 }}>
+          {items.map(a => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, border: '1px solid var(--color-hairline)', borderRadius: 12, background: isActiveTravel(a) ? 'var(--rosy-teal-soft)' : 'transparent' }}>
+              <SP_I.MapPin size={18} style={{ color: isActiveTravel(a) ? 'var(--rosy-teal-dark)' : 'var(--color-muted)', flex: 'none' }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <p style={{ margin: 0, fontWeight: 600 }}>{a.label}</p>
+                  {a.is_default ? <Badge kind="Active">Default</Badge> : null}
+                  {isActiveTravel(a) ? <Badge kind="Confirmed">Active today</Badge> : null}
+                  {isUpcomingTravel(a) ? <Badge kind="Pending">Upcoming</Badge> : null}
+                  {isPastTravel(a) ? <Badge kind="Completed">Ended</Badge> : null}
+                </div>
+                <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-muted)' }}>{a.address}</p>
+                {a.start_date || a.end_date ? <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted-soft)' }}>{a.start_date || '…'} → {a.end_date || '…'}</p> : null}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                {!a.is_default ? <button className="btn btn-ghost btn-sm" disabled={saving} onClick={() => setDefault(a.id)}>Make default</button> : null}
+                <button className="btn btn-ghost btn-sm" disabled={saving} onClick={() => { setEditing(a); setAddOpen(true); }}>Edit</button>
+                {items.length > 1 ? <button className="btn btn-ghost btn-sm" disabled={saving} onClick={() => deleteAddress(a.id)} style={{ color: 'var(--rosy-coral)' }}>Remove</button> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {addOpen ? <TravelAddressModal open={addOpen} initial={editing} onClose={() => { setAddOpen(false); setEditing(null); }} onSave={upsertAddress} saving={saving} /> : null}
+    </div>
+  );
+}
+
+function TravelAddressModal({ open, initial, onClose, onSave, saving }) {
+  const blank = { id: null, label: 'Travel', address: '', city: '', state: '', country: '', lat: null, lng: null, start_date: '', end_date: '', is_default: false };
+  const [draft, setDraft] = SP_us(initial || blank);
+  SP_ue(() => { setDraft(initial || blank); }, [initial?.id]);
+  const upd = (patch) => setDraft(d => ({ ...d, ...patch }));
+  const today = new Date().toISOString().slice(0, 10);
+  const submit = () => {
+    if (!draft.address?.trim()) return; // disabled below
+    // Date sanity — only enforce when range is set + this isn't the default
+    if (!draft.is_default && draft.start_date && draft.end_date && draft.start_date > draft.end_date) return;
+    onSave({ ...draft, start_date: draft.start_date || null, end_date: draft.end_date || null });
+  };
+  const canSave = draft.address?.trim() && (!draft.start_date || !draft.end_date || draft.start_date <= draft.end_date);
+  return (
+    <Modal open={open} onClose={onClose} title={initial ? 'Edit address' : 'Add travel address'} size="md"
+      footer={<><button className="btn btn-ghost" disabled={saving} onClick={onClose}>Cancel</button><button className="btn btn-coral" disabled={saving || !canSave} onClick={submit}>{saving ? 'Saving…' : (initial ? 'Save' : 'Add address')}</button></>}>
+      <div className="col" style={{ gap: 14 }}>
+        <div className="field">
+          <label className="field-label">Label</label>
+          <input className="input" value={draft.label} onChange={e => upd({ label: e.target.value.slice(0, 60) })} maxLength={60} placeholder="Travel — NYC" />
+        </div>
+        <div className="field">
+          <label className="field-label">Address</label>
+          <AddressInput value={draft.address} onChange={(v, meta) => upd({
+            address: v,
+            city: meta?.parts?.city || draft.city,
+            state: meta?.parts?.state || draft.state,
+            country: meta?.parts?.country || draft.country,
+            lat: meta?.lat ?? draft.lat,
+            lng: meta?.lng ?? draft.lng,
+          })} placeholder="Start typing an address…" />
+        </div>
+        <div className="grid-2" style={{ gap: 12 }}>
+          <div className="field"><label className="field-label">Start date {draft.is_default ? <span style={{ color: 'var(--color-muted-soft)', fontWeight: 400 }}>(optional)</span> : null}</label>
+            <input className="input" type="date" min={today} value={draft.start_date || ''} onChange={e => upd({ start_date: e.target.value })} />
+          </div>
+          <div className="field"><label className="field-label">End date {draft.is_default ? <span style={{ color: 'var(--color-muted-soft)', fontWeight: 400 }}>(optional)</span> : null}</label>
+            <input className="input" type="date" min={draft.start_date || today} value={draft.end_date || ''} onChange={e => upd({ end_date: e.target.value })} />
+          </div>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'var(--color-body)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={draft.is_default} onChange={e => upd({ is_default: e.target.checked, start_date: e.target.checked ? null : draft.start_date, end_date: e.target.checked ? null : draft.end_date })} />
+          Use this as my default address (when no travel range is active)
+        </label>
+        <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>Tip: leave start and end dates blank for a permanent address. Set them when you're travelling for a specific gig.</p>
+      </div>
+    </Modal>
   );
 }
 

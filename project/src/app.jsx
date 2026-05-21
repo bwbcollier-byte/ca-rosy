@@ -453,7 +453,16 @@ function App() {
                   const workerPayload = {
                     id: me.id,
                     services: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
-                    addresses: addr ? [addr] : null,
+                    // Structured "home" address — workers can later add travel
+                    // addresses with start_date/end_date from Settings → Profile.
+                    addresses: addr ? [{
+                      id: 'addr_home', label: 'Home',
+                      address: addr,
+                      city: cityVal || '', state: stateVal || '', country: formData?.addressParts?.country || '',
+                      lat: formData?.addressLatLng?.lat ?? null,
+                      lng: formData?.addressLatLng?.lng ?? null,
+                      start_date: null, end_date: null, is_default: true,
+                    }] : null,
                   };
                   timed(window.sb.from('rr_worker_profiles').upsert(workerPayload, { onConflict: 'id' })).then(r => { if (r?.error) console.warn('rr_worker_profiles upsert failed:', r.error.message); else if (r?.timedOut) console.warn('rr_worker_profiles upsert timed out'); });
                 }
@@ -625,7 +634,16 @@ function App() {
                   timed(window.sb.from('rr_worker_profiles').upsert({
                     id: sessionUserId,
                     services: Array.isArray(formData?.services) && formData.services.length ? formData.services : null,
-                    addresses: addr ? [addr] : null,
+                    // Structured "home" address — workers can later add travel
+                    // addresses with start_date/end_date from Settings → Profile.
+                    addresses: addr ? [{
+                      id: 'addr_home', label: 'Home',
+                      address: addr,
+                      city: cityVal || '', state: stateVal || '', country: formData?.addressParts?.country || '',
+                      lat: formData?.addressLatLng?.lat ?? null,
+                      lng: formData?.addressLatLng?.lng ?? null,
+                      start_date: null, end_date: null, is_default: true,
+                    }] : null,
                   }, { onConflict: 'id' })).then(r => { if (r?.error) console.warn('rr_worker_profiles upsert failed:', r.error.message); else if (r?.timedOut) console.warn('rr_worker_profiles upsert timed out'); });
                 }
               }

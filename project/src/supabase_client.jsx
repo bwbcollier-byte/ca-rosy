@@ -81,6 +81,48 @@ async function fetchAll(table, options = {}) {
   return data || [];
 }
 
+/* ---------- address helpers ---------- */
+// Normalise the jsonb array stored on rr_worker_profiles.addresses. Accepts
+// legacy "string[]" rows and converts each entry to the structured shape.
+// Returns [] when input is null/empty.
+function normalizeAddresses(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((a, i) => {
+    if (typeof a === 'string') {
+      return { id: 'addr_legacy_' + i, label: 'Home', address: a, city: '', state: '', country: '', lat: null, lng: null, start_date: null, end_date: null, is_default: i === 0 };
+    }
+    return {
+      id: a.id || ('addr_' + Math.random().toString(36).slice(2, 9)),
+      label: a.label || (a.is_default ? 'Home' : 'Travel'),
+      address: a.address || '',
+      city: a.city || '',
+      state: a.state || '',
+      country: a.country || '',
+      lat: a.lat ?? null,
+      lng: a.lng ?? null,
+      start_date: a.start_date || null,
+      end_date: a.end_date || null,
+      is_default: a.is_default === true,
+    };
+  });
+}
+
+// Return the worker's effective address for today (or a given ISO date).
+// Priority: an address with start_date <= date <= end_date wins. Falls back
+// to the address marked is_default, then to the first entry.
+function effectiveWorkerAddress(addresses, isoDate) {
+  const list = normalizeAddresses(addresses);
+  if (list.length === 0) return null;
+  const today = (isoDate || new Date().toISOString().slice(0, 10));
+  const active = list.find(a => a.start_date && a.end_date && a.start_date <= today && today <= a.end_date);
+  if (active) return active;
+  return list.find(a => a.is_default) || list[0];
+}
+
+// Expose to other modules so the gigs page + profile card can use them.
+window.normalizeAddresses = normalizeAddresses;
+window.effectiveWorkerAddress = effectiveWorkerAddress;
+
 /* ---------- transforms ---------- */
 function buildUsers(profiles, vendors, workers) {
   const vById = Object.fromEntries(vendors.map(v => [v.id, v]));
@@ -130,7 +172,11 @@ function buildUsers(profiles, vendors, workers) {
       hourlyRate: w?.hourly_rate ?? null,
       skills:  w?.skills || null,
       services: w?.services || null,
-      addresses: w?.addresses || null,
+      // Normalise addresses to the structured shape. Legacy rows hold
+      // `["123 Main St, Chicago, IL"]` (array of strings); new rows hold an
+      // array of {id, label, address, city, state, country, lat, lng,
+      // start_date, end_date, is_default}.
+      addresses: normalizeAddresses(w?.addresses),
       // Vendor-specific
       vendorRate: v?.vendor_rate ?? null,
       businessAddress: v?.business_address || null,

@@ -483,12 +483,27 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
   const [view, setView] = SG_us('cards');                      // cards | table
   const [filterOpen, setFilterOpen] = SG_us(false);
   const [locOpen, setLocOpen] = SG_us(false);
-  // Default location filter to the worker's own city (falls back to all if none).
-  const [city, setCity] = SG_us(() => {
+  // Default location filter to the worker's effective city today (active travel
+  // address wins over default home). Workers travelling for a gig automatically
+  // see local gigs in the city they're working from.
+  const initialCity = (() => {
+    const eff = window.effectiveWorkerAddress ? window.effectiveWorkerAddress(currentUser?.addresses) : null;
+    if (eff?.city) return eff.city;
     const c = currentUser?.city;
     if (!c) return '';
     return typeof c === 'string' ? c.split(',')[0].trim() : '';
-  });
+  })();
+  const [city, setCity] = SG_us(initialCity);
+  // Re-sync when addresses or user change (e.g. just added a new travel address).
+  SG_ue(() => {
+    const eff = window.effectiveWorkerAddress ? window.effectiveWorkerAddress(currentUser?.addresses) : null;
+    if (eff?.city && eff.city !== city) setCity(eff.city);
+  }, [currentUser?.addresses, currentUser?.id]);
+  // Show a banner when the worker is on a travel address today.
+  const activeTravel = (() => {
+    const eff = window.effectiveWorkerAddress ? window.effectiveWorkerAddress(currentUser?.addresses) : null;
+    return eff && !eff.is_default ? eff : null;
+  })();
   const [radius, setRadius] = SG_us(25);
   const events = SG_D.EVENTS.filter(e => e.status === 'open');
   const today = new Date(); today.setHours(0,0,0,0);
@@ -537,6 +552,18 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
         <StatCard icon={SG_I.DollarSign} label="Avg rate"         value={stats.avgRate} prefix="$" />
         <StatCard icon={SG_I.Star}       label="Top rate"         value={stats.topRate} prefix="$" />
       </div>
+      {activeTravel ? (
+        <div className="card" style={{ background: 'var(--rosy-teal-soft)', border: '1px solid var(--rosy-teal-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <SG_I.MapPin size={18} style={{ color: 'var(--rosy-teal-dark)', flex: 'none' }} />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontWeight: 600, color: 'var(--rosy-teal-dark)' }}>Travelling — gigs filtered to {activeTravel.city || activeTravel.address}</p>
+              <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--rosy-teal-dark)' }}>{activeTravel.label}{activeTravel.start_date ? ` · ${activeTravel.start_date} → ${activeTravel.end_date}` : ''}</p>
+            </div>
+          </div>
+          <button className="btn btn-ghost-teal btn-sm" onClick={() => setRoute && setRoute('settings:profile')}>Manage</button>
+        </div>
+      ) : null}
       <div className="section-heading">
         <h2>Available gigs</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
