@@ -622,12 +622,19 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
         );
       })() : null}
 
-      {tab === 'payments' ? (
+      {tab === 'payments' ? (() => {
+        // Scope to transactions tied to applications for this event's gigs.
+        const eventGigIds = new Set((window.RosyData?.GIGS || []).filter(g => g.eventId === eventId).map(g => g.id));
+        const eventAppIds = new Set((window.RosyData?.APPLICATIONS || []).filter(a => eventGigIds.has(a.gigId)).map(a => a.id));
+        const eventTxs = (window.RosyData?.TRANSACTIONS || []).filter(t => eventAppIds.has(t.id));
+        return (
         <div className="card card-flush">
           <table className="rosy-table">
             <thead><tr><th>Invoice</th><th>Worker</th><th>Status</th><th>Amount</th><th>Date</th></tr></thead>
             <tbody>
-              {SE_D.TRANSACTIONS.slice(0, 4).map(t => (
+              {eventTxs.length === 0 ? (
+                <tr><td colSpan={5}><Empty icon={SE_I.CreditCard} title="No payments yet" body="Payments will appear here once gigs are confirmed and approved." /></td></tr>
+              ) : eventTxs.map(t => (
                 <tr key={t.id}>
                   <td style={{ fontWeight: 500 }}>{t.invoice}</td>
                   <td>{t.payee}</td>
@@ -639,7 +646,8 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
             </tbody>
           </table>
         </div>
-      ) : null}
+        );
+      })() : null}
 
       <Modal open={!!applyGig} onClose={() => { if (!applying) setApplyGig(null); }} title="Apply for this gig" size="md"
         footer={<><button className="btn btn-ghost" disabled={applying} onClick={() => setApplyGig(null)}>Cancel</button><button className="btn btn-coral" disabled={applying} onClick={async () => {
