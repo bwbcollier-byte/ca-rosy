@@ -398,7 +398,7 @@ function MkFAQPage({ goToAuth, setRoute }) {
         <div style={{ maxWidth: 900, margin: '0 auto', textAlign: 'center' }}>
           <span className="t-eyebrow">{C('faq','eyebrow','FAQ')}</span>
           <h1 className="display-xl" style={{ margin: '14px 0 14px' }}>{C('faq','title','Answers, before you ask.')}</h1>
-          <p style={{ margin: '0 auto', fontSize: 18, color: 'var(--color-body)', maxWidth: 620 }}>{C('faq','sub','Still need help?')} <a className="btn-link" onClick={() => setRoute('contact')} style={{ cursor: 'pointer' }}>Talk to a real person.</a></p>
+          <p style={{ margin: '0 auto', fontSize: 18, color: 'var(--color-body)', maxWidth: 620 }}>{C('faq','sub','Still need help?')} <a href="#marketing/contact" className="btn-link" onClick={(e) => { e.preventDefault(); setRoute('contact'); }} style={{ cursor: 'pointer' }}>Talk to a real person.</a></p>
         </div>
       </section>
       <section style={{ maxWidth: 800, margin: '0 auto', padding: '48px 32px 96px' }}>
@@ -501,7 +501,7 @@ function MkCareersPage({ setRoute }) {
             </tbody>
           </table>
         </div>
-        <p style={{ marginTop: 20, fontSize: 14, color: 'var(--color-muted)' }}>Don't see your role? <a className="btn-link" style={{ cursor: 'pointer' }} onClick={() => setRoute('contact')}>Send us a note anyway.</a></p>
+        <p style={{ marginTop: 20, fontSize: 14, color: 'var(--color-muted)' }}>Don't see your role? <a href="#marketing/contact" className="btn-link" style={{ cursor: 'pointer' }} onClick={(e) => { e.preventDefault(); setRoute('contact'); }}>Send us a note anyway.</a></p>
       </section>
     </>
   );
