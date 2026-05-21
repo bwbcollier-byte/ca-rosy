@@ -1431,8 +1431,7 @@ function SettingsProfile({ user }) {
     website:              user?.website || '',
     business_description: user?.business_description || user?.bio || '',
     // Worker-only
-    rate_min: user?.rate_min ?? user?.hourlyRate ?? '',
-    rate_max: user?.rate_max ?? '',
+    rate_min: user?.hourlyRate ?? user?.rate_min ?? '',
     services: Array.isArray(user?.services) ? user.services.join(', ') : (user?.services || (Array.isArray(user?.skills) ? user.skills.join(', ') : (user?.skills || ''))),
   });
   const set = (k, v) => setD(s => ({ ...s, [k]: v }));
@@ -1465,7 +1464,7 @@ function SettingsProfile({ user }) {
       name: `${d.first} ${d.last}`.trim() || u.name,
       email: d.email, phone: d.phone, title: d.title, bio: d.bio, city: d.city, state: d.state,
       company: d.company_name, company_name: d.company_name, website: d.website, business_description: d.business_description,
-      rate_min: d.rate_min, rate_max: d.rate_max, hourlyRate: d.rate_min,
+      hourlyRate: d.rate_min,
       services: d.services.split(',').map(s => s.trim()).filter(Boolean),
     });
     window.dispatchEvent(new CustomEvent('rosy:data-changed'));

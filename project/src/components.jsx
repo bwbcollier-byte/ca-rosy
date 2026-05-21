@@ -43,7 +43,15 @@ function Avatar({ user, name, size = 'md', src }) {
   const cls = size === 'sm' ? 'avatar sm' : size === 'lg' ? 'avatar lg' : size === 'xl' ? 'avatar xl' : 'avatar';
   const seed = name || (user && user.name) || 'user';
   const initials = seed.split(' ').slice(0,2).map(s => s[0]).join('').toUpperCase();
-  const url = src || D.IMAGES.avatar(seed);
+  // Prefer explicit src → user prop's photo → lookup user by name in live RosyData
+  // → DiceBear placeholder. Real uploaded photos win over cartoons.
+  let resolvedSrc = src;
+  if (!resolvedSrc && user) resolvedSrc = user.photo || user.avatar_url || user.avatarUrl;
+  if (!resolvedSrc && name) {
+    const u = (window.RosyData?.USERS || []).find(x => x.name === name);
+    if (u) resolvedSrc = u.photo || u.avatar_url || u.avatarUrl;
+  }
+  const url = resolvedSrc || D.IMAGES.avatar(seed);
   return (
     <span className={cls} title={seed}>
       <img src={url} alt={initials} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
@@ -692,13 +700,19 @@ function SortMenu({ value, onChange, options }) {
 
 /* ---------- Helpers ---------- */
 function fmtDate(iso, opt) {
+  if (!iso) return '';
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
   if (opt === 'mdy-dots') return `${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}.${d.getFullYear()}`;
   if (opt === 'month') return d.toLocaleString('en-US', { month: 'long' });
   if (opt === 'day-month') return { day: d.getDate(), month: d.toLocaleString('en-US', { month: 'short' }) };
   return d.toLocaleDateString();
 }
-function fmtMoney(n) { return `$${n.toLocaleString('en-US', { minimumFractionDigits: 0 })}`; }
+function fmtMoney(n) {
+  const v = Number(n);
+  if (!isFinite(v)) return '$0';
+  return `$${v.toLocaleString('en-US', { minimumFractionDigits: 0 })}`;
+}
 function getGreeting(name) {
   const h = new Date().getHours();
   const greet = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';

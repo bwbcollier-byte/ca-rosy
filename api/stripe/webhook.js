@@ -89,11 +89,13 @@ module.exports = async (req, res) => {
         break;
       }
       case 'payment_intent.succeeded': {
+        // Transactions are stored on rr_gig_applications (payment_status column).
+        // metadata.application_id (preferred) or .transaction_id are accepted.
         const pi = evt.data?.object;
-        const txId = pi?.metadata?.transaction_id;
-        if (txId) {
-          await svcPatch(`/rr_transactions?id=eq.${txId}`, {
-            status: 'Paid', paid_at: new Date().toISOString(),
+        const appId = pi?.metadata?.application_id || pi?.metadata?.transaction_id;
+        if (appId) {
+          await svcPatch(`/rr_gig_applications?id=eq.${appId}`, {
+            payment_status: 'paid', paid_at: new Date().toISOString(),
             stripe_payment_intent_id: pi.id,
           });
         }
@@ -102,8 +104,8 @@ module.exports = async (req, res) => {
       case 'transfer.paid':
       case 'payout.paid': {
         const obj = evt.data?.object;
-        const txId = obj?.metadata?.transaction_id;
-        if (txId) await svcPatch(`/rr_transactions?id=eq.${txId}`, { payout_status: 'paid' });
+        const appId = obj?.metadata?.application_id || obj?.metadata?.transaction_id;
+        if (appId) await svcPatch(`/rr_gig_applications?id=eq.${appId}`, { payment_status: 'paid' });
         break;
       }
       default:
