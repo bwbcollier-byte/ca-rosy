@@ -1321,7 +1321,7 @@ function PageSettings({ role, currentUser, initialTab, setRoute }) {
   return (
     <div className="content fade-up">
       <div className="section-heading"><h2>Settings</h2></div>
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 220px) minmax(0, 1fr)', gap: 32 }} className="rosy-settings-grid">
         <div className="col" style={{ gap: 4 }}>
           {tabs.map(s => (
             <button key={s} onClick={() => selectTab(s)} className={`nav-item ${tab===s ? 'active' : ''}`} style={{ textTransform: 'capitalize' }}>{s === 'danger' ? 'Danger zone' : s === 'privacy' ? 'Privacy & data' : s}</button>
