@@ -50,7 +50,7 @@ function MarketingNav({ route, setRoute, goToAuth }) {
       </div>
       <nav className="mk-links">
         {items.map(i => (
-          <a key={i.id} onClick={() => setRoute(i.id)} className={route === i.id ? 'is-active' : ''} style={{ color: route === i.id ? 'var(--rosy-coral)' : 'var(--color-body-strong)' }}>{i.label}</a>
+          <a key={i.id} href={`#marketing/${i.id}`} onClick={(e) => { e.preventDefault(); setRoute(i.id); }} aria-current={route === i.id ? 'page' : undefined} className={route === i.id ? 'is-active' : ''} style={{ color: route === i.id ? 'var(--rosy-coral)' : 'var(--color-body-strong)' }}>{i.label}</a>
         ))}
       </nav>
       <div className="mk-right">
@@ -120,7 +120,7 @@ function MarketingFooter({ setRoute, goToAuth }) {
               <p className="t-eyebrow" style={{ marginBottom: 12 }}>{col.h}</p>
               {col.items.map(([label, id]) => (
                 <p key={id} style={{ margin: '0 0 8px', fontSize: 13.5 }}>
-                  <a style={{ color: 'var(--color-body)', textDecoration: 'none', cursor: 'pointer' }} onClick={() => setRoute(id)}>{label}</a>
+                  <a href={`#marketing/${id}`} style={{ color: 'var(--color-body)', textDecoration: 'none', cursor: 'pointer' }} onClick={(e) => { e.preventDefault(); setRoute(id); }}>{label}</a>
                 </p>
               ))}
             </div>
@@ -130,9 +130,9 @@ function MarketingFooter({ setRoute, goToAuth }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--color-muted-soft)' }}>
           <span>© 2026 Rosy Recruits, Inc. · Made in Chicago.</span>
           <span style={{ display: 'flex', gap: 16 }}>
-            <a style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }} onClick={() => setRoute('terms')}>Terms</a>
-            <a style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }} onClick={() => setRoute('privacy')}>Privacy</a>
-            <a style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }} onClick={() => setRoute('security')}>Security</a>
+            <a href="#marketing/terms" style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }} onClick={(e) => { e.preventDefault(); setRoute('terms'); }}>Terms</a>
+            <a href="#marketing/privacy" style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }} onClick={(e) => { e.preventDefault(); setRoute('privacy'); }}>Privacy</a>
+            <a href="#marketing/security" style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }} onClick={(e) => { e.preventDefault(); setRoute('security'); }}>Security</a>
           </span>
         </div>
       </div>
