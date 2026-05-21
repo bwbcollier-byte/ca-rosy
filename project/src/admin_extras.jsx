@@ -156,10 +156,19 @@ function PageAdminAssistants() {
       window.RosyStores.adminInvites.push(record);
       try { localStorage.setItem('rosy.adminInvites', JSON.stringify(window.RosyStores.adminInvites)); } catch (_) {}
     }
+    // Send the actual Postmark invite-user email so the recipient gets a real
+    // sign-up link. Failure logs to console but doesn't roll back the DB record.
+    try {
+      const inviterName = window.RosyData?.USERS?.find(u => u.role === 'admin')?.name || 'A Rosy admin';
+      await window.RosySendEmail?.({
+        slug: 'invite-user', to: record.email,
+        vars: { inviter_name: inviterName, role: 'admin', invite_url: window.location.origin + '/#auth' },
+      });
+    } catch (e) { console.warn('admin invite email failed:', e.message); }
     setInviteOpen(false);
     setInviteForm({ email: '', preset: 'assistant', note: '' });
     setInvitePerms({ ...DEFAULT_INVITE_PERMS });
-    toast.push({ kind: 'success', title: 'Invite sent', body: `${record.email} will get an email shortly.` });
+    toast.push({ kind: 'success', title: 'Invite sent', body: `${record.email} should have the link shortly.` });
   };
 
   return (

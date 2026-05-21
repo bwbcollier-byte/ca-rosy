@@ -350,7 +350,7 @@ function DashboardWorker({ user, setRoute, statStrip, statAnim }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setRoute('settings')}><SD_I.Calendar size={14} />Update availability</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setRoute('settings')}><SD_I.UserCircle2 size={14} />Update profile</button>
           <button className="btn btn-coral btn-sm" onClick={() => setRoute('gig-posts')}><SD_I.Search size={14} />Find gigs</button>
         </div>
       </div>
