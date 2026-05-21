@@ -285,10 +285,18 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
       window.dispatchEvent(new CustomEvent('rosy:start-tour'));
       return;
     }
-    const target = (n.link || '').replace('#', '').split('/').pop() || 'dashboard';
-    // Map old-style links to current routes
-    const map = { 'e1': 'events:e1', 'admin': 'dashboard', 'vendor': 'dashboard', 'worker': 'dashboard', 'disputes': 'disputes', 'my-gigs': 'my-gigs', 'inbox': 'inbox', 'profile': 'settings', 'payments': 'payments' };
-    setRoute(map[target] || target);
+    // Parse routes shaped like #events/<id>, #app/events/<id>, #payments/<id>,
+    // #my-gigs, etc. Falls back to dashboard for unknown shapes.
+    const linkRaw = (n.link || '').replace(/^#/, '');
+    const stripped = linkRaw.replace(/^app\//, '');
+    const slashIdx = stripped.indexOf('/');
+    const head = slashIdx >= 0 ? stripped.slice(0, slashIdx) : stripped;
+    const tail = slashIdx >= 0 ? stripped.slice(slashIdx + 1) : '';
+    if (head === 'events' && tail) return setRoute('events:' + tail);
+    if (head === 'gigs' && tail)   return setRoute('gigs:' + tail);
+    if (head === 'payments' && tail) return setRoute('payments:' + tail);
+    const map = { 'admin': 'dashboard', 'vendor': 'dashboard', 'worker': 'dashboard', 'disputes': 'disputes', 'my-gigs': 'my-gigs', 'inbox': 'inbox', 'profile': 'settings', 'payments': 'payments', 'events': 'events', 'gigs': 'gigs', 'dashboard': 'dashboard', 'notifications': 'notifications' };
+    setRoute(map[head] || 'dashboard');
   };
 
   const markAll = () => {

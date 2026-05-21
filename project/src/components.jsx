@@ -493,18 +493,34 @@ function NotificationPanel({ open, onClose, setRoute, role = 'admin', currentUse
       window.dispatchEvent(new CustomEvent('rosy:data-changed'));
     }
     onClose && onClose();
-    const target = (n.link || '').replace('#', '').split('/').pop() || 'dashboard';
-    // Role-aware mapping: my-gigs is worker-only; admin/vendor go to dashboard for that target
+    const linkRaw = (n.link || '').replace(/^#/, '');
+    // Parse routes shaped like:
+    //   #events/<id>  → events:<id>
+    //   #app/events/<id> → events:<id>
+    //   #payments/<id> → payments:<id>
+    //   #inbox / #my-gigs / etc → bare route id
+    const stripped = linkRaw.replace(/^app\//, '');
+    const slashIdx = stripped.indexOf('/');
+    const head = slashIdx >= 0 ? stripped.slice(0, slashIdx) : stripped;
+    const tail = slashIdx >= 0 ? stripped.slice(slashIdx + 1) : '';
     const workerOnly = role === 'worker';
+    // Routes that support deep-linking to a specific row:
+    if (head === 'events' && tail) return setRoute && setRoute('events:' + tail);
+    if (head === 'gigs' && tail)   return setRoute && setRoute('gigs:' + tail);
+    if (head === 'payments' && tail) return setRoute && setRoute('payments:' + tail);
+    // Bare-route mapping:
     const map = {
-      'e1': 'events:e1',
       'disputes': role === 'admin' ? 'disputes' : 'dashboard',
-      'my-gigs': workerOnly ? 'my-gigs' : 'dashboard',
-      'inbox': 'inbox',
-      'profile': 'settings',
+      'my-gigs':  workerOnly ? 'my-gigs' : 'dashboard',
+      'inbox':    'inbox',
+      'profile':  'settings',
       'payments': 'payments',
+      'events':   'events',
+      'gigs':     'gigs',
+      'notifications': 'notifications',
+      'dashboard': 'dashboard',
     };
-    setRoute && setRoute(map[target] || 'notifications');
+    setRoute && setRoute(map[head] || 'notifications');
   };
   return ReactDOM.createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 400 }}>
