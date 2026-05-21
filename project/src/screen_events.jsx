@@ -579,7 +579,7 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
                   <td><Badge kind={g.status === 'confirmed' ? 'Confirmed' : g.status === 'completed' ? 'Completed' : 'Open'} /></td>
                   <td>
                     {(() => {
-                      if (role !== 'worker') return <button className="btn btn-ghost btn-sm">Details</button>;
+                      if (role !== 'worker') return <button className="btn btn-ghost btn-sm" onClick={() => setRoute && setRoute('events:' + g.eventId)}>Details</button>;
                       const apps = (SE_D.APPLICATIONS || []).filter(a => a.gigId === g.id && a.workerId === currentUser?.id);
                       const myApp = apps[apps.length - 1];
                       const isAssigned = currentUser?.id && (g.assignedTo || []).includes(currentUser.id);

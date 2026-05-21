@@ -1686,7 +1686,10 @@ function SettingsPayouts({ user }) {
   );
 }
 
-function SettingsTeam() { return <div className="card"><h3 className="card-title">Team</h3><Empty icon={SP_I.Users} title="No teammates yet" body="Invite collaborators to manage this account." cta={<button className="btn btn-coral btn-sm"><SP_I.UserPlus size={14} />Invite</button>} /></div>; }
+// SettingsTeam — defined but no longer routed (Team tab removed for non-admins).
+// Kept in case the tab returns. The Invite CTA links to /admin-team where the
+// real invite flow lives.
+function SettingsTeam() { return <div className="card"><h3 className="card-title">Team</h3><Empty icon={SP_I.Users} title="No teammates yet" body="Invite collaborators to manage this account." cta={<button className="btn btn-coral btn-sm" onClick={() => { window.location.hash = 'app/admin-team'; }}><SP_I.UserPlus size={14} />Invite</button>} /></div>; }
 function SettingsDanger({ user }) {
   const toast = useToast();
   const [confirmOpen, setConfirmOpen] = SP_us(false);

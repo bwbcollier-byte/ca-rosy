@@ -509,11 +509,10 @@ function MkCareersPage({ setRoute }) {
 
 /* ============ Press ============ */
 function MkPressPage({ setRoute }) {
+  // Press list — empty by default until real coverage lands. Admins can wire
+  // a future rr_press_articles table here. Until then we hide the section
+  // rather than ship invented headlines.
   const press = [
-    { source: 'The Cut',              headline: 'The startup making New York wedding florists less miserable.', date: 'May 2026' },
-    { source: 'Vogue Business',       headline: 'How Rosy Recruits is rebuilding the freelance floral economy.', date: 'Apr 2026' },
-    { source: 'NYT Real Estate',      headline: 'Inside the Chicago studios training the next generation of florists.', date: 'Feb 2026' },
-    { source: 'Brides',               headline: 'Why your favorite wedding florist quietly hires a different team every weekend.', date: 'Dec 2025' },
   ];
   return (
     <>
@@ -521,7 +520,9 @@ function MkPressPage({ setRoute }) {
       <section className="mk-section">
         <h2 className="display-md" style={{ marginBottom: 24 }}>Coverage</h2>
         <div className="col" style={{ gap: 0 }}>
-          {press.map(p => (
+          {press.length === 0 ? (
+            <p style={{ margin: 0, padding: 24, fontSize: 14.5, color: 'var(--color-muted)' }}>No press features yet — we'll list them here as coverage publishes. <a href="#marketing/contact" style={{ color: 'var(--rosy-teal-dark)' }}>Pitch a story →</a></p>
+          ) : press.map(p => (
             <div key={p.headline} style={{ padding: '20px 0', borderBottom: '1px solid var(--color-hairline)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 24 }}>
               <div>
                 <span className="t-eyebrow">{p.source}</span>
@@ -529,7 +530,7 @@ function MkPressPage({ setRoute }) {
               </div>
               <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 13, color: 'var(--color-muted)' }}>{p.date}</span>
-                <button className="btn btn-ghost btn-sm"><MP_I.ExternalLink size={13} />Read</button>
+                {p.url ? <a className="btn btn-ghost btn-sm" href={p.url} target="_blank" rel="noopener noreferrer"><MP_I.ExternalLink size={13} />Read</a> : null}
               </div>
             </div>
           ))}
