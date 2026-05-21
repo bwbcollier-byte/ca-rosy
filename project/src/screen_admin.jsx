@@ -392,7 +392,21 @@ function PageDisputes() {
       )}
 
       <Modal open={!!mediate} onClose={() => setMediate(null)} title="Mediate dispute" size="md"
-        footer={<><button className="btn btn-ghost" onClick={() => setMediate(null)}>Close</button><button className="btn btn-ghost-coral" onClick={async () => { const t = mediate; setMediate(null); try { await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'partial'); } catch (e) { console.warn(e); } toast.push({ kind: 'success', title: 'Split decision', body: 'Worker paid 75%, vendor refunded 25%.' }); }}>Split 75/25</button><button className="btn btn-coral" onClick={async () => { const t = mediate; setMediate(null); try { await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'paid'); } catch (e) { console.warn(e); } toast.push({ kind: 'success', title: 'Released to worker', body: 'Worker paid in full. Vendor notified.' }); }}>Release to worker</button></>}>
+        footer={<><button className="btn btn-ghost" onClick={() => setMediate(null)}>Close</button><button className="btn btn-ghost-coral" onClick={async () => {
+          const t = mediate;
+          try {
+            await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'partial');
+            setMediate(null);
+            toast.push({ kind: 'success', title: 'Split decision', body: 'Worker paid 75%, vendor refunded 25%.' });
+          } catch (e) { toast.push({ kind: 'error', title: "Couldn't split payment", body: e.message || 'Try again.' }); }
+        }}>Split 75/25</button><button className="btn btn-coral" onClick={async () => {
+          const t = mediate;
+          try {
+            await window.RosyMutate?.applications?.setPaymentStatus(t.id, 'paid');
+            setMediate(null);
+            toast.push({ kind: 'success', title: 'Released to worker', body: 'Worker paid in full. Vendor notified.' });
+          } catch (e) { toast.push({ kind: 'error', title: "Couldn't release", body: e.message || 'Try again.' }); }
+        }}>Release to worker</button></>}>
         {mediate ? (
           <div className="col" style={{ gap: 14 }}>
             <KV label="Invoice" value={mediate.invoice} />

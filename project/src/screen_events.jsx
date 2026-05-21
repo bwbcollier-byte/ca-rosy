@@ -631,8 +631,16 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
                   </div>
                   <span className="pill"><SE_I.Briefcase size={12} style={{ marginRight: 4 }} />{g.type || 'Gig'}</span>
                   <button className="btn btn-ghost btn-sm" onClick={() => { window.__rosyComposeTo = a.workerId; setRoute && setRoute('inbox'); }}>Message</button>
-                  <button className="btn btn-ghost-coral btn-sm" onClick={async () => { setDecided(d => ({ ...d, [a.id]: 'rejected' })); try { await window.RosyMutate?.applications?.setStatus?.(a.id, 'rejected'); } catch (e) { console.warn(e); } toast.push({ kind: 'warning', title: `${w.first || 'Applicant'} rejected` }); }}>Reject</button>
-                  <button className="btn btn-coral btn-sm" onClick={async () => { setDecided(d => ({ ...d, [a.id]: 'confirmed' })); try { await window.RosyMutate?.applications?.setStatus?.(a.id, 'confirmed'); } catch (e) { console.warn(e); } toast.push({ kind: 'success', title: `${w.first || 'Applicant'} approved`, body: 'They\'ll get an email + push notification.' }); }}>Approve</button>
+                  <button className="btn btn-ghost-coral btn-sm" onClick={async () => {
+                    setDecided(d => ({ ...d, [a.id]: 'rejected' }));
+                    try { await window.RosyMutate?.applications?.setStatus?.(a.id, 'rejected'); toast.push({ kind: 'warning', title: `${w.first || 'Applicant'} rejected` }); }
+                    catch (e) { setDecided(d => ({ ...d, [a.id]: undefined })); toast.push({ kind: 'error', title: "Couldn't reject", body: e.message || 'Try again.' }); }
+                  }}>Reject</button>
+                  <button className="btn btn-coral btn-sm" onClick={async () => {
+                    setDecided(d => ({ ...d, [a.id]: 'confirmed' }));
+                    try { await window.RosyMutate?.applications?.setStatus?.(a.id, 'confirmed'); toast.push({ kind: 'success', title: `${w.first || 'Applicant'} approved`, body: "They'll get an email + push notification." }); }
+                    catch (e) { setDecided(d => ({ ...d, [a.id]: undefined })); toast.push({ kind: 'error', title: "Couldn't approve", body: e.message || 'Try again.' }); }
+                  }}>Approve</button>
                 </div>
               );
             })}
