@@ -467,11 +467,23 @@ function RoleSwitch({ role, setRole, viewAs = false }) {
 }
 
 /* ---------- Notification dropdown ---------- */
-function NotificationPanel({ open, onClose, setRoute, role = 'admin' }) {
+function NotificationPanel({ open, onClose, setRoute, role = 'admin', currentUser }) {
   const [tab, setTab] = useState('all');
-  const list = D.NOTIFICATIONS.filter(n => tab === 'all' || n.unread);
+  // Scope to current user. Admins still only see their own bell — they have the Audit Log + broadcast tools for cross-user visibility.
+  const scoped = (D.NOTIFICATIONS || []).filter(n => {
+    if (!currentUser?.id) return false;
+    const owner = n.user_id || n._userId;
+    return !owner || owner === currentUser.id;
+  });
+  const list = scoped.filter(n => tab === 'all' || n.unread);
   if (!open) return null;
   const openNotif = (n) => {
+    // Mark read in DB + locally before navigating.
+    if (n.unread) {
+      n.unread = false; n.read = true;
+      if (window.RosyMutate?.notifications) window.RosyMutate.notifications.markRead(n.id).catch(() => {});
+      window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+    }
     onClose && onClose();
     const target = (n.link || '').replace('#', '').split('/').pop() || 'dashboard';
     // Role-aware mapping: my-gigs is worker-only; admin/vendor go to dashboard for that target
