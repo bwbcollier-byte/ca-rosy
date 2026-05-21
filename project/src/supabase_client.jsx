@@ -271,11 +271,14 @@ function buildMessages(conversations, messages, usersById) {
       unread:       ms.filter(m => !m.read_at).length,
       preview:      last?.content || '',
       messages:     ms.map(m => ({
-        senderId:    m.sender_id,
-        recipientId: m.recipient_id,
-        text:        m.content || '',
-        time:        timeLabel(m.created_at),
-        day:         dayLabel(m.created_at),
+        senderId:        m.sender_id,
+        recipientId:     m.recipient_id,
+        text:            m.content || '',
+        time:            timeLabel(m.created_at),
+        day:             dayLabel(m.created_at),
+        attachment_url:  m.attachment_url || null,
+        attachment_name: m.attachment_name || null,
+        attachment_type: m.attachment_type || null,
       })),
     };
   });
@@ -748,7 +751,7 @@ window.RosyMutate = {
   },
 
   messages: {
-    async send({ conversationId, senderId, recipientId, content }) {
+    async send({ conversationId, senderId, recipientId, content, attachmentUrl, attachmentName, attachmentType }) {
       guardMutation('send');
       if (!isLive()) return { id: genId('m'), text: content, who: 'me', time: 'Just now', day: 'Today' };
       const { data, error } = await window.sb.from('rr_messages').insert({
@@ -756,6 +759,9 @@ window.RosyMutate = {
         sender_id:       senderId,
         recipient_id:    recipientId,
         content,
+        attachment_url:  attachmentUrl || null,
+        attachment_name: attachmentName || null,
+        attachment_type: attachmentType || null,
       }).select().single();
       if (error) throw error;
       // Also bump conversation last_message_at

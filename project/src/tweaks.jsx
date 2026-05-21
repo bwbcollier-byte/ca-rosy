@@ -50,7 +50,7 @@ function TweaksPanel({ tweaks, set, onClose }) {
     <div className="tweaks-panel" role="dialog" aria-label="Tweaks">
       <div className="tweaks-head">
         <h3>Tweaks</h3>
-        <button className="icon-btn" style={{ width: 32, height: 32, border: 0 }} onClick={onClose}><window.Icons.X size={14} /></button>
+        <button className="icon-btn" aria-label="Close tweaks panel" style={{ width: 32, height: 32, border: 0 }} onClick={onClose}><window.Icons.X size={14} /></button>
       </div>
       <div className="tweaks-body">
         <TweakSection label="Brand color">

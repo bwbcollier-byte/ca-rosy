@@ -2231,12 +2231,15 @@ function PageFAQs() {
     } catch (e) { toast.push({ kind: 'error', title: "Couldn't update", body: e.message }); }
     setSaving(s => ({ ...s, [row.id]: false }));
   };
-  const deleteRow = async (row) => {
-    if (!window.confirm(`Delete this FAQ?\n\n${row.question}`)) return;
+  const [deleteTarget, setDeleteTarget] = SP_us(null);
+  const confirmDelete = async () => {
+    const row = deleteTarget;
+    if (!row) return;
     try {
       const { error } = await window.sb.from('rr_faqs').delete().eq('id', row.id);
       if (error) throw error;
       setItems(arr => arr.filter(x => x.id !== row.id));
+      setDeleteTarget(null);
       toast.push({ kind: 'success', title: 'FAQ deleted' });
     } catch (e) { toast.push({ kind: 'error', title: "Couldn't delete", body: e.message }); }
   };
@@ -2289,13 +2292,17 @@ function PageFAQs() {
                 <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
                   <button className="btn btn-ghost btn-sm" disabled={saving[row.id]} onClick={() => toggleVisible(row)}>{row.is_visible === false ? 'Show' : 'Hide'}</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => setEditing(row.id)}>Edit</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => deleteRow(row)} style={{ color: 'var(--rosy-coral)' }}>Delete</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(row)} style={{ color: 'var(--rosy-coral)' }}>Delete</button>
                 </div>
               </div>
             )}
           </div>
         ))}
       </div>
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete this FAQ?" size="sm"
+        footer={<><button className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>Cancel</button><button className="btn btn-danger" onClick={confirmDelete}>Delete forever</button></>}>
+        {deleteTarget ? <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>This will remove "<strong>{deleteTarget.question}</strong>" from your help page. Visitors won't see it anymore.</p> : null}
+      </Modal>
     </div>
   );
 }

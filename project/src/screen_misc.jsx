@@ -11,6 +11,7 @@ function PageInbox({ currentUser }) {
   const [draft, setDraft] = SX_us('');
   const [composeOpen, setComposeOpen] = SX_us(false);
   const [composeSearch, setComposeSearch] = SX_us('');
+  const [pendingAttachment, setPendingAttachment] = SX_us(null);
   const [callOpen, setCallOpen] = SX_us(null); // 'voice' | 'video' | null
   const [threadMenuOpen, setThreadMenuOpen] = SX_us(false);
   const [search, setSearch] = SX_us('');
@@ -44,14 +45,19 @@ function PageInbox({ currentUser }) {
   }, []);
 
   const send = async () => {
-    if (!draft.trim()) return;
-    const text = draft;
-    setLocalMessages(ms => [...ms, { senderId: meId, recipientId: conv?.with, text, time: 'Just now', day: 'Today' }]);
+    if (!draft.trim() && !pendingAttachment) return;
+    const text = draft || (pendingAttachment ? `📎 ${pendingAttachment.name}` : '');
+    const attach = pendingAttachment;
+    setLocalMessages(ms => [...ms, { senderId: meId, recipientId: conv?.with, text, time: 'Just now', day: 'Today', attachment: attach || null }]);
     setDraft('');
+    setPendingAttachment(null);
     try {
       await window.RosyMutate?.messages?.send({
         conversationId: conv?.id,
         senderId: meId, recipientId: conv?.with, content: text,
+        attachmentUrl: attach?.url || null,
+        attachmentName: attach?.name || null,
+        attachmentType: attach?.type || null,
       });
     } catch (e) { console.warn('message send failed:', e); }
     // No auto-reply — the recipient replies when they reply. (Removed the fake
@@ -120,7 +126,15 @@ function PageInbox({ currentUser }) {
                   return (
                     <React.Fragment key={i}>
                       {showDay ? <div className="date-sep">{m.day}</div> : null}
-                      <div className={`msg-bubble ${who === 'me' ? 'out' : 'in'}`}>{m.text}</div>
+                      <div className={`msg-bubble ${who === 'me' ? 'out' : 'in'}`}>
+                        {m.text}
+                        {(m.attachment?.url || m.attachment_url) ? (
+                          <a href={m.attachment?.url || m.attachment_url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '6px 10px', background: 'rgba(255,255,255,0.18)', borderRadius: 8, fontSize: 12.5, textDecoration: 'none', color: 'inherit' }}>
+                            <SX_I.Paperclip size={12} />
+                            <span>{m.attachment?.name || m.attachment_name || 'Attachment'}</span>
+                          </a>
+                        ) : null}
+                      </div>
                       <span className="msg-time" style={{ alignSelf: who === 'me' ? 'flex-end' : 'flex-start' }}>{m.time}</span>
                     </React.Fragment>
                   );
@@ -132,14 +146,37 @@ function PageInbox({ currentUser }) {
                 ref={fileInputRef}
                 type="file"
                 style={{ display: 'none' }}
-                onChange={(e) => {
+                onChange={async (e) => {
                   const f = e.target.files?.[0];
                   if (!f) return;
-                  toast.push({ kind: 'success', title: 'File attached', body: `${f.name} (${Math.round(f.size / 1024)} KB)` });
                   e.target.value = '';
+                  if (f.size > 20 * 1024 * 1024) {
+                    toast.push({ kind: 'warning', title: 'File too large', body: '20MB limit per attachment.' });
+                    return;
+                  }
+                  try {
+                    if (!window.sb) throw new Error('Storage unavailable');
+                    const { data: { user } } = await window.sb.auth.getUser();
+                    const uid = user?.id || 'anon';
+                    const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+                    const path = `${uid}/${Date.now()}-${safeName}`;
+                    const { error } = await window.sb.storage.from('rr-attachments').upload(path, f, { upsert: true, contentType: f.type || 'application/octet-stream' });
+                    if (error) throw error;
+                    const { data: signed } = await window.sb.storage.from('rr-attachments').createSignedUrl(path, 60 * 60 * 24 * 30);
+                    setPendingAttachment({ name: f.name, url: signed?.signedUrl || null, type: f.type, size: f.size });
+                    toast.push({ kind: 'success', title: 'File attached', body: `${f.name} — send the next message to share it.` });
+                  } catch (err) {
+                    toast.push({ kind: 'error', title: "Couldn't attach", body: err.message || 'Try again.' });
+                  }
                 }}
               />
               <button className="icon-btn" onClick={() => fileInputRef.current?.click()} aria-label="Attach file"><SX_I.Paperclip size={16} /></button>
+              {pendingAttachment ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: 'var(--rosy-teal-soft)', border: '1px solid var(--rosy-teal-border)', borderRadius: 9999, fontSize: 12 }}>
+                  <SX_I.Paperclip size={11} />{pendingAttachment.name}
+                  <button onClick={() => setPendingAttachment(null)} aria-label="Remove attachment" style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--rosy-teal-dark)', padding: 0, marginLeft: 2 }}><SX_I.X size={10} /></button>
+                </span>
+              ) : null}
               <input className="input" placeholder="Message…" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
               <button className="btn btn-teal btn-sm" onClick={send} disabled={!draft.trim()} style={{ width: 38, height: 38, padding: 0, borderRadius: 9999 }}><SX_I.Send size={15} /></button>
             </div>
@@ -199,7 +236,20 @@ function PageInbox({ currentUser }) {
 
       {callOpen ? (
         <Modal open={!!callOpen} onClose={() => setCallOpen(null)} title={callOpen === 'voice' ? 'Voice call' : 'Video call'} size="sm"
-          footer={<><button className="btn btn-ghost" onClick={() => setCallOpen(null)}>Close</button><button className="btn btn-coral" onClick={() => { setCallOpen(null); toast.push({ kind: 'success', title: "We'll email you when it ships" }); }}>Notify me</button></>}>
+          footer={<><button className="btn btn-ghost" onClick={() => setCallOpen(null)}>Close</button><button className="btn btn-coral" onClick={async () => {
+            const feature = callOpen === 'voice' ? 'voice calls' : 'video calls';
+            setCallOpen(null);
+            try {
+              await window.RosySendEmail?.({
+                slug: 'trust-report', // reused as a generic admin-notice slug (already on the trigger allow-list)
+                to: 'product@rosyrecruits.com',
+                subject: `Notify-me request: ${feature}`,
+                html: `<p><strong>${currentUser?.name || currentUser?.email || 'Unknown user'}</strong> (${currentUser?.email || 'no email'}) wants early access to <strong>${feature}</strong>.</p>`,
+                vars: {},
+              });
+              toast.push({ kind: 'success', title: "You're on the list", body: "We'll email you as soon as it ships." });
+            } catch (e) { toast.push({ kind: 'warning', title: "Couldn't sign you up", body: 'Try again in a moment.' }); }
+          }}>Notify me</button></>}>
           <div style={{ textAlign: 'center', padding: '12px 0' }}>
             <div style={{ width: 64, height: 64, borderRadius: 9999, background: 'var(--color-surface-soft)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
               {callOpen === 'voice' ? <SX_I.Phone size={28} /> : <SX_I.Video size={28} />}

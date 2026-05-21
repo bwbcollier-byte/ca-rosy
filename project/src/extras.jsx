@@ -642,7 +642,19 @@ function PageBuildTeam({ currentUser }) {
 
       {demoOpen ? (
         <Modal open={demoOpen} onClose={() => setDemoOpen(false)} title="Product demo" size="lg"
-          footer={<><button className="btn btn-ghost" onClick={() => setDemoOpen(false)}>Close</button><button className="btn btn-coral" onClick={() => { setDemoOpen(false); toast.push({ kind: 'success', title: "We'll email you the link" }); }}>Email me</button></>}>
+          footer={<><button className="btn btn-ghost" onClick={() => setDemoOpen(false)}>Close</button><button className="btn btn-coral" onClick={async () => {
+            setDemoOpen(false);
+            try {
+              await window.RosySendEmail?.({
+                slug: 'trust-report',
+                to: 'product@rosyrecruits.com',
+                subject: 'Notify-me request: Build my team demo',
+                html: `<p><strong>${currentUser?.name || currentUser?.email || 'Unknown user'}</strong> (${currentUser?.email || 'no email'}) requested the Build-my-team demo video.</p>`,
+                vars: {},
+              });
+              toast.push({ kind: 'success', title: "We'll email you the demo link" });
+            } catch (e) { toast.push({ kind: 'warning', title: "Couldn't sign you up", body: 'Try again in a moment.' }); }
+          }}>Email me</button></>}>
           <div style={{ aspectRatio: '16/9', background: 'var(--color-surface-card)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
             <div style={{ width: 80, height: 80, borderRadius: 9999, background: 'var(--rosy-coral)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ width: 0, height: 0, borderTop: '18px solid transparent', borderBottom: '18px solid transparent', borderLeft: '28px solid #fff', marginLeft: 6 }} />
@@ -698,7 +710,7 @@ function Walkthrough({ role, onClose, setRoute }) {
           <div style={{ width: 110, height: 110, borderRadius: 9999, background: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon size={56} style={{ color: 'var(--color-ink)' }} />
           </div>
-          <button onClick={onClose} className="icon-btn" style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.85)', border: 0 }}><X_I.X size={16} /></button>
+          <button onClick={onClose} className="icon-btn" aria-label="Close tour" style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.85)', border: 0 }}><X_I.X size={16} /></button>
           <span style={{ position: 'absolute', top: 16, left: 16, background: 'rgba(255,255,255,0.85)', padding: '4px 10px', borderRadius: 9999, fontSize: 11.5, fontWeight: 600 }}>{idx + 1} of {slides.length}</span>
         </div>
         <div style={{ padding: 36, textAlign: 'center' }}>

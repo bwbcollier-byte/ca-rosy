@@ -486,9 +486,15 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
       if (dateFilter === 'thisweek'  && d > weekEnd)  return false;
       if (dateFilter === 'thismonth' && d > monthEnd) return false;
     }
+    const v = SG_D.VENUES.find(x => x.id === ev?.venueId);
+    // City filter — substring match on venue city (proper radius requires geocoded
+    // venues, not in scope yet). Empty city = no filter.
+    if (city && city.trim()) {
+      const venueCity = (v?.city || '').toLowerCase();
+      if (!venueCity.includes(city.trim().toLowerCase())) return false;
+    }
     if (!search.trim()) return true;
     const q = search.toLowerCase();
-    const v = SG_D.VENUES.find(x => x.id === ev?.venueId);
     return [g.type, g.description, ev?.name, v?.name, v?.city].some(s => (s || '').toLowerCase().includes(q));
   };
   // Flatten gigs with their event for cards/sort

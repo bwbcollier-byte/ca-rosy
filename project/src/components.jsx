@@ -167,7 +167,7 @@ function Slideover({ open, onClose, title, children, footer }) {
       <div className="slideover" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{title}</h3>
-          <button className="icon-btn" onClick={onClose}><Ic.X size={18} /></button>
+          <button className="icon-btn" onClick={onClose} aria-label="Close"><Ic.X size={18} /></button>
         </div>
         <div className="modal-body" style={{ flex: 1 }}>{children}</div>
         {footer ? <div className="modal-footer">{footer}</div> : null}
