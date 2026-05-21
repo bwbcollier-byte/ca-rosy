@@ -83,12 +83,32 @@ function SignaturePad({ value, onChange, height = 160 }) {
     last.current = p;
     if (!hasInk) { setHasInk(true); }
   };
-  const end = () => {
+  const end = async () => {
     if (!drawing.current) return;
     drawing.current = false;
-    // Emit the actual signature image as a data URL on every stroke end so
-    // the parent can persist it. Truthy = has-ink, falsy = cleared.
-    try { onChange && onChange(canvasRef.current.toDataURL('image/png')); } catch (e) {}
+    // Emit the local data URL immediately so the parent UI reacts. Then upload
+    // to Supabase Storage in the background and swap the value to the public
+    // URL when the upload finishes. Avoids storing multi-KB base64 blobs in
+    // rr_profiles signature columns.
+    let dataUrl = null;
+    try { dataUrl = canvasRef.current.toDataURL('image/png'); } catch (e) { return; }
+    onChange && onChange(dataUrl);
+    try {
+      const sb = window.sb;
+      if (!sb) return;
+      const { data: { user } } = await sb.auth.getUser();
+      const uid = user?.id || 'anon';
+      // Convert data URL → Blob → Storage upload.
+      const blob = await (await fetch(dataUrl)).blob();
+      const path = `${uid}/${Date.now()}.png`;
+      const { error } = await sb.storage.from('rr-signatures').upload(path, blob, { cacheControl: '3600', upsert: true, contentType: 'image/png' });
+      if (error) throw error;
+      // Signed URL since the bucket is private. 7-day expiry — long enough for
+      // the admin to view from the user-detail modal without re-signing.
+      const { data: signed, error: sErr } = await sb.storage.from('rr-signatures').createSignedUrl(path, 60 * 60 * 24 * 7);
+      if (sErr) throw sErr;
+      onChange && onChange(signed?.signedUrl || dataUrl);
+    } catch (e) { console.warn('Signature upload failed (kept local data URL):', e.message); }
   };
 
   const clear = () => {
@@ -119,32 +139,55 @@ function SignaturePad({ value, onChange, height = 160 }) {
 }
 
 /* ============ Image upload ============ */
-function ImageUpload({ value, onChange, label = 'Upload photo', size = 96, round = true }) {
+function ImageUpload({ value, onChange, label = 'Upload photo', size = 96, round = true, bucket = 'rr-avatars' }) {
   const inputRef = X_ur(null);
   const [preview, setPreview] = X_us(value || null);
+  const [uploading, setUploading] = X_us(false);
   React.useEffect(() => { setPreview(value || null); }, [value]);
   const toast = useToast();
-  const onFile = (e) => {
+  const onFile = async (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
-    if (f.size > 2 * 1024 * 1024) {
-      toast.push({ kind: 'warning', title: 'Image too large', body: `${(f.size / 1024 / 1024).toFixed(1)}MB exceeds the 2MB limit — please use a smaller photo.` });
-      e.target.value = '';
-      return;
+    if (f.size > 5 * 1024 * 1024) {
+      toast.push({ kind: 'warning', title: 'Image too large', body: `${(f.size / 1024 / 1024).toFixed(1)}MB exceeds the 5MB limit.` });
+      e.target.value = ''; return;
     }
-    const reader = new FileReader();
-    reader.onload = (ev) => { setPreview(ev.target.result); onChange && onChange(ev.target.result); };
-    reader.readAsDataURL(f);
+    // Optimistic preview from local FileReader.
+    const localUrl = await new Promise((res) => { const r = new FileReader(); r.onload = (ev) => res(ev.target.result); r.readAsDataURL(f); });
+    setPreview(localUrl);
+    // Upload to Supabase Storage. Fall back to the data URL on failure so the
+    // user still sees the photo even if Storage is unreachable.
+    setUploading(true);
+    try {
+      const sb = window.sb;
+      if (!sb) throw new Error('Supabase not loaded');
+      const { data: { user } } = await sb.auth.getUser();
+      const uid = user?.id || 'anon';
+      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const path = `${uid}/${Date.now()}.${ext || 'jpg'}`;
+      const { error } = await sb.storage.from(bucket).upload(path, f, { cacheControl: '3600', upsert: true, contentType: f.type || 'image/jpeg' });
+      if (error) throw error;
+      const { data: pub } = sb.storage.from(bucket).getPublicUrl(path);
+      const url = pub?.publicUrl || localUrl;
+      setPreview(url);
+      onChange && onChange(url);
+    } catch (err) {
+      console.warn('Storage upload failed, falling back to data URL:', err.message);
+      onChange && onChange(localUrl);
+      toast.push({ kind: 'warning', title: "Uploaded locally", body: "Couldn't save to cloud storage — image will still appear." });
+    }
+    setUploading(false);
   };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-      <div style={{ width: size, height: size, borderRadius: round ? 9999 : 12, background: preview ? `center/cover no-repeat url(${preview})` : 'var(--rosy-teal-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--rosy-teal)', flex: 'none', overflow: 'hidden', border: '1px solid var(--color-hairline)' }}>
+      <div style={{ width: size, height: size, borderRadius: round ? 9999 : 12, background: preview ? `center/cover no-repeat url(${preview})` : 'var(--rosy-teal-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--rosy-teal)', flex: 'none', overflow: 'hidden', border: '1px solid var(--color-hairline)', position: 'relative' }}>
         {!preview ? <X_I.Flower size={size * 0.4} /> : null}
+        {uploading ? <span style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, color: 'var(--color-body)', fontWeight: 600 }}>Uploading…</span> : null}
       </div>
       <div className="col" style={{ gap: 8 }}>
-        <button type="button" className="btn btn-ghost-amber btn-sm" onClick={() => inputRef.current && inputRef.current.click()}><X_I.UploadCloud size={14} />{preview ? 'Replace photo' : label}</button>
-        {preview ? <button type="button" className="btn-link" style={{ fontSize: 12, textAlign: 'left', padding: 0 }} onClick={() => { setPreview(null); onChange && onChange(null); }}>Remove</button> : null}
-        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--color-muted-soft)' }}>JPG or PNG, up to 2MB.</p>
+        <button type="button" className="btn btn-ghost-amber btn-sm" disabled={uploading} onClick={() => inputRef.current && inputRef.current.click()}><X_I.UploadCloud size={14} />{uploading ? 'Uploading…' : (preview ? 'Replace photo' : label)}</button>
+        {preview && !uploading ? <button type="button" className="btn-link" style={{ fontSize: 12, textAlign: 'left', padding: 0 }} onClick={() => { setPreview(null); onChange && onChange(null); }}>Remove</button> : null}
+        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--color-muted-soft)' }}>JPG or PNG, up to 5MB.</p>
         <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onFile} />
       </div>
     </div>

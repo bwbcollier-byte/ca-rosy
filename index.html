@@ -18,6 +18,26 @@
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" crossorigin="anonymous"></script>
   <script>
+    // Public client config. Google Maps browser key is HTTP-referrer restricted
+    // in Google Cloud so it's safe to ship inline (same security model as the
+    // Supabase anon key). When this is non-empty, AddressInput swaps the plain
+    // text field for Places Autocomplete.
+    window.ROSY_CONFIG = window.ROSY_CONFIG || {};
+    window.ROSY_CONFIG.googleMapsApiKey = 'AIzaSyDTrcAP1SK1esPUU0IZZTqS07TXqPeYBeg';
+
+    // Load Google Maps Places lib (async) once on boot so AddressInput can use it.
+    (function loadMaps() {
+      var key = window.ROSY_CONFIG && window.ROSY_CONFIG.googleMapsApiKey;
+      if (!key) return;
+      var s = document.createElement('script');
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places&loading=async&v=weekly';
+      s.async = true; s.defer = true;
+      s.onload = function () { window.__rosyMapsReady = true; window.dispatchEvent(new CustomEvent('rosy:google-maps-ready')); };
+      s.onerror = function () { console.warn('Google Maps failed to load'); };
+      document.head.appendChild(s);
+    })();
+  </script>
+  <script>
     // Dev-only cache-buster: append ?v=<now> to every type="text/babel" src
     // so the in-browser Babel transformer always fetches fresh JSX during development.
     document.addEventListener('DOMContentLoaded', () => {

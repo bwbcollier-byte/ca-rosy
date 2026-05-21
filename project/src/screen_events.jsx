@@ -329,7 +329,7 @@ function NewEventForm({ value = {}, onChange = () => {}, onCreateVenue }) {
     <div className="col" style={{ gap: 16 }}>
       {/* Image first per global pattern */}
       <div className="field"><label className="field-label">Cover image</label>
-        <ImageUpload value={value.image || ''} onChange={(v) => upd('image', v)} label="Upload cover image" size={120} round={false} />
+        <ImageUpload value={value.image || ''} onChange={(v) => upd('image', v)} label="Upload cover image" size={120} round={false} bucket="rr-event-images" />
       </div>
       <div className="field"><label className="field-label">Event name *</label><input className="input" value={value.name || ''} onChange={e => upd('name', e.target.value)} placeholder="e.g. Carter Garden Brunch" /></div>
       <div className="field"><label className="field-label">Description *</label><textarea className="textarea" value={value.desc || ''} onChange={e => upd('desc', e.target.value)} placeholder="Paint the room. What's the palette, scope, vibe?" /></div>

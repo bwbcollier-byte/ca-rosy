@@ -423,16 +423,45 @@ window.GALLERY_SECTIONS = GALLERY_SECTIONS;
 const ADDRESS_BANK = [];
 
 function AddressInput({ value, onChange, placeholder = 'Type your address' }) {
-  // Autocomplete is disabled until Google Maps is wired (Ben provisioning key).
-  // Until then this is a plain text input that calls onChange on every keystroke.
+  // Google Places Autocomplete when the script is loaded, plain text input otherwise.
+  // Emits the formatted_address string back to onChange (parent can structure-parse later).
+  const inputRef = F_ur(null);
+  const acRef = F_ur(null);
   const [q, setQ] = F_us(value || '');
   React.useEffect(() => { setQ(value || ''); }, [value]);
   const update = (val) => { setQ(val); onChange && onChange(val); };
+
+  React.useEffect(() => {
+    const tryAttach = () => {
+      if (!inputRef.current) return;
+      if (acRef.current) return;
+      const g = window.google;
+      if (!g || !g.maps || !g.maps.places || !g.maps.places.Autocomplete) return;
+      try {
+        const ac = new g.maps.places.Autocomplete(inputRef.current, {
+          fields: ['formatted_address', 'address_components', 'geometry', 'name'],
+          types: ['geocode'],
+        });
+        ac.addListener('place_changed', () => {
+          const place = ac.getPlace();
+          const formatted = place?.formatted_address || place?.name || inputRef.current.value;
+          setQ(formatted);
+          onChange && onChange(formatted, { place });
+        });
+        acRef.current = ac;
+      } catch (e) { console.warn('Places Autocomplete attach failed:', e); }
+    };
+    if (window.__rosyMapsReady) tryAttach();
+    else window.addEventListener('rosy:google-maps-ready', tryAttach, { once: true });
+    return () => { /* Autocomplete cleans itself when the input unmounts */ };
+  }, []);
+
   return (
     <div style={{ position: 'relative' }}>
       <F_I.MapPin size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)' }} />
-      <input className="input" style={{ paddingLeft: 36 }} value={q} placeholder={placeholder}
-        onChange={(e) => update(e.target.value)} />
+      <input ref={inputRef} className="input" style={{ paddingLeft: 36 }} value={q} placeholder={placeholder}
+        onChange={(e) => update(e.target.value)}
+        autoComplete="off" />
     </div>
   );
 }

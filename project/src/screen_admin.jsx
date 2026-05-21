@@ -1243,7 +1243,7 @@ function VenueFormModal({ open, onClose, venue, onSave }) {
       }>
       <div className="col" style={{ gap: 14 }}>
         <div className="field"><label className="field-label">Cover image</label>
-          <ImageUpload value={f.image} onChange={(v) => upd('image', v)} label="Upload venue photo" size={120} round={false} />
+          <ImageUpload value={f.image} onChange={(v) => upd('image', v)} label="Upload venue photo" size={120} round={false} bucket="rr-event-images" />
         </div>
         <div className="field"><label className="field-label">Name *</label><input className="input" placeholder="e.g. Carter Garden Estate" value={f.name} onChange={e => upd('name', e.target.value)} /></div>
         <div className="grid-2">

@@ -895,7 +895,7 @@ function ProfileForm({ role, data, onChange }) {
   const toggleService = (s) => set({ services: services.includes(s) ? services.filter(x => x !== s) : [...services, s] });
   return (
     <div className="col" style={{ gap: 14 }}>
-      <ImageUpload value={photo} onChange={setPhoto} label={role === 'vendor' ? 'Upload your studio logo' : 'Upload a profile photo'} size={96} round={role !== 'vendor' ? true : false} />
+      <ImageUpload value={photo} onChange={setPhoto} label={role === 'vendor' ? 'Upload your studio logo' : 'Upload a profile photo'} size={96} round={role !== 'vendor' ? true : false} bucket={role === 'vendor' ? 'rr-logos' : 'rr-avatars'} />
       <div className="grid-2">
         <div className="field"><label className="field-label">First name</label><input className="input" value={first} onChange={e => setFirst(e.target.value)} placeholder="Jane" /></div>
         <div className="field"><label className="field-label">Last name</label><input className="input" value={last} onChange={e => setLast(e.target.value)} placeholder="Doe" /></div>
