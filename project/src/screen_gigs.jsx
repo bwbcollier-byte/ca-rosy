@@ -91,6 +91,10 @@ function PageGigsVendor({ user, role, setRoute }) {
     const todayIso = new Date().toISOString().slice(0, 10);
     if (addForm.date < todayIso) { toast.push({ kind: 'warning', title: 'Gig date must be today or in the future' }); return; }
     if (!addForm?.start || !addForm?.end) { toast.push({ kind: 'warning', title: 'Enter start + end times' }); return; }
+    // Allow overnight gigs (end < start crosses midnight) only when explicit; warn for same-day end <= start.
+    if (addForm.end <= addForm.start && (Number(addForm.end.split(':')[0]) >= Number(addForm.start.split(':')[0]))) {
+      toast.push({ kind: 'warning', title: 'End time must be after start time' }); return;
+    }
     if (!addForm?.rate || Number(addForm.rate) <= 0) { toast.push({ kind: 'warning', title: 'Enter a positive hourly rate' }); return; }
     if (!addForm?.spots || Number(addForm.spots) <= 0) { toast.push({ kind: 'warning', title: 'Enter a positive spot count' }); return; }
     const ev = SG_D.EVENTS.find(e => e.id === addForm.eventId);
