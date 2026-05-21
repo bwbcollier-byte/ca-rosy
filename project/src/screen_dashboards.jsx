@@ -127,7 +127,7 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
           {screenshot ? (
             <div style={{ position: 'relative', display: 'inline-block', marginTop: 4 }}>
               <img src={screenshot} alt="Screenshot" style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 10, border: '1px solid var(--color-hairline)' }} />
-              <button type="button" onClick={() => setScreenshot(null)} style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.7)', color: '#fff', border: 0, width: 24, height: 24, borderRadius: 9999, cursor: 'pointer', fontSize: 14 }}>×</button>
+              <button type="button" aria-label="Remove screenshot" onClick={() => setScreenshot(null)} style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.7)', color: '#fff', border: 0, width: 24, height: 24, borderRadius: 9999, cursor: 'pointer', fontSize: 14 }}>×</button>
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>

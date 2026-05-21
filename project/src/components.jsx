@@ -531,8 +531,8 @@ function NotificationPanel({ open, onClose, setRoute, role = 'admin', currentUse
           <button className="btn-link" style={{ fontSize: 12 }} onClick={() => { onClose && onClose(); setRoute && setRoute('notifications'); }}>View all</button>
         </div>
         <div style={{ padding: '8px 16px', display: 'flex', gap: 6 }}>
-          <button onClick={() => setTab('all')} className={`pill`} style={{ background: tab==='all' ? 'var(--color-ink)' : 'var(--color-surface-soft)', color: tab==='all' ? '#fff' : 'var(--color-muted)', cursor: 'pointer', border: 0 }}>All</button>
-          <button onClick={() => setTab('unread')} className={`pill`} style={{ background: tab==='unread' ? 'var(--color-ink)' : 'var(--color-surface-soft)', color: tab==='unread' ? '#fff' : 'var(--color-muted)', cursor: 'pointer', border: 0 }}>Unread</button>
+          <button onClick={() => setTab('all')} aria-pressed={tab==='all'} className={`pill`} style={{ background: tab==='all' ? 'var(--color-ink)' : 'var(--color-surface-soft)', color: tab==='all' ? '#fff' : 'var(--color-muted)', cursor: 'pointer', border: 0 }}>All</button>
+          <button onClick={() => setTab('unread')} aria-pressed={tab==='unread'} className={`pill`} style={{ background: tab==='unread' ? 'var(--color-ink)' : 'var(--color-surface-soft)', color: tab==='unread' ? '#fff' : 'var(--color-muted)', cursor: 'pointer', border: 0 }}>Unread</button>
         </div>
         <div style={{ maxHeight: 420, overflowY: 'auto' }}>
           {list.length === 0 ? <Empty title="You're all caught up!" body="No new notifications." /> :
