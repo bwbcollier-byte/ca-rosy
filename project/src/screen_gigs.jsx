@@ -348,7 +348,7 @@ function PageGigsVendor({ user, role, setRoute }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Type</label><input className="input" value={editForm.type} onChange={e => setEditForm(f => ({ ...f, type: e.target.value }))} /></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Date</label><input className="input" type="date" value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} /></div>
+              <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Date</label><input className="input" type="date" min={new Date().toISOString().slice(0, 10)} value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} /></div>
               <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Rate ($/hr)</label><input className="input" type="number" min={0} value={editForm.rate} onChange={e => setEditForm(f => ({ ...f, rate: e.target.value }))} /></div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

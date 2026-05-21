@@ -452,7 +452,7 @@ function BuildMyTeamWizard({ open, onClose }) {
         <div className="col" style={{ gap: 14 }}>
           <div className="field"><label className="field-label">Event name</label><input className="input" value={config.eventName} onChange={e => update('eventName', e.target.value)} /></div>
           <div className="grid-2">
-            <div className="field"><label className="field-label">Date</label><input className="input" type="date" value={config.date} onChange={e => update('date', e.target.value)} /></div>
+            <div className="field"><label className="field-label">Date</label><input className="input" type="date" min={new Date().toISOString().slice(0, 10)} value={config.date} onChange={e => update('date', e.target.value)} /></div>
             <div className="field"><label className="field-label">Duration (hours)</label><input className="input" type="number" min={1} value={config.duration} onChange={e => update('duration', Math.max(1, parseInt(e.target.value) || 1))} /></div>
           </div>
           <div className="grid-2">

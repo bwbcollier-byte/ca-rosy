@@ -706,7 +706,7 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
         <div className="col" style={{ gap: 14 }}>
           <div className="field"><label className="field-label">Event name</label><input className="input" value={editForm.name} onChange={(ev) => setEditForm(f => ({ ...f, name: ev.target.value }))} /></div>
           <div className="field"><label className="field-label">Description</label><textarea className="textarea" value={editForm.desc} onChange={(ev) => setEditForm(f => ({ ...f, desc: ev.target.value }))} /></div>
-          <div className="field"><label className="field-label">Date</label><input className="input" type="date" value={editForm.date} onChange={(ev) => setEditForm(f => ({ ...f, date: ev.target.value }))} /></div>
+          <div className="field"><label className="field-label">Date</label><input className="input" type="date" min={new Date().toISOString().slice(0, 10)} value={editForm.date} onChange={(ev) => setEditForm(f => ({ ...f, date: ev.target.value }))} /></div>
         </div>
       </Modal>
     </div>
