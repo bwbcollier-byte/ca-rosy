@@ -375,7 +375,7 @@ function AssignedStack({ ids, setRoute }) {
         <Modal open={!!openUser} onClose={() => setOpenUser(null)} title={openUser.name} size="md"
           footer={<>
             <button className="btn btn-ghost" onClick={() => setOpenUser(null)}>Close</button>
-            <button className="btn btn-ghost-teal" onClick={() => { setOpenUser(null); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${openUser.first || openUser.name.split(' ')[0]}` }); }}>
+            <button className="btn btn-ghost-teal" onClick={() => { setOpenUser(null); window.__rosyComposeTo = openUser.id; setRoute && setRoute('inbox'); }}>
               <SG_I.MessageSquare size={14} />Message
             </button>
             <button className="btn btn-coral" onClick={() => { const id = openUser.id; setOpenUser(null); setRoute && setRoute('users:' + id); }}>

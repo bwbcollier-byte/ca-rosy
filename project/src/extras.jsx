@@ -585,7 +585,12 @@ function PageBuildTeam({ currentUser }) {
           </div>
           <div style={{ width: 220, flex: 'none' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(() => { const fallback = X_D.USERS.filter(u => u.role === 'worker' && (u.rating || 0) >= 4.7).slice(0, 4); const ids = ['u3','u9','u10','u7']; const picks = ids.map(id => X_D.USERS.find(u => u.id === id) || fallback.shift()).filter(Boolean); return picks; })().map((u, i) => {
+              {(() => {
+                // Top 4 real workers by rating, then by gig count. No hardcoded IDs.
+                const workers = (window.RosyData?.USERS || []).filter(u => u.role === 'worker' && u.status !== 'inactive');
+                const picks = workers.sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.gigs || 0) - (a.gigs || 0)).slice(0, 4);
+                return picks;
+              })().map((u, i) => {
                 if (!u) return null;
                 return (
                   <div key={u.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.7)', padding: '8px 12px', borderRadius: 12 }}>

@@ -547,7 +547,7 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
               {role === 'worker' ? (
                 <p style={{ marginTop: 14, fontSize: 12.5, color: 'var(--color-muted)' }}>You'll be able to message {vendor?.first || 'the vendor'} once your application is accepted.</p>
               ) : (
-                <button className="btn btn-ghost-teal btn-sm" style={{ marginTop: 14 }} onClick={() => { setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${vendor?.first}` }); }}><SE_I.MessageSquare size={14} />Message</button>
+                <button className="btn btn-ghost-teal btn-sm" style={{ marginTop: 14 }} onClick={() => { window.__rosyComposeTo = vendor?.id; setRoute && setRoute('inbox'); }}><SE_I.MessageSquare size={14} />Message</button>
               )}
             </div>
             <div className="card">

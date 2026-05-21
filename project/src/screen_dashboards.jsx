@@ -563,7 +563,7 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
              {isAdmin ? (
                <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('users:' + u.id + ':edit'); }} className="row-action-btn" aria-label="Edit user"><SD_I.Pencil size={14} /></button>
              ) : (
-               <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${u.first || u.name.split(' ')[0]}` }); }} className="row-action-btn" aria-label={`Message ${u.name}`} title={`Message ${u.name}`}><SD_I.MessageSquare size={14} /></button>
+               <button onClick={(e) => { e.stopPropagation(); window.__rosyComposeTo = u.id; setRoute && setRoute('inbox'); }} className="row-action-btn" aria-label={`Message ${u.name}`} title={`Message ${u.name}`}><SD_I.MessageSquare size={14} /></button>
              )}
            </div>
          ))}

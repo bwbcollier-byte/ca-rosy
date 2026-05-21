@@ -36,10 +36,23 @@ function PageInbox({ currentUser }) {
   const [localMessages, setLocalMessages] = SX_us(conv?.messages || []);
   React.useEffect(() => { setLocalMessages(conv?.messages || []); }, [active]);
 
-  // If another page set window.__rosyComposeTo before navigating here, open compose with that recipient.
+  // If another page set window.__rosyComposeTo before navigating here, jump
+  // straight to the existing conversation with that recipient — or open the
+  // compose modal pre-populated if no conversation exists yet.
   React.useEffect(() => {
-    if (window.__rosyComposeTo) {
-      window.__rosyComposeTo = null;
+    const targetId = window.__rosyComposeTo;
+    if (!targetId) return;
+    window.__rosyComposeTo = null;
+    const existing = allConvs.find(c => c.with === targetId || (c.participants || []).includes(targetId));
+    if (existing) {
+      setActive(existing.id);
+      toast.push({ kind: 'info', title: `Opening conversation with ${existing.name || ''}` });
+      return;
+    }
+    // No existing thread — open compose modal pre-filtered to that user.
+    const u = (window.RosyData?.USERS || []).find(x => x.id === targetId);
+    if (u) {
+      setComposeSearch(u.name || u.email || '');
       setComposeOpen(true);
     }
   }, []);

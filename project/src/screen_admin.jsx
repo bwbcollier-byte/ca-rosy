@@ -872,7 +872,7 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
     <Modal open={!!user} onClose={onClose} title={user.name} size="lg"
       footer={editing
         ? <><button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button><button className="btn btn-coral" onClick={handleSave}>Save changes</button></>
-        : <><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { const first = user.first || (user.name || '').split(' ')[0] || 'them'; onClose(); setRoute && setRoute('inbox'); toast.push({ kind: 'info', title: `Opening conversation with ${first}` }); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => setEditing(true)}><SP_I.Pencil size={14} />Edit profile</button></>}>
+        : <><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { onClose(); window.__rosyComposeTo = user.id; setRoute && setRoute('inbox'); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => setEditing(true)}><SP_I.Pencil size={14} />Edit profile</button></>}>
       <div style={{ display: 'flex', gap: 24, marginBottom: 20, alignItems: 'flex-start' }}>
         <Avatar name={user.name} size="xl" />
         <div style={{ flex: 1 }}>
@@ -1048,8 +1048,9 @@ function PageVenues() {
   const venueStats = {
     total: venues.length,
     types: venueTypes.length,
-    avgCap: venues.length ? Math.round(venues.reduce((s, v) => s + (v.capacity || 0), 0) / venues.length) : 0,
-    largest: venues.reduce((m, v) => Math.max(m, v.capacity || 0), 0),
+    // capacity isn't tracked yet — replace fake avg/largest with cities + active count.
+    cities: new Set(venues.map(v => (v.city || '').toString().trim()).filter(Boolean)).size,
+    active: venues.filter(v => v.active !== false).length,
   };
   const paged = usePaged(filtered, view === 'cards' ? 9 : 10, `${view}|${search}|${sortBy}|${typeFilter}|${cityFilter}|${capacityFilter}|${filtered.length}`);
   const visible = paged.slice;
@@ -1075,8 +1076,8 @@ function PageVenues() {
       <div className="grid-4" style={{ marginBottom: 20 }}>
         <StatCard icon={SP_I.MapPin}     label="Total venues" value={venueStats.total} />
         <StatCard icon={SP_I.LayoutGrid} label="Venue types"  value={venueStats.types} />
-        <StatCard icon={SP_I.Users}      label="Avg capacity" value={venueStats.avgCap} />
-        <StatCard icon={SP_I.Building2}  label="Largest"      value={venueStats.largest} />
+        <StatCard icon={SP_I.Building2}  label="Cities"        value={venueStats.cities} />
+        <StatCard icon={SP_I.CheckCircle2} label="Active"      value={venueStats.active} />
       </div>
       <div className="section-heading">
         <h2>Venues</h2>
