@@ -492,12 +492,19 @@ function PageEventDetail({ eventId, role, currentUser, setRoute }) {
   const [editSaving, setEditSaving] = SE_us(false);
   const submitEventEdit = async () => {
     if (editSaving) return;
+    if (!editForm.name?.trim()) { toast.push({ kind: 'warning', title: 'Event name is required' }); return; }
+    if (!editForm.date) { toast.push({ kind: 'warning', title: 'Event date is required' }); return; }
     setEditSaving(true);
-    const patch = { name: editForm.name, desc: editForm.desc, date: editForm.date };
+    const patch = { name: editForm.name.trim(), desc: editForm.desc, date: editForm.date };
     setOverride(o => ({ ...o, ...patch }));
-    try { await window.RosyMutate?.events?.update(eventId, patch); } catch (err) { console.warn(err); }
-    setEditOpen(false);
-    toast.push({ kind: 'success', title: 'Event updated', body: `${editForm.name} saved.` });
+    try {
+      await window.RosyMutate?.events?.update(eventId, patch);
+      setEditOpen(false);
+      toast.push({ kind: 'success', title: 'Event updated', body: `${patch.name} saved.` });
+    } catch (err) {
+      console.warn(err);
+      toast.push({ kind: 'error', title: "Couldn't save event", body: err.message || 'Try again.' });
+    }
     setEditSaving(false);
   };
   const [decided, setDecided] = SE_us({});

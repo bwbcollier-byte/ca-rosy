@@ -122,13 +122,23 @@ function PageGigsVendor({ user, role, setRoute }) {
   const [editSaving, setEditSaving] = SG_us(false);
   const submitEdit = async () => {
     if (!editForm || editSaving) return;
+    if (!editForm.rate || Number(editForm.rate) <= 0) { toast.push({ kind: 'warning', title: 'Enter a positive hourly rate' }); return; }
+    if (!editForm.spots || Number(editForm.spots) <= 0) { toast.push({ kind: 'warning', title: 'Enter a positive spot count' }); return; }
+    if (editForm.end && editForm.start && editForm.end <= editForm.start && Number(editForm.end.split(':')[0]) >= Number(editForm.start.split(':')[0])) {
+      toast.push({ kind: 'warning', title: 'End time must be after start time' }); return;
+    }
     setEditSaving(true);
     const id = editGig.id;
     const patch = { ...editForm, rate: +editForm.rate, spots: +editForm.spots };
     setGigs(gs => gs.map(g => g.id === id ? { ...g, ...patch } : g));
-    try { await window.RosyMutate?.gigs?.update(id, patch); } catch (e) { console.warn(e); }
-    setEditGig(null); setEditForm(null);
-    toast.push({ kind: 'success', title: 'Gig updated' });
+    try {
+      await window.RosyMutate?.gigs?.update(id, patch);
+      setEditGig(null); setEditForm(null);
+      toast.push({ kind: 'success', title: 'Gig updated' });
+    } catch (e) {
+      console.warn(e);
+      toast.push({ kind: 'error', title: "Couldn't save gig", body: e.message || 'Try again.' });
+    }
     setEditSaving(false);
   };
 
