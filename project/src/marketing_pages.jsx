@@ -374,10 +374,46 @@ function MkPricingPage({ goToAuth }) {
 /* ============ FAQ ============ */
 function MkFAQPage({ goToAuth, setRoute }) {
   useSiteContentTick();
+  // Refetch FAQs on mount so a hard refresh on /#marketing/faq always renders
+  // the current DB state — defensive against any realtime drop or stale cache.
+  const [, forceTick] = React.useState(0);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!window.sb) return;
+        const { data, error } = await window.sb.from('rr_faqs').select('*').order('sort_order', { ascending: true });
+        if (cancelled || error || !Array.isArray(data)) return;
+        window.RosyData.FAQS = data.map(f => ({
+          q: f.question, a: f.answer,
+          id: f.id, question: f.question, answer: f.answer,
+          sort_order: f.sort_order, is_visible: f.is_visible,
+          audiences: Array.isArray(f.audiences) ? f.audiences : [],
+          audience_orders: f.audience_orders && typeof f.audience_orders === 'object' ? f.audience_orders : {},
+        }));
+        forceTick(t => t + 1);
+      } catch (e) { /* keep existing FAQS on error */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   // Prefer live admin-managed FAQs from window.RosyData.FAQS (hydrated from rr_faqs).
-  // Falls back to the seed list only on cold-boot before hydration completes.
+  // Filter to FAQs tagged with the 'marketing' audience. Falls back to the
+  // seed list only on cold-boot before hydration completes.
   const liveFaqs = (window.RosyData?.FAQS || [])
     .filter(f => f.is_visible !== false)
+    // Strict: the FAQ must be EXPLICITLY tagged 'marketing'. Untagged legacy
+    // rows are excluded — admins should re-tag them via the FAQs admin page.
+    // Previously `!f.audiences` let untagged rows leak through, and any
+    // empty-array audiences row counted as "untagged".
+    .filter(f => Array.isArray(f.audiences) && f.audiences.includes('marketing'))
+    .sort((a, b) => {
+      // Use the admin's per-audience drag order (marketing slot here).
+      const ao = (a.audience_orders || {}).marketing;
+      const bo = (b.audience_orders || {}).marketing;
+      const an = ao != null ? ao : (a.sort_order ?? 0);
+      const bn = bo != null ? bo : (b.sort_order ?? 0);
+      return an - bn;
+    })
     .map(f => ({ q: f.question, a: f.answer }));
   const startingItems = liveFaqs.length ? liveFaqs : MP_D.FAQS;
   const groups = [

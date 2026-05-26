@@ -144,11 +144,13 @@ function DevNotificationModal({ open, onClose, reportedBy }) {
 
 function ordinal(n) { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 function getDateStrip() {
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return `${months[first.getMonth()]} ${ordinal(first.getDate())} ${first.getFullYear()} – ${months[last.getMonth()]} ${ordinal(last.getDate())} ${last.getFullYear()}`;
+  // Rolling 30-day window ending today (was previously current-month, which
+  // was confusing — today minus 30 is the standard reporting window).
+  const e = new Date();
+  const s = new Date();
+  s.setDate(e.getDate() - 30);
+  const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${fmt(s)} – ${fmt(e)}`;
 }
 
 /* Dashboard-level one-time PWA install prompt (dismissible, persists in localStorage).
@@ -190,7 +192,14 @@ function StripeConnectBanner({ user }) {
         }),
       });
       const d = await r.json();
-      if (d?.url) { window.location.href = d.url; return; }
+      if (d?.url) {
+        // Open Stripe Express in a new tab so the user doesn't lose the Rosy
+        // session on the back nav. Fall back to same-tab redirect if the popup
+        // is blocked by the browser.
+        const win = window.open(d.url, '_blank', 'noopener,noreferrer');
+        if (!win) { window.location.href = d.url; }
+        return;
+      }
       toast.push({ kind: 'warning', title: "We can't connect to Stripe right now", body: 'Please try again in a moment.' });
     } catch (e) {
       toast.push({ kind: 'error', title: "Couldn't open Stripe", body: 'Check your connection and try again.' });
@@ -304,15 +313,21 @@ function DashboardVendor({ user, setRoute, statStrip, statAnim }) {
         <h1 className="greeting">{getGreeting(user?.first)}</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-ghost btn-sm" onClick={() => setRoute('build-team')}><SD_I.Sparkles size={14} />Build my team</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => { window.__rosyOpenAddGig = true; setRoute('gigs'); }}><SD_I.Briefcase size={14} />Post a gig</button>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={myEvents.length === 0}
+            title={myEvents.length === 0 ? 'Create an event first — gigs are posted under an event.' : ''}
+            onClick={() => { window.__rosyOpenAddGig = true; setRoute('gigs'); }}>
+            <SD_I.Briefcase size={14} />Post a gig
+          </button>
           <button className="btn btn-coral btn-sm" onClick={() => { window.__rosyOpenAddEvent = true; setRoute('events'); }}><SD_I.Plus size={14} />New event</button>
         </div>
       </div>
       <div className="grid-spotlight" style={{ marginBottom: 24 }}>
-        <StatCard icon={SD_I.CalendarCheck} label="Open events"  value={openEvents.length} dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} primary />
-        <StatCard icon={SD_I.Briefcase}     label="Open gigs"    value={openGigs.length}    dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.UsersRound}    label="Crew filled"  value={`${fillRate}%`}     dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
-        <StatCard icon={SD_I.DollarSign}    label="Paid this month" value={monthSpend} prefix="$" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} />
+        <StatCard icon={SD_I.CalendarCheck} label="Open Events"  value={openEvents.length} dateStrip="Live" showStrip={statStrip} animate={statAnim} primary onClick={() => setRoute('events')} />
+        <StatCard icon={SD_I.Briefcase}     label="Open Gigs"    value={openGigs.length}    dateStrip="Live" showStrip={statStrip} animate={statAnim} onClick={() => setRoute('gigs')} />
+        <StatCard icon={SD_I.UsersRound}    label="Crew filled"  value={`${fillRate}%`}     dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} onClick={() => setRoute('gigs')} />
+        <StatCard icon={SD_I.DollarSign}    label="Paid this month" value={monthSpend} prefix="$" dateStrip={dateStrip} showStrip={statStrip} animate={statAnim} onClick={() => setRoute('payments')} />
       </div>
       <div className="grid-dash">
         <div className="col" style={{ gap: 20 }}>
@@ -531,35 +546,34 @@ function NewRecentUsersCard({ tabs, title = 'New & Recent', setRoute, role = 'ad
           <h3 className="card-title"><SD_I.Users className="icon" />{title}</h3>
           <button className="btn-link" onClick={() => setRoute && setRoute('users')}>All Users</button>
         </div>
-        {tabs ? (
-          <div className="tabs">
-            <button className={tab === 'users' ? 'on' : ''} onClick={() => { setTab('users'); markTabSeen('users'); }}>User Profiles{usersBadge > 0 ? <span style={{ marginLeft: 6, background: 'var(--rosy-coral)', color: '#fff', borderRadius: 9999, padding: '0 6px', fontSize: 10.5, fontWeight: 700 }}>{usersBadge}</span> : null}</button>
-            <button className={tab === 'co' ? 'on' : ''} onClick={() => { setTab('co'); markTabSeen('co'); }}>Companies{coBadge > 0 ? <span style={{ marginLeft: 6, background: 'var(--rosy-coral)', color: '#fff', borderRadius: 9999, padding: '0 6px', fontSize: 10.5, fontWeight: 700 }}>{coBadge}</span> : null}</button>
-          </div>
-        ) : null}
+        {/* Tabs removed — single Users list now shows role + company inline. */}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {list.length === 0 ? <Empty icon={SD_I.Users} title="No new users yet" /> :
          list.map(u => (
-           <div key={u.id} role="button" tabIndex={0} aria-label={`Open ${u.name}`}
-             onClick={() => setRoute && setRoute('users:' + u.id)}
-             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRoute && setRoute('users:' + u.id); } }}
-             style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--color-hairline)', cursor: 'pointer', transition: 'background 120ms ease' }}
-             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface-soft)'}
-             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+           <div key={u.id}
+             {...(isAdmin ? {
+               role: 'button', tabIndex: 0, 'aria-label': `Open ${u.name}`,
+               onClick: () => setRoute && setRoute('users:' + u.id),
+               onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRoute && setRoute('users:' + u.id); } },
+               onMouseEnter: (e) => e.currentTarget.style.background = 'var(--color-surface-soft)',
+               onMouseLeave: (e) => e.currentTarget.style.background = 'transparent',
+             } : {})}
+             style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--color-hairline)', cursor: isAdmin ? 'pointer' : 'default', transition: 'background 120ms ease' }}>
              <Avatar name={u.name} size="md" />
              <div style={{ flex: 1, minWidth: 0 }}>
                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</p>
-               <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{u.company}</p>
+               <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                 {/* Vendors render as "Vendor · <company>"; workers as "Worker"; admins as "Admin". */}
+                 {u.role === 'vendor'
+                   ? `Vendor${u.company ? ' · ' + u.company : ''}`
+                   : (u.role || 'User').replace(/^./, c => c.toUpperCase())}
+               </p>
              </div>
-             {isAdmin ? (
-               <button onClick={(e) => { e.stopPropagation(); toggleActive(u); }}
-                 aria-label={u.status === 'active' ? 'Deactivate user' : 'Activate user'}
-                 title={u.status === 'active' ? 'Click to deactivate' : 'Click to activate'}
-                 style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer' }}>
-                 <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>
-               </button>
-             ) : <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>}
+             {/* Active/Inactive badge is a passive indicator now — clicks bubble
+                 up to the row and open the user-detail modal (admin only) so
+                 admins can't accidentally toggle state from the dashboard. */}
+             <Badge kind={u.status === 'active' ? 'Active' : 'Inactive'}>{u.status === 'active' ? 'Active' : 'Inactive'}</Badge>
              {isAdmin ? (
                <button onClick={(e) => { e.stopPropagation(); setRoute && setRoute('users:' + u.id + ':edit'); }} className="row-action-btn" aria-label="Edit user"><SD_I.Pencil size={14} /></button>
              ) : (
@@ -582,8 +596,14 @@ function FeaturedGigPostsCard({ setRoute }) {
         <button className="btn-link" onClick={() => setRoute('gig-posts')}>Browse all</button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {open.map(g => {
+        {open.length === 0 ? (
+          <Empty icon={SD_I.ClipboardList} title="No open gigs right now" body="Check back soon — new posts go up as vendors plan events." />
+        ) : open.map(g => {
+          // Orphan gig (no parent event) or events-not-yet-hydrated → skip the
+          // row. Without this guard, ev.name on the next line throws and
+          // crashes the whole worker dashboard.
           const ev = SD_D.EVENTS.find(e => e.id === g.eventId);
+          if (!ev) return null;
           return (
             <div key={g.id} role="button" tabIndex={0} aria-label={`Open ${ev.name}`}
               onClick={() => setRoute('events:' + ev.id)}
@@ -595,7 +615,7 @@ function FeaturedGigPostsCard({ setRoute }) {
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{ev.name}</p>
                 <GigChip type={g.type} />
               </div>
-              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--color-muted)' }}>{fmtDate(g.date, 'mdy-dots')} · {g.start}–{g.end} · ${g.rate}/hr</p>
+              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--color-muted)' }}>{fmtDate(g.date, 'mdy-dots')} · {fmtTime(g.start)}–{fmtTime(g.end)} · ${g.rate}/hr</p>
               <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)' }}>{g.spots - g.spotsFilled} spot{g.spots - g.spotsFilled === 1 ? '' : 's'} left</p>
             </div>
           );
@@ -605,4 +625,4 @@ function FeaturedGigPostsCard({ setRoute }) {
   );
 }
 
-Object.assign(window, { DashboardAdmin, DashboardVendor, DashboardWorker, DevNotificationModal });
+Object.assign(window, { DashboardAdmin, DashboardVendor, DashboardWorker, DevNotificationModal, StripeConnectBanner });

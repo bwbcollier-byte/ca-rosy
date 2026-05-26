@@ -88,7 +88,7 @@ function GigChip({ type }) {
 }
 
 /* ---------- Stat card ---------- */
-function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', showStrip = true, animate = true, primary = false, period, sublabel }) {
+function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', showStrip = true, animate = true, primary = false, period, sublabel, onClick }) {
   const [display, setDisplay] = useState(animate ? 0 : value);
   useEffect(() => {
     if (!animate) { setDisplay(value); return; }
@@ -110,7 +110,12 @@ function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', sho
 
   const formatted = typeof value === 'number' ? `${prefix}${display.toLocaleString()}` : value;
   return (
-    <div className={`stat-card ${showStrip ? '' : 'no-strip'} ${primary ? 'primary' : ''}`}>
+    <div className={`stat-card ${showStrip ? '' : 'no-strip'} ${primary ? 'primary' : ''} ${onClick ? 'clickable' : ''}`}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      style={onClick ? { cursor: 'pointer' } : undefined}>
       <div className="stat-top">
         <div className="stat-label">
           <span className="stat-label-text">
@@ -130,7 +135,16 @@ function StatCard({ icon: Icon, label, value, delta, dateStrip, prefix = '', sho
         </div>
         {sublabel ? <div style={{ fontSize: 11.5, color: 'var(--color-muted)', marginTop: 4 }}>{sublabel}</div> : null}
       </div>
-      {showStrip !== false ? <div className="stat-date-strip">{dateStrip || (() => { const e = new Date(); const s = new Date(); s.setDate(e.getDate() - 30); const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); return `${fmt(s)} – ${fmt(e)}`; })()}</div> : null}
+      {showStrip !== false ? (
+        <div className="stat-date-strip">
+          {dateStrip === 'Live' ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--rosy-teal-dark)', fontWeight: 600 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 9999, background: '#10b981', display: 'inline-block', boxShadow: '0 0 0 3px rgba(16,185,129,0.18)' }} />
+              Live
+            </span>
+          ) : (dateStrip || (() => { const e = new Date(); const s = new Date(); s.setDate(e.getDate() - 30); const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); return `${fmt(s)} – ${fmt(e)}`; })())}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -226,19 +240,31 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, curr
   // making the badge disappear.
   const meKey = currentUser?.id || 'anon';
   const lastVisitedKey = `rosy.lastVisited.${meKey}`;
+  const lastLoginKey = `rosy.lastLogin.${meKey}`;
   const readVisits = () => { try { return JSON.parse(localStorage.getItem(lastVisitedKey) || '{}'); } catch (e) { return {}; } };
   const writeVisits = (v) => { try { localStorage.setItem(lastVisitedKey, JSON.stringify(v)); } catch (e) {} };
+  const readLastLogin = () => { try { return localStorage.getItem(lastLoginKey); } catch (e) { return null; } };
   const visits = readVisits();
+  const lastLogin = readLastLogin();
   const markVisited = (id) => { const v = readVisits(); v[id] = new Date().toISOString(); writeVisits(v); setTick(t => t + 1); };
+  // Count items added since the user last viewed this tab. If they haven't
+  // viewed it this session, fall back to last-login time so badges only show
+  // items created AFTER login (not the lifetime count).
   const sinceCount = (routeId, arr, getDate) => {
-    const since = visits[routeId];
-    if (!since) return arr.length; // never visited → everything is "new"
+    const since = visits[routeId] || lastLogin;
+    if (!since) return 0; // no anchor at all → don't surface a misleading count
     const t = new Date(since).getTime();
     return arr.filter(x => { const d = getDate(x); return d && new Date(d).getTime() > t; }).length;
   };
 
   const D = window.RosyData || {};
-  const notifs = (D.NOTIFICATIONS || []).filter(n => !n.user_id || n.user_id === currentUser?.id);
+  // Archive map written by PageNotificationCenter — apply here so the sidebar
+  // badge ignores archived items too.
+  const archivedNotifs = (() => {
+    if (!currentUser?.id) return {};
+    try { return JSON.parse(localStorage.getItem(`rosy.notif.archived.${currentUser.id}`) || '{}'); } catch (e) { return {}; }
+  })();
+  const notifs = (D.NOTIFICATIONS || []).filter(n => (!n.user_id || n.user_id === currentUser?.id) && !archivedNotifs[n.id]);
   const msgs   = D.MESSAGES || [];
   const myMsgs = msgs.filter(c => !currentUser?.id || (c.participants || []).includes(currentUser.id) || c.startedBy === currentUser.id || c.with === currentUser.id);
 
@@ -246,9 +272,11 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, curr
   const counts = {
     notifications: notifs.filter(n => n.unread).length,                       // unread always (independent of visits)
     inbox: myMsgs.reduce((s, c) => s + (c.unread || 0), 0),                   // total unread messages in your convs
-    'gig-posts': sinceCount('gig-posts', (D.GIGS || []).filter(g => g.status === 'open'), g => g.date || g.created_at),
-    events:      sinceCount('events',    (D.EVENTS || []), e => e.created_at || e.date),
-    gigs:        sinceCount('gigs',      (D.GIGS || []),   g => g.created_at || g.date),
+    // Use created_at ONLY. Falling back to e.date / g.date counted future
+    // event dates as "new" forever, sticking badges at the lifetime count.
+    'gig-posts': sinceCount('gig-posts', (D.GIGS || []).filter(g => g.status === 'open'), g => g.created_at),
+    events:      sinceCount('events',    (D.EVENTS || []), e => e.created_at),
+    gigs:        sinceCount('gigs',      (D.GIGS || []),   g => g.created_at),
     disputes:    (D.TRANSACTIONS || []).filter(t => t.status === 'Disputed' || t.status === 'Late').length,
   };
 
@@ -331,13 +359,22 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, curr
         {sections.map((sec, i) => (
           <React.Fragment key={i}>
             {sec.section ? <div className="sidebar-divider">{sec.section}</div> : null}
-            {sec.items.map(item => {
+            {sec.items.filter(item => {
+              if (!item.icon) {
+                // Defensive: if an icon ref is undefined (stale Ic.X reference),
+                // skip this row instead of crashing the whole Sidebar.
+                console.warn('[Sidebar] skipping nav item with undefined icon:', item.id);
+                return false;
+              }
+              return true;
+            }).map(item => {
               const b = badgeFor(item.id);
+              const ItemIcon = item.icon;
               return (
                 <button key={item.id}
                   className={`nav-item ${route === item.id ? 'active' : ''}`}
                   onClick={closeAfter(item.id, () => setRoute(item.id))}>
-                  <item.icon className="nav-icon" />
+                  <ItemIcon className="nav-icon" />
                   <span>{item.label}</span>
                   {b > 0 ? <span className="nav-badge">{b > 99 ? '99+' : b}</span> : null}
                 </button>
@@ -348,10 +385,10 @@ function Sidebar({ role, route, setRoute, onSignOut, open = false, onClose, curr
         <div style={{ flex: 1 }} />
         <div className="divider" style={{ margin: '12px 0 8px' }} />
         <button className="nav-item" onClick={closeAfter('settings', () => setRoute('settings'))}>
-          <Ic.Settings className="nav-icon" /><span>Settings</span>
+          {Ic.Settings ? <Ic.Settings className="nav-icon" /> : null}<span>Settings</span>
         </button>
         <button className="nav-item" onClick={closeAfter(null, () => onSignOut && onSignOut())}>
-          <Ic.LogOut className="nav-icon" /><span>Log Out</span>
+          {Ic.LogOut ? <Ic.LogOut className="nav-icon" /> : null}<span>Log Out</span>
         </button>
       </aside>
     </>
@@ -369,6 +406,18 @@ function RoseLogo({ size = 28 }) {
 /* ---------- App header ---------- */
 function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRoute, breadcrumbs, onBurger, sessionUser }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // Close on outside click + Escape so the menu doesn't linger after the user
+  // has navigated away. Without this, the dropdown stayed visible because
+  // setRoute swaps the page but doesn't unmount the header.
+  const menuWrapRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e) => { if (menuWrapRef.current && !menuWrapRef.current.contains(e.target)) setMenuOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [menuOpen]);
   const [devOpen, setDevOpen] = useState(false);
   // Re-render this header when notifications mutate so the bell dot stays in sync.
   const [, setTick] = useState(0);
@@ -400,8 +449,8 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
           {(() => {
             const roleMeta = {
               admin:  { label: 'Admin portal',  bg: 'rgba(26,188,176,0.12)',  fg: '#0F8278' },
-              vendor: { label: 'Vendor portal', bg: 'rgba(244,124,93,0.12)',  fg: '#B84A2E' },
-              worker: { label: 'Worker portal', bg: 'rgba(196,158,80,0.16)',  fg: '#8A6A1F' },
+              vendor: { label: 'Vendor portal', bg: 'rgba(196,158,80,0.16)',  fg: '#8A6A1F' },
+              worker: { label: 'Worker portal', bg: 'rgba(99,102,241,0.12)',  fg: '#4338CA' },
             }[role] || null;
             if (!roleMeta) return null;
             return (
@@ -426,7 +475,7 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
         <Ic.Bell size={18} />
         {myUnread > 0 ? <span className="bell-dot" /> : null}
       </button>
-      <div style={{ position: 'relative' }}>
+      <div ref={menuWrapRef} style={{ position: 'relative' }}>
         <button className="header-avatar" onClick={() => setMenuOpen(o => !o)}>
           <Avatar name={safeUser.name} src={safeUser.photo || safeUser.avatar_url || safeUser.avatarUrl} size="sm" />
           <span className="name">{safeUser.first}</span>
@@ -437,7 +486,7 @@ function AppHeader({ title, role, setRole, onSignOut, onBell, currentUser, setRo
             {[
               ['Account settings', () => setRoute && setRoute('settings')],
               ['Take the tour',    () => window.dispatchEvent(new CustomEvent('rosy:start-tour'))],
-              ['Help & support',   () => { setRoute && setRoute('settings'); window.location.hash = 'marketing/contact'; }],
+              ['Help & support',   () => setRoute && setRoute('help')],
               ['Log out',          () => onSignOut()],
             ].map(([label, fn]) => (
               <button key={label} className="nav-item" style={{ fontSize: 13 }} onClick={() => { setMenuOpen(false); fn && fn(); }}>{label}</button>
@@ -477,12 +526,19 @@ function RoleSwitch({ role, setRole, viewAs = false }) {
 /* ---------- Notification dropdown ---------- */
 function NotificationPanel({ open, onClose, setRoute, role = 'admin', currentUser }) {
   const [tab, setTab] = useState('all');
+  // Pull the archived map written by PageNotificationCenter so the bell stays
+  // in sync — once a user archives a notif on the full page, it should also
+  // disappear from the bell dropdown + sidebar count.
+  const archived = (() => {
+    if (!currentUser?.id) return {};
+    try { return JSON.parse(localStorage.getItem(`rosy.notif.archived.${currentUser.id}`) || '{}'); } catch (e) { return {}; }
+  })();
   // Scope to current user. Admins still only see their own bell — they have the Audit Log + broadcast tools for cross-user visibility.
   const scoped = (D.NOTIFICATIONS || []).filter(n => {
     if (!currentUser?.id) return false;
     const owner = n.user_id || n._userId;
     return !owner || owner === currentUser.id;
-  });
+  }).filter(n => !archived[n.id]);
   const list = scoped.filter(n => tab === 'all' || n.unread);
   if (!open) return null;
   const openNotif = (n) => {
@@ -724,6 +780,20 @@ function fmtDate(iso, opt) {
   if (opt === 'day-month') return { day: d.getDate(), month: d.toLocaleString('en-US', { month: 'short' }) };
   return d.toLocaleDateString();
 }
+// 24-hour "HH:mm" → "h:mm AM/PM" (or just "h AM" when minutes are 00).
+// Tolerant: passes through anything that isn't HH:mm cleanly, returns '' for empties.
+function fmtTime(t) {
+  if (!t) return '';
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t));
+  if (!m) return String(t);
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  const period = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return min === '00' ? `${h} ${period}` : `${h}:${min} ${period}`;
+}
+window.fmtTime = fmtTime;
+
 function fmtMoney(n) {
   const v = Number(n);
   if (!isFinite(v)) return '$0';

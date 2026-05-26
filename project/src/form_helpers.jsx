@@ -9,16 +9,16 @@ const F_I = window.Icons;
   // Shared HTML wrapper applied at send time. Body is the inner HTML.
   const htmlWrap = (inner) => `<!doctype html><html><body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1A1A1A;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FAF7F2;padding:24px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);"><tr><td style="background:#F47C5D;padding:18px 24px;color:#fff;font-weight:600;font-size:18px;font-family:Georgia,serif;"><img src="https://rosy-demo.vercel.app/project/assets/logo.avif" alt="Rosy Recruits" height="32" style="height:32px;vertical-align:middle;display:inline-block;margin-right:10px;" />Rosy <span style="opacity:0.8;">Recruits</span></td></tr><tr><td style="padding:28px 28px 24px;font-size:15px;line-height:1.6;color:#1A1A1A;">` + inner + `</td></tr><tr><td style="padding:16px 28px;background:#FAF7F2;border-top:1px solid #ECE6DD;font-size:11.5px;color:#7A7470;">You're getting this because you have a Rosy Recruits account. <a href="{{unsubscribe_url}}" style="color:#7A7470;">Unsubscribe</a> · <a href="{{help_url}}" style="color:#7A7470;">Help</a></td></tr></table></td></tr></table></body></html>`;
   const emails = {
-    'welcome-vendor': { name: 'Welcome — vendor', subject: 'Welcome to Rosy Recruits, {{first_name}}', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Welcome aboard, {{first_name}}.</h2><p>Your vendor account is being reviewed. Most studios are approved within a few business hours — we'll email you the moment it's live.</p><p>While you wait, you can finish setting up your studio profile, add a venue, and draft your first event.</p><p style="margin-top:24px;"><a href="{{app_url}}/#app/dashboard" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Open my dashboard</a></p><p style="color:#7A7470;font-size:13px;margin-top:24px;">— The Rosy Recruits team</p>`), lastEdited: '2026-05-15', live: true },
-    'welcome-worker': { name: 'Welcome — worker', subject: 'Welcome to Rosy Recruits, {{first_name}}', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Welcome to the crew, {{first_name}}.</h2><p>Your worker account is being reviewed. We verify every applicant manually to keep the network strong — expect a decision within a few business hours.</p><p>In the meantime, fill out your profile and W-9 so you're ready to apply the moment you're approved.</p><p style="margin-top:24px;"><a href="{{app_url}}/#app/settings" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Finish my profile</a></p><p style="color:#7A7470;font-size:13px;margin-top:24px;">— The Rosy Recruits team</p>`), lastEdited: '2026-05-15', live: true },
-    'verified': { name: 'Account verified', subject: "You're in — start using Rosy Recruits", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">You're verified, {{first_name}}.</h2><p>Your {{role}} account is live. Jump in and start using the platform.</p><p style="margin-top:24px;"><a href="{{app_url}}/#app/dashboard" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Open Rosy Recruits</a></p>`), lastEdited: '2026-05-15', live: true },
-    'application-received': { name: 'Vendor — application received', subject: '{{worker_name}} applied to your gig', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">New application for {{event_name}}</h2><p><strong>{{worker_name}}</strong> (★ {{worker_rating}}, {{worker_gigs}} gigs) applied to your <strong>{{gig_type}}</strong> gig.</p><table cellpadding="0" cellspacing="0" style="margin:18px 0;font-size:13.5px;color:#5A5550;"><tr><td style="padding:4px 12px 4px 0;">Event</td><td>{{event_name}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Date</td><td>{{event_date}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Rate</td><td>\${{hourly_rate}}/hr</td></tr></table><p><a href="{{app_url}}/#app/applications" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Review application</a></p>`), lastEdited: '2026-05-10', live: true },
-    'worker-confirmed': { name: 'Worker — gig confirmed', subject: "You're confirmed: {{event_name}}", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">You're confirmed for {{event_name}}.</h2><table cellpadding="0" cellspacing="0" style="margin:18px 0;font-size:13.5px;color:#5A5550;"><tr><td style="padding:4px 12px 4px 0;">Date</td><td>{{event_date}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Call time</td><td>{{call_time}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Venue</td><td>{{venue_name}}, {{venue_city}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Lead</td><td>{{lead_name}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Rate</td><td>\${{hourly_rate}}/hr</td></tr></table><p><a href="{{app_url}}/#app/my-gigs" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">See gig details</a></p>`), lastEdited: '2026-05-10', live: true },
-    'worker-rejected': { name: 'Worker — application not selected', subject: 'Update on your {{event_name}} application', body: htmlWrap(`<p>Hi {{worker_first}},</p><p>Thanks for applying to <strong>{{event_name}}</strong>. The vendor has filled the role this time. Plenty more gigs in your feed.</p><p style="margin-top:18px;"><a href="{{app_url}}/#app/gig-posts" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Find more gigs</a></p>`), lastEdited: '2026-05-04', live: true },
-    'day-of-event': { name: 'Day-of-event reminder', subject: "Today: {{event_name}} — call time {{call_time}}", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">It's go day, {{worker_first}}.</h2><p><strong>{{event_name}}</strong> · Call time <strong>{{call_time}}</strong> · {{venue_name}}, {{venue_address}}</p><p>Reply to your vendor in the app if you're delayed. Safe travels.</p><p style="margin-top:18px;"><a href="{{maps_url}}" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Open directions</a></p>`), lastEdited: '2026-05-15', live: true },
-    'worker-paid': { name: 'Worker — payment paid', subject: "You've been paid ${{amount}}", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">$ {{amount}} just landed.</h2><p>For <strong>{{event_name}}</strong> on {{event_date}}.</p><p>Funds should reach your Stripe payout account within 2 business days.</p>`), lastEdited: '2026-05-06', live: true },
-    'dispute-filed': { name: 'Both — dispute filed', subject: 'A dispute was filed on {{invoice}}', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Dispute on {{invoice}}</h2><p>Amount: <strong>$ {{amount}}</strong><br>Reason: {{reason}}<br>Filed by: {{filed_by}}</p><p>You have <strong>48 hours</strong> to respond before our team steps in.</p><p style="margin-top:18px;"><a href="{{app_url}}/#app/disputes" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Respond now</a></p>`), lastEdited: '2026-05-12', live: true },
-    'weekly-summary': { name: 'Both — weekly summary', subject: 'Your week on Rosy Recruits', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Hi {{first_name}}, here's your week.</h2><p><strong>{{gigs_count}}</strong> gigs · <strong>{{hours}}</strong> hours · <strong>$ {{earned}}</strong> earned.</p><p>Upcoming: {{upcoming_count}} confirmed.</p>`), lastEdited: '2026-04-28', live: false },
+    'welcome-vendor': { name: 'Welcome: vendor', subject: 'Welcome to Rosy Recruits, {{first_name}}', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Welcome aboard, {{first_name}}.</h2><p>Your vendor account is being reviewed. Most studios are approved within a few business hours. We'll email you the moment it's live.</p><p>While you wait, you can finish setting up your studio profile, add a venue, and draft your first event.</p><p style="margin-top:24px;"><a href="{{app_url}}/#app/dashboard" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Open my dashboard</a></p><p style="color:#7A7470;font-size:13px;margin-top:24px;">The Rosy Recruits team</p>`), lastEdited: '2026-05-15', live: true },
+    'welcome-worker': { name: 'Welcome: worker', subject: 'Welcome to Rosy Recruits, {{first_name}}', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Welcome to the crew, {{first_name}}.</h2><p>Your worker account is being reviewed. We verify every applicant manually to keep the network strong. Expect a decision within a few business hours.</p><p>In the meantime, fill out your profile and W-9 so you're ready to apply the moment you're approved.</p><p style="margin-top:24px;"><a href="{{app_url}}/#app/settings" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Finish my profile</a></p><p style="color:#7A7470;font-size:13px;margin-top:24px;">The Rosy Recruits team</p>`), lastEdited: '2026-05-15', live: true },
+    'verified': { name: 'Account verified', subject: "You're in. Start using Rosy Recruits", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">You're verified, {{first_name}}.</h2><p>Your {{role}} account is live. Jump in and start using the platform.</p><p style="margin-top:24px;"><a href="{{app_url}}/#app/dashboard" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Open Rosy Recruits</a></p>`), lastEdited: '2026-05-15', live: true },
+    'application-received': { name: 'Vendor: application received', subject: '{{worker_name}} applied to your gig', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">New application for {{event_name}}</h2><p><strong>{{worker_name}}</strong> (★ {{worker_rating}}, {{worker_gigs}} gigs) applied to your <strong>{{gig_type}}</strong> gig.</p><table cellpadding="0" cellspacing="0" style="margin:18px 0;font-size:13.5px;color:#5A5550;"><tr><td style="padding:4px 12px 4px 0;">Event</td><td>{{event_name}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Date</td><td>{{event_date}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Rate</td><td>\${{hourly_rate}}/hr</td></tr></table><p><a href="{{app_url}}/#app/applications" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Review application</a></p>`), lastEdited: '2026-05-10', live: true },
+    'worker-confirmed': { name: 'Worker: gig confirmed', subject: "You're confirmed: {{event_name}}", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">You're confirmed for {{event_name}}.</h2><table cellpadding="0" cellspacing="0" style="margin:18px 0;font-size:13.5px;color:#5A5550;"><tr><td style="padding:4px 12px 4px 0;">Date</td><td>{{event_date}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Call time</td><td>{{call_time}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Venue</td><td>{{venue_name}}, {{venue_city}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Lead</td><td>{{lead_name}}</td></tr><tr><td style="padding:4px 12px 4px 0;">Rate</td><td>\${{hourly_rate}}/hr</td></tr></table><p><a href="{{app_url}}/#app/my-gigs" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">See gig details</a></p>`), lastEdited: '2026-05-10', live: true },
+    'worker-rejected': { name: 'Worker: application not selected', subject: 'Update on your {{event_name}} application', body: htmlWrap(`<p>Hi {{worker_first}},</p><p>Thanks for applying to <strong>{{event_name}}</strong>. The vendor has filled the role this time. Plenty more gigs in your feed.</p><p style="margin-top:18px;"><a href="{{app_url}}/#app/gig-posts" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Find more gigs</a></p>`), lastEdited: '2026-05-04', live: true },
+    'day-of-event': { name: 'Day-of-event reminder', subject: "Today: {{event_name}}. Call time {{call_time}}", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">It's go day, {{worker_first}}.</h2><p><strong>{{event_name}}</strong> · Call time <strong>{{call_time}}</strong> · {{venue_name}}, {{venue_address}}</p><p>Reply to your vendor in the app if you're delayed. Safe travels.</p><p style="margin-top:18px;"><a href="{{maps_url}}" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Open directions</a></p>`), lastEdited: '2026-05-15', live: true },
+    'worker-paid': { name: 'Worker: payment paid', subject: "You've been paid ${{amount}}", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">$ {{amount}} just landed.</h2><p>For <strong>{{event_name}}</strong> on {{event_date}}.</p><p>Funds should reach your Stripe payout account within 2 business days.</p>`), lastEdited: '2026-05-06', live: true },
+    'dispute-filed': { name: 'Both: dispute filed', subject: 'A dispute was filed on {{invoice}}', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Dispute on {{invoice}}</h2><p>Amount: <strong>$ {{amount}}</strong><br>Reason: {{reason}}<br>Filed by: {{filed_by}}</p><p>You have <strong>48 hours</strong> to respond before our team steps in.</p><p style="margin-top:18px;"><a href="{{app_url}}/#app/disputes" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Respond now</a></p>`), lastEdited: '2026-05-12', live: true },
+    'weekly-summary': { name: 'Both: weekly summary', subject: 'Your week on Rosy Recruits', body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Hi {{first_name}}, here's your week.</h2><p><strong>{{gigs_count}}</strong> gigs · <strong>{{hours}}</strong> hours · <strong>$ {{earned}}</strong> earned.</p><p>Upcoming: {{upcoming_count}} confirmed.</p>`), lastEdited: '2026-04-28', live: false },
     'invite-user': { name: 'Invite — new user', subject: "You've been invited to Rosy Recruits", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">{{inviter_name}} invited you.</h2><p>You've been invited to join Rosy Recruits as a <strong>{{role}}</strong>. Set up your account in under a minute and start using the platform.</p><p style="margin-top:24px;"><a href="{{invite_url}}" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Accept invitation</a></p><p style="color:#7A7470;font-size:13px;margin-top:24px;">— The Rosy Recruits team</p>`), lastEdited: '2026-05-18', live: true },
     'signup-notification': { name: 'Signup — waitlist welcome', subject: "Welcome to Rosy Recruits — you're on the list", body: htmlWrap(`<h2 style="margin:0 0 14px;font-size:22px;">Welcome, {{first_name}}.</h2><p>You're on the Rosy Recruits list. Please confirm your email so we can keep you posted on launch and early access.</p><p style="margin-top:24px;"><a href="{{verification_url}}" style="background:#F47C5D;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9999px;font-weight:600;">Confirm email</a></p><p style="color:#7A7470;font-size:13px;margin-top:24px;">— The Rosy Recruits team</p>`), lastEdited: '2026-05-18', live: true },
   };
@@ -422,14 +422,22 @@ window.GALLERY_SECTIONS = GALLERY_SECTIONS;
 // address rather than being shown placeholder Chicago suggestions they might pick.
 const ADDRESS_BANK = [];
 
-function AddressInput({ value, onChange, placeholder = 'Type your address' }) {
+function AddressInput({ value, onChange, placeholder = 'Type your address', mode = 'geocode' }) {
   // Google Places Autocomplete when the script is loaded, plain text input otherwise.
   // Emits the formatted_address string back to onChange (parent can structure-parse later).
   const inputRef = F_ur(null);
   const acRef = F_ur(null);
   const [q, setQ] = F_us(value || '');
   React.useEffect(() => { setQ(value || ''); }, [value]);
-  const update = (val) => { setQ(val); onChange && onChange(val); };
+  // Stale-closure guard: the place_changed listener below is registered once in a
+  // [] effect, so the `onChange` captured in its closure is the FIRST render's
+  // version — which captures the parent's first `set` which captures the first
+  // `data` (blank). Selecting an address then calls onChange with a stale `data`
+  // and wipes every field the user typed in the meantime. Route through a ref
+  // so the listener always invokes the LATEST onChange.
+  const onChangeRef = F_ur(onChange);
+  React.useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  const update = (val) => { setQ(val); onChangeRef.current && onChangeRef.current(val); };
 
   React.useEffect(() => {
     const tryAttach = () => {
@@ -438,9 +446,17 @@ function AddressInput({ value, onChange, placeholder = 'Type your address' }) {
       const g = window.google;
       if (!g || !g.maps || !g.maps.places || !g.maps.places.Autocomplete) return;
       try {
+        // Venue mode requests business-detail fields (rating, photo, website,
+        // phone, hours, place_id, types) and biases toward establishments.
+        // Geocode mode (default — vendor/worker home address) keeps the
+        // lighter, cheaper field set.
+        const venueMode = mode === 'venue';
+        const acFields = venueMode
+          ? ['formatted_address', 'address_components', 'geometry', 'name', 'place_id', 'rating', 'user_ratings_total', 'website', 'formatted_phone_number', 'international_phone_number', 'opening_hours', 'photos', 'types', 'url', 'business_status']
+          : ['formatted_address', 'address_components', 'geometry', 'name'];
         const ac = new g.maps.places.Autocomplete(inputRef.current, {
-          fields: ['formatted_address', 'address_components', 'geometry', 'name'],
-          types: ['geocode'],
+          fields: acFields,
+          types: venueMode ? ['establishment'] : ['geocode'],
         });
         ac.addListener('place_changed', () => {
           const place = ac.getPlace();
@@ -462,7 +478,24 @@ function AddressInput({ value, onChange, placeholder = 'Type your address' }) {
           parts.street = `${parts.street_number} ${parts.route}`.trim();
           const lat = place?.geometry?.location?.lat?.();
           const lng = place?.geometry?.location?.lng?.();
-          onChange && onChange(formatted, { place, parts, lat, lng });
+          // Snapshot photo URL (first 1200px option) so consumers can store
+          // without re-calling the Places API later.
+          let photoUrl = null;
+          try { photoUrl = place?.photos?.[0]?.getUrl?.({ maxWidth: 1600, maxHeight: 1000 }) || null; } catch (e) {}
+          const enriched = venueMode ? {
+            placeId: place?.place_id || null,
+            name: place?.name || null,
+            rating: place?.rating ?? null,
+            userRatingsTotal: place?.user_ratings_total ?? null,
+            website: place?.website || null,
+            phone: place?.international_phone_number || place?.formatted_phone_number || null,
+            openingHours: place?.opening_hours?.weekday_text || place?.opening_hours?.periods || null,
+            types: place?.types || null,
+            googleMapsUrl: place?.url || null,
+            photoUrl,
+            businessStatus: place?.business_status || null,
+          } : null;
+          onChangeRef.current && onChangeRef.current(formatted, { place, parts, lat, lng, enriched });
         });
         acRef.current = ac;
       } catch (e) { console.warn('Places Autocomplete attach failed:', e); }
@@ -508,24 +541,53 @@ function WriteForMe({ context, onFill, label = 'Write it for me', placeholderQue
 
   const submit = async () => {
     setBusy(true);
+    const describeFields = (obj) => Object.keys(obj || {}).filter(k => k !== '_raw' && obj[k]).join(', ') || 'description';
     try {
       const prompt = buildPrompt(context, answers);
-      const text = await (window.claude?.complete?.(prompt) || Promise.resolve(''));
+      // POST to our Gemini-backed serverless endpoint. Fall back to the
+      // in-browser window.claude.complete if the API is unreachable (preserves
+      // the chat-sandbox path for local testing).
+      let text = '';
+      try {
+        const r = await fetch('/api/ai-write', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          text = d?.text || '';
+        }
+      } catch (e) { /* network — fall through to claude fallback */ }
+      if (!text && window.claude?.complete) {
+        try { text = await window.claude.complete(prompt); } catch {}
+      }
       const parsed = tryParseJSON(text);
-      if (parsed && typeof parsed === 'object') {
+      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+        // Resolve any imageKey/image slug to a real stock URL.
+        const imgKey = parsed.imageKey || parsed.image_key || parsed.image;
+        const imgUrl = resolveImage(imgKey);
+        if (imgUrl) parsed.image = imgUrl;
         onFill(parsed);
-        toast.push({ kind: 'success', title: 'Draft generated', body: 'Review and tweak before saving.' });
-      } else {
-        // Fallback: paste into a single text field
+        toast.push({ kind: 'success', title: 'Draft generated', body: `Filled: ${describeFields(parsed)}. Review before saving.` });
+      } else if (text && text.trim()) {
+        // Got prose back from the model but couldn't parse JSON — paste raw into desc.
         onFill({ _raw: text });
         toast.push({ kind: 'success', title: 'Draft generated', body: 'Pasted into the description field.' });
+      } else {
+        // Empty model response (in-browser claude.complete not available in
+        // production builds) — fall back to the canned template so the user
+        // actually sees fields populate instead of a silent no-op.
+        const fallback = canned(context, answers);
+        onFill(fallback);
+        toast.push({ kind: 'info', title: 'Draft inserted (template)', body: `Filled: ${describeFields(fallback)}. Review and tweak before saving.` });
       }
       setOpen(false);
     } catch (e) {
       // Fall back to canned content if Claude isn't reachable
       const fallback = canned(context, answers);
       onFill(fallback);
-      toast.push({ kind: 'info', title: 'Draft inserted', body: 'Used a quick template — review and tweak before saving.' });
+      toast.push({ kind: 'info', title: 'Draft inserted (template)', body: `Filled: ${describeFields(fallback)}. Review and tweak before saving.` });
       setOpen(false);
     }
     setBusy(false);
@@ -554,19 +616,97 @@ function WriteForMe({ context, onFill, label = 'Write it for me', placeholderQue
   );
 }
 
+// Curated stock photo pool — Gemini returns an `imageKey` token from this list
+// and WriteForMe resolves it to a real URL before passing to onFill. Cheap +
+// deterministic, no extra API. Keys chosen to cover the vibes we expect.
+const IMG_POOL = {
+  'wedding-garden':     'https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&q=80&auto=format',
+  'wedding-ballroom':   'https://images.unsplash.com/photo-1465495976277-4387d4b0e4a6?w=1600&q=80&auto=format',
+  'wedding-modern':     'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=1600&q=80&auto=format',
+  'wedding-beach':      'https://images.unsplash.com/photo-1469371670807-013ccf25f16a?w=1600&q=80&auto=format',
+  'wedding-arch':       'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=1600&q=80&auto=format',
+  'gala-formal':        'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1600&q=80&auto=format',
+  'corporate':          'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1600&q=80&auto=format',
+  'brand-activation':   'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=1600&q=80&auto=format',
+  'private-dinner':     'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1600&q=80&auto=format',
+  'birthday-intimate':  'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=1600&q=80&auto=format',
+  'floral-install':     'https://images.unsplash.com/photo-1490772888775-55fceea286b8?w=1600&q=80&auto=format',
+};
+const IMG_KEYS = Object.keys(IMG_POOL);
+function resolveImage(key) {
+  if (!key) return null;
+  if (IMG_POOL[key]) return IMG_POOL[key];
+  // Lenient fallback — case/space tolerant match.
+  const norm = String(key).toLowerCase().replace(/\s+/g, '-');
+  return IMG_POOL[norm] || null;
+}
+
 function buildPrompt(context, answers) {
-  return `You are helping a florist fill out a form for "${context.kind}". Use these answers to draft the form values. Reply with ONLY a JSON object whose keys match: ${context.fields.join(', ')}.
+  const kind = context.kind;
+  // Per-field directives — gives Gemini concrete guidance on what each value
+  // should look like instead of leaving it to interpretation (which produced
+  // generic "Wedding for 120 guests" copy in the first cut).
+  const directives = {
+    event: {
+      name: '3-6 words. Use the user-supplied venue or host name verbatim where given. Generic names ("Spring Wedding") are forbidden — anchor on the actual answers.',
+      desc: 'EXACTLY 3-4 sentences, ~280 chars max. Every sentence must reference a SPECIFIC user-supplied detail: their venue, palette, floral moment, or style word. Do NOT open with "This is", "A beautiful", "An elegant" — start with the venue or a floral moment. Pretend you are the studio planner briefing crew — what does the day actually look like.',
+      imageKey: `ONE key from this stock-photo set that best matches the vibe: ${IMG_KEYS.join(', ')}. Return ONLY the slug.`,
+    },
+    gig: {
+      description: '3-5 sentences. Tell applicants what THIS role looks like on the day, what skills matter, install scope, what makes this gig distinct. No emoji.',
+    },
+    venue: {
+      name: 'The venue name verbatim.',
+      type: 'One word — Garden, Ballroom, Industrial, Estate, Restaurant, Gallery, Beach, Rooftop.',
+    },
+  };
+  const fieldGuides = (directives[kind] || {});
+  const fieldSpec = context.fields.map(f => `  ${JSON.stringify(f)}: ${fieldGuides[f] || 'fill sensibly from the answers'}`).join('\n');
+  const examplesByKind = {
+    event: `\nBad example: "Wedding for 120 guests, held inside."
+Good example: "Garden-formal wedding at Carter Estate, 180 guests under a glass conservatory. Suspended seasonal-floral installation over a 60ft farm table, ceremony arch in ivory and blush with trailing greens, low garden compositions on cocktail tables. Pace turns formal at the seated dinner then loosens for late-night. Strike crew loads out after midnight."`,
+    gig: `\nBad: "Help with floral install."
+Good: "Lead role on a 12-hour install day at a glass conservatory. Climbing scaffolding, suspended-installation experience required. Strong eye for asymmetric composition, calm with last-minute design changes. Strike scope: same crew loads out post-midnight."`,
+  };
+  return `You are drafting form values for a luxury floral studio's ${kind} record. The studio's senior planner is the audience — confident, specific, no marketing puff.
 
-User's answers:
-${Object.entries(answers).map(([k, v]) => `- ${k}: ${v}`).join('\n')}
+Reply with ONLY a JSON object. Per-field guidance:
+{
+${fieldSpec}
+}
 
-Tone: warm but operator-fluent (think a luxury floral studio's PR voice — confident, plain language, no exclamation points or emoji). Keep field values short and concrete. Reply ONLY with the JSON.`;
+User's answers (USE THESE VERBATIM where possible — do not paraphrase the venue, palette, or floral moments):
+${Object.entries(answers).map(([k, v]) => `- ${k}: ${v || '(blank)'}`).join('\n')}
+
+BANNED phrases (do not use anywhere): "This is", "A beautiful", "An elegant", "Memorable", "Unforgettable", "Wonderful", "Lovely", "Cherished", "Special day", "Once-in-a-lifetime", "Indoor wedding", "Outdoor wedding", "for X guests" (be more specific). Also banned: exclamation points, emoji, marketing puff.
+
+Voice: studio senior planner writing internal crew copy. Concrete > impressionistic. Name the venue, palette colors, install moments by name.${examplesByKind[kind] || ''}
+
+Reply with ONLY the JSON object, no markdown fences, no preamble.`;
 }
 function tryParseJSON(text) {
   if (!text) return null;
   try { return JSON.parse(text); } catch {}
   const m = text.match(/\{[\s\S]*\}/);
   if (m) { try { return JSON.parse(m[0]); } catch {} }
+  // Repair pass — Gemini sometimes hits the maxOutputTokens cap mid-string
+  // (especially in JSON mode), leaving the response unterminated and unparseable.
+  // Best-effort: close an open string + any open braces, then retry. If a value
+  // is still mid-construction we'd rather show a partial-but-clean object than
+  // dump raw broken JSON into the user's desc field.
+  try {
+    let s = (m ? m[0] : text).trim();
+    // If we're inside an open string, close it.
+    const openQuotes = (s.match(/(^|[^\\])"/g) || []).length;
+    if (openQuotes % 2 === 1) s += '"';
+    // Close any unbalanced braces.
+    const opens = (s.match(/\{/g) || []).length;
+    const closes = (s.match(/\}/g) || []).length;
+    for (let i = 0; i < opens - closes; i++) s += '}';
+    // Strip trailing comma before closing brace if any.
+    s = s.replace(/,(\s*\})/g, '$1');
+    return JSON.parse(s);
+  } catch {}
   return null;
 }
 

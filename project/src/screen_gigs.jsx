@@ -19,7 +19,15 @@ function PageGigsVendor({ user, role, setRoute }) {
   const [open, setOpen] = SG_us(SG_D.EVENTS.reduce((acc, e) => ({ ...acc, [e.id]: true }), {}));
   const [addOpen, setAddOpen] = SG_us(false);
   // Honor cross-page "open Add Gig modal on mount" intent
-  SG_ue(() => { if (window.__rosyOpenAddGig) { window.__rosyOpenAddGig = false; setAddOpen(true); } }, []);
+  // When the Dashboard's "Post a gig" button fires, it sets this flag — open
+  // the modal AND seed the form (previously only flipped open, which left
+  // addForm null and rendered an empty modal body).
+  SG_ue(() => {
+    if (window.__rosyOpenAddGig) {
+      window.__rosyOpenAddGig = false;
+      openAdd();
+    }
+  }, []);
   const [addForm, setAddForm] = SG_us(null);
   const [search, setSearch] = SG_us('');
   const [statusFilter, setStatusFilter] = SG_us({ open: true, confirmed: true, completed: true });
@@ -32,7 +40,9 @@ function PageGigsVendor({ user, role, setRoute }) {
   const [editForm, setEditForm] = SG_us(null);
   const [detailGig, setDetailGig] = SG_us(null);
   const toast = useToast();
-  const events = SG_D.EVENTS.filter(e => e.status !== 'draft' && (!isVendor || ownEventIds.has(e.id)));
+  // Include draft events for vendors — they're often adding gigs before
+  // publishing the event. Admins see drafts too. Workers don't see drafts.
+  const events = SG_D.EVENTS.filter(e => (role === 'worker' ? e.status !== 'draft' : true) && (!isVendor || ownEventIds.has(e.id)));
 
   React.useEffect(() => {
     const prefillId = window.__rosyAddGigEventId;
@@ -150,18 +160,20 @@ function PageGigsVendor({ user, role, setRoute }) {
     setSelected({});
   };
 
-  // Live stat counts from window.RosyData (replaces hardcoded 9/6/32/7 demo values).
-  const allEventsCount = (window.RosyData?.EVENTS || []).length;
-  const openEventsCount = (window.RosyData?.EVENTS || []).filter(e => e.status === 'open').length;
-  const allGigsCount = (window.RosyData?.GIGS || []).length;
-  const openGigsCount = (window.RosyData?.GIGS || []).filter(g => g.status === 'open').length;
+  // Vendor scope: only count this vendor's events + gigs. Admins see all.
+  const allEvents = (window.RosyData?.EVENTS || []).filter(e => role === 'admin' || !user?.id || e.vendorId === user.id);
+  const allGigsForScope = (window.RosyData?.GIGS || []).filter(g => allEvents.some(e => e.id === g.eventId));
+  const myEventsCount = allEvents.length;
+  const openEventsCount = allEvents.filter(e => e.status === 'open').length;
+  const myGigsCount = allGigsForScope.length;
+  const openGigsCount = allGigsForScope.filter(g => g.status === 'open').length;
   return (
     <div className="content fade-up">
       <div className="grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon={SG_I.CalendarCheck} label="All events"  value={allEventsCount} />
-        <StatCard icon={SG_I.Calendar}      label="Open events" value={openEventsCount} />
-        <StatCard icon={SG_I.Briefcase}     label="All gigs"    value={allGigsCount} />
-        <StatCard icon={SG_I.ClipboardList} label="Open gigs"   value={openGigsCount} />
+        <StatCard icon={SG_I.Briefcase}     label={role === 'admin' ? 'All gigs' : 'My Gigs'} value={myGigsCount} onClick={() => setRoute && setRoute('gigs')} />
+        <StatCard icon={SG_I.ClipboardList} label="Open Gigs"   value={openGigsCount} dateStrip="Live" onClick={() => setRoute && setRoute('gigs')} />
+        <StatCard icon={SG_I.CalendarCheck} label={role === 'admin' ? 'All events' : 'My Events'} value={myEventsCount} onClick={() => setRoute && setRoute('events')} />
+        <StatCard icon={SG_I.Calendar}      label="Open Events" value={openEventsCount} dateStrip="Live" onClick={() => setRoute && setRoute('events')} />
       </div>
 
       <div className="section-heading">
@@ -233,8 +245,25 @@ function PageGigsVendor({ user, role, setRoute }) {
                           <p style={{ margin: 0, fontSize: 12.5, color: 'var(--color-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.description}</p>
                         </div>
                       </td>
-                      <td style={{ fontSize: 13 }}>{fmtDate(g.date, 'mdy-dots')}<br/><span className="t-muted" style={{ fontSize: 12 }}>{g.start}–{g.end}</span></td>
-                      <td>{g.spotsFilled}/{g.spots}</td>
+                      <td style={{ fontSize: 13 }}>{fmtDate(g.date, 'mdy-dots')}<br/><span className="t-muted" style={{ fontSize: 12 }}>{fmtTime(g.start)}–{fmtTime(g.end)}</span></td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span>{g.spotsFilled}/{g.spots}</span>
+                          {(() => {
+                            const pending = (SG_D.APPLICATIONS || []).filter(a => a.gigId === g.id && a.status === 'applied').length;
+                            if (pending === 0) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); window.__rosyEventDetailTab = 'applications'; setRoute('events:' + g.eventId); }}
+                                style={{ background: 'transparent', border: 0, padding: 0, color: 'var(--rosy-coral)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', textAlign: 'left', textDecoration: 'underline' }}
+                                title="Review pending applications">
+                                {pending} pending · review
+                              </button>
+                            );
+                          })()}
+                        </div>
+                      </td>
                       <td><Badge kind={g.status === 'confirmed' ? 'Confirmed' : g.status === 'completed' ? 'Completed' : 'Open'} /></td>
                       <td><Badge kind={g.priority} /></td>
                       <td>
@@ -264,13 +293,7 @@ function PageGigsVendor({ user, role, setRoute }) {
         footer={
           <>
             <button className="btn btn-ghost" onClick={() => setAddOpen(false)}>Cancel</button>
-            <WriteForMe context={{ kind: 'gig', fields: ['description'] }}
-              placeholderQuestions={[
-                { key: 'role', label: 'Which role?', placeholder: 'Lead, Design, Assist, Strike' },
-                { key: 'eventKind', label: 'What kind of event?', placeholder: 'wedding install, gala, brand activation' },
-                { key: 'notes', label: 'Anything specific?', type: 'textarea', placeholder: 'Heavy install, must lift 50 lbs, etc.' },
-              ]}
-              onFill={(d) => setAddForm(f => ({ ...f, description: d.description || d._raw || f.description }))} />
+            <GigAIWrite addForm={addForm} events={events} onFill={(text) => setAddForm(f => ({ ...f, description: text || f.description }))} />
             <button className="btn btn-coral" disabled={addSaving} onClick={submitAdd}>{addSaving ? 'Creating…' : 'Create Gig'}</button>
           </>
         }>
@@ -327,7 +350,7 @@ function PageGigsVendor({ user, role, setRoute }) {
               </div>
               <div className="grid-2" style={{ gap: 12 }}>
                 <div><p className="t-eyebrow">Date</p><p style={{ margin: 0, fontSize: 13.5 }}>{fmtDate(g.date, 'mdy-dots')}</p></div>
-                <div><p className="t-eyebrow">Time</p><p style={{ margin: 0, fontSize: 13.5 }}>{g.start}–{g.end}</p></div>
+                <div><p className="t-eyebrow">Time</p><p style={{ margin: 0, fontSize: 13.5 }}>{fmtTime(g.start)}–{fmtTime(g.end)}</p></div>
                 <div><p className="t-eyebrow">Rate</p><p style={{ margin: 0, fontSize: 13.5 }}>${g.rate}/hr</p></div>
                 <div><p className="t-eyebrow">Spots</p><p style={{ margin: 0, fontSize: 13.5 }}>{g.spotsFilled}/{g.spots} filled</p></div>
               </div>
@@ -483,22 +506,12 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
   const [view, setView] = SG_us('cards');                      // cards | table
   const [filterOpen, setFilterOpen] = SG_us(false);
   const [locOpen, setLocOpen] = SG_us(false);
-  // Default location filter to the worker's effective city today (active travel
-  // address wins over default home). Workers travelling for a gig automatically
-  // see local gigs in the city they're working from.
-  const initialCity = (() => {
-    const eff = window.effectiveWorkerAddress ? window.effectiveWorkerAddress(currentUser?.addresses) : null;
-    if (eff?.city) return eff.city;
-    const c = currentUser?.city;
-    if (!c) return '';
-    return typeof c === 'string' ? c.split(',')[0].trim() : '';
-  })();
-  const [city, setCity] = SG_us(initialCity);
-  // Re-sync when addresses or user change (e.g. just added a new travel address).
-  SG_ue(() => {
-    const eff = window.effectiveWorkerAddress ? window.effectiveWorkerAddress(currentUser?.addresses) : null;
-    if (eff?.city && eff.city !== city) setCity(eff.city);
-  }, [currentUser?.addresses, currentUser?.id]);
+  // Default to no city filter — workers see ALL open gigs out of the gate.
+  // Previously this defaulted to the worker's home city, which silently hid
+  // every gig that wasn't a substring city match (e.g. a Chicago-based worker
+  // never saw a Plano gig). Workers can opt-in to a city filter via the
+  // location chip — initial render is no-filter so the page isn't empty.
+  const [city, setCity] = SG_us('');
   // Show a banner when the worker is on a travel address today.
   const activeTravel = (() => {
     const eff = window.effectiveWorkerAddress ? window.effectiveWorkerAddress(currentUser?.addresses) : null;
@@ -599,7 +612,7 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
                   <div className="divider" style={{ margin: 0 }} />
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, color: 'var(--color-muted)' }}>
                     <span><SG_I.Calendar size={11} style={{ verticalAlign: 'middle' }} /> {fmtDate(g.date, 'mdy-dots')}</span>
-                    <span><SG_I.Clock size={11} style={{ verticalAlign: 'middle' }} /> {g.start}–{g.end}</span>
+                    <span><SG_I.Clock size={11} style={{ verticalAlign: 'middle' }} /> {fmtTime(g.start)}–{fmtTime(g.end)}</span>
                     <span><SG_I.MapPin size={11} style={{ verticalAlign: 'middle' }} /> {v?.city}</span>
                     <span>{g.spotsFilled}/{g.spots} spots</span>
                   </div>
@@ -674,7 +687,7 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
                             <p style={{ margin: 0, fontSize: 12.5, color: 'var(--color-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.description}</p>
                           </div>
                         </td>
-                        <td style={{ fontSize: 13 }}>{fmtDate(g.date, 'mdy-dots')}<br/><span className="t-muted" style={{ fontSize: 12 }}>{g.start}–{g.end}</span></td>
+                        <td style={{ fontSize: 13 }}>{fmtDate(g.date, 'mdy-dots')}<br/><span className="t-muted" style={{ fontSize: 12 }}>{fmtTime(g.start)}–{fmtTime(g.end)}</span></td>
                         <td style={{ fontSize: 13 }}>{v?.name}<br/><span className="t-muted" style={{ fontSize: 12 }}>{v?.city}</span></td>
                         <td className="t-mono-amount">${g.rate}/hr</td>
                         <td>{g.spotsFilled}/{g.spots}</td>
@@ -723,7 +736,7 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
           <div className="col" style={{ gap: 14 }}>
             <GigChip type={applyGig.type} />
             <KV label="Event" value={SG_D.EVENTS.find(e => e.id === applyGig.eventId)?.name} />
-            <KV label="Date" value={`${fmtDate(applyGig.date, 'mdy-dots')} · ${applyGig.start}–${applyGig.end}`} />
+            <KV label="Date" value={`${fmtDate(applyGig.date, 'mdy-dots')} · ${fmtTime(applyGig.start)}–${fmtTime(applyGig.end)}`} />
             <KV label="Rate" value={`$${applyGig.rate}/hr`} />
             <KV label="What you'll do" value={applyGig.description} />
             <div style={{ background: 'var(--color-surface-soft)', borderRadius: 12, padding: 14, fontSize: 13, color: 'var(--color-body)' }}>
@@ -788,7 +801,7 @@ function PageGigPostsWorker({ setRoute, currentUser }) {
                 <span className="t-mono-amount" style={{ fontSize: 18, fontWeight: 600 }}>${g.rate}/hr</span>
               </div>
               <KV label="Event" value={ev?.name} />
-              <KV label="Date" value={`${fmtDate(g.date, 'mdy-dots')} · ${g.start}–${g.end}`} />
+              <KV label="Date" value={`${fmtDate(g.date, 'mdy-dots')} · ${fmtTime(g.start)}–${fmtTime(g.end)}`} />
               <KV label="Venue" value={`${v?.name || '—'} · ${v?.city || ''}`} />
               <KV label="Spots" value={`${g.spots - g.spotsFilled} of ${g.spots} left`} />
               <KV label="Vendor" value={vendor?.company || vendor?.name || '—'} />
@@ -901,7 +914,7 @@ function PageMyGigsWorker({ currentUser, setRoute }) {
                  <tr key={g.id}>
                    <td style={{ fontWeight: 600, color: 'var(--color-ink)' }}>{ev?.name}</td>
                    <td><GigChip type={g.type} /></td>
-                   <td style={{ fontSize: 13 }}>{fmtDate(g.date, 'mdy-dots')}<br/><span className="t-muted" style={{ fontSize: 12 }}>{g.start}–{g.end}</span></td>
+                   <td style={{ fontSize: 13 }}>{fmtDate(g.date, 'mdy-dots')}<br/><span className="t-muted" style={{ fontSize: 12 }}>{fmtTime(g.start)}–{fmtTime(g.end)}</span></td>
                    <td style={{ fontSize: 13 }}>{v?.name}<br/><span className="t-muted" style={{ fontSize: 12 }}>{v?.city}</span></td>
                    <td className="t-mono-amount">${g.rate}/hr</td>
                    <td>{past ? '8.5' : '—'}</td>
@@ -943,7 +956,7 @@ function PageMyGigsWorker({ currentUser, setRoute }) {
         {mark ? (
           <div className="col" style={{ gap: 14 }}>
             <KV label="Event" value={SG_D.EVENTS.find(e => e.id === mark.eventId)?.name} />
-            <KV label="Scheduled" value={`${mark.start} – ${mark.end}`} />
+            <KV label="Scheduled" value={`${fmtTime(mark.start)} – ${fmtTime(mark.end)}`} />
             <div className="field"><label className="field-label">Hours worked</label><input className="input" type="number" step="0.25" min={0.25} value={markHours} onChange={e => setMarkHours(e.target.value)} /></div>
             <div className="field"><label className="field-label">Notes to vendor (optional)</label><textarea className="textarea" placeholder="Optional context for the vendor — overtime, scope changes, etc." value={markNotes} onChange={e => setMarkNotes(e.target.value)} /></div>
             <div style={{ background: 'var(--color-warning-bg)', color: 'var(--color-warning)', borderRadius: 10, padding: 12, fontSize: 13 }}>
@@ -1002,6 +1015,80 @@ function RatingModal({ gig, currentUser, onClose }) {
         </div>
       ) : null}
     </Modal>
+  );
+}
+
+/* ---------- Add Gig → AI direct-write button ----------
+   Requires Event + Gig type + Date to be filled. On click, looks up the selected
+   event (name/desc/date/venue) and POSTs that context to /api/ai-write — no
+   secondary question modal. Result lands directly in the description field. */
+function GigAIWrite({ addForm, events, onFill }) {
+  const [busy, setBusy] = SG_us(false);
+  const toast = useToast();
+  const eventSelected = !!addForm?.eventId;
+  const typeSelected  = !!addForm?.type;
+  const dateSelected  = !!addForm?.date;
+  const ready = eventSelected && typeSelected && dateSelected;
+  const missingLabel = !eventSelected ? 'event' : !typeSelected ? 'gig type' : !dateSelected ? 'date' : '';
+  const onClick = async () => {
+    if (busy) return;
+    if (!ready) {
+      toast.push({ kind: 'warning', title: `Pick a ${missingLabel} first`, body: 'Event, gig type, and date are needed before AI can write the brief.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const ev = (events || []).find(e => e.id === addForm.eventId) || {};
+      const venue = (window.RosyData?.VENUES || []).find(v => v.id === ev.venueId) || {};
+      const prompt = `You are drafting the "description" field for a single gig (worker shift) under a luxury floral studio's event. The audience is prospective applicants — workers deciding whether to apply.
+
+Reply with ONLY a JSON object: { "description": "..." }
+
+The gig:
+- Role: ${addForm.type}
+- Date: ${addForm.date}
+- Start/end: ${addForm.start || '(tbd)'} – ${addForm.end || '(tbd)'}
+- Pay rate: $${addForm.rate || '(tbd)'}/hr
+- Spots: ${addForm.spots || '(tbd)'}
+
+The parent event:
+- Event name: ${ev.name || '(unnamed)'}
+- Event description: ${ev.desc || '(none provided)'}
+- Event date: ${ev.date || '(tbd)'}
+- Venue: ${venue.name || '(none)'}${venue.address ? ' — ' + venue.address : ''}${venue.category ? ' (' + venue.category + ')' : ''}
+
+Description rules: 3-4 sentences, ~280 chars max. Tell the applicant what THIS role looks like on the day at THIS venue, what skills matter (specific to the gig type ${addForm.type}), the install/strike scope, and what makes it distinct. Reference the event's specific floral moments or venue features. No emoji, no exclamation points, no marketing puff ("memorable", "unforgettable", "amazing opportunity"). Confident operator voice.
+
+Reply with ONLY the JSON object.`;
+      let text = '';
+      try {
+        const r = await fetch('/api/ai-write', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
+        if (r.ok) { const d = await r.json(); text = d?.text || ''; }
+      } catch (e) { /* network */ }
+      let desc = '';
+      try {
+        const m = text.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(m ? m[0] : text);
+        desc = parsed?.description || '';
+      } catch (e) { desc = text; }
+      if (desc) {
+        onFill(desc.trim());
+        toast.push({ kind: 'success', title: 'Description generated', body: 'Review and tweak before saving.' });
+      } else {
+        toast.push({ kind: 'warning', title: 'No description returned', body: 'Try again in a moment.' });
+      }
+    } catch (e) {
+      console.warn('[gig-ai-write] failed:', e);
+      toast.push({ kind: 'error', title: 'Generation failed', body: 'Check your connection and try again.' });
+    } finally { setBusy(false); }
+  };
+  return (
+    <button type="button" className="btn btn-ghost-teal btn-sm"
+      onClick={onClick} disabled={busy}
+      style={{ height: 34, opacity: ready ? 1 : 0.55, cursor: busy ? 'wait' : 'pointer' }}
+      title={ready ? 'Generate the description from the event details' : `Pick a ${missingLabel} first`}>
+      <SG_I.Sparkles size={14} />{busy ? 'Writing…' : 'Write it for me'}
+    </button>
   );
 }
 

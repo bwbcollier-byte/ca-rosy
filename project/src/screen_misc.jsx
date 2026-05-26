@@ -8,6 +8,15 @@ const { useState: SX_us } = React;
 function PageInbox({ currentUser }) {
   const meId = currentUser?.id;
   const [active, setActive] = SX_us(SX_D.MESSAGES[0]?.id);
+  // Stamp seen_by[me] whenever the active conversation changes — this is the
+  // signal the email-notify endpoint reads to decide whether the recipient
+  // has "caught up" and a new email is allowed for the next inbound message.
+  React.useEffect(() => {
+    if (!active || !meId) return;
+    if (window.RosyMutate?.messages?.markSeen) {
+      window.RosyMutate.messages.markSeen({ conversationId: active, userId: meId }).catch(() => {});
+    }
+  }, [active, meId]);
   const [draft, setDraft] = SX_us('');
   const [composeOpen, setComposeOpen] = SX_us(false);
   const [composeSearch, setComposeSearch] = SX_us('');
@@ -26,7 +35,14 @@ function PageInbox({ currentUser }) {
         return ppl.includes(meId) || c.startedBy === meId || c.with === meId;
       })
     : SX_D.MESSAGES;
-  const allConvs = [...extraConvs, ...baseConvs];
+  // Merge with id-dedupe so a stale extraConvs entry can't shadow the
+  // hydrated baseConvs row (or vice versa).
+  const allConvs = (() => {
+    const seen = new Set();
+    const out = [];
+    [...extraConvs, ...baseConvs].forEach(c => { if (!seen.has(c.id)) { seen.add(c.id); out.push(c); } });
+    return out;
+  })();
   const conv = allConvs.find(c => c.id === active);
   const visibleConvs = allConvs.filter(c => {
     if (!search.trim()) return true;
@@ -36,25 +52,69 @@ function PageInbox({ currentUser }) {
   const [localMessages, setLocalMessages] = SX_us(conv?.messages || []);
   React.useEffect(() => { setLocalMessages(conv?.messages || []); }, [active]);
 
-  // If another page set window.__rosyComposeTo before navigating here, jump
-  // straight to the existing conversation with that recipient — or open the
-  // compose modal pre-populated if no conversation exists yet.
+  // Shared dedupe helper. Matches an existing 1-to-1 conversation between the
+  // current user and a given target user — regardless of who started it. Use
+  // for the compose-from-profile and compose-modal paths so we never create a
+  // second thread between the same two people.
+  const findExistingConvWith = (targetId) => {
+    if (!targetId || !meId) return null;
+    return allConvs.find(c => {
+      const parts = c.participants || [];
+      // 1:1 threads must contain exactly the two users (order-independent).
+      if (parts.length === 2) {
+        return parts.includes(meId) && parts.includes(targetId);
+      }
+      // Fallback for legacy/optimistic rows without populated `participants`.
+      return c.with === targetId;
+    });
+  };
+
+  // If another page set window.__rosyComposeTo before navigating here, find or
+  // create a 1:1 thread with that recipient and jump straight to it — no
+  // intermediate compose modal needed. This was previously popping up the
+  // recipient picker which felt redundant.
   React.useEffect(() => {
     const targetId = window.__rosyComposeTo;
     if (!targetId) return;
     window.__rosyComposeTo = null;
-    const existing = allConvs.find(c => c.with === targetId || (c.participants || []).includes(targetId));
+    const u = (window.RosyData?.USERS || []).find(x => x.id === targetId);
+    if (!u) return;
+    const existing = findExistingConvWith(targetId);
     if (existing) {
       setActive(existing.id);
-      toast.push({ kind: 'info', title: `Opening conversation with ${existing.name || ''}` });
       return;
     }
-    // No existing thread — open compose modal pre-filtered to that user.
-    const u = (window.RosyData?.USERS || []).find(x => x.id === targetId);
-    if (u) {
-      setComposeSearch(u.name || u.email || '');
-      setComposeOpen(true);
-    }
+    // Optimistic: drop a temp conversation in instantly so the admin can start
+    // typing before the dedupe lookup + DB insert finish. Previously this
+    // awaited ~600ms-1.5s of network before the thread became visible.
+    const tempId = 'tmp_' + Math.random().toString(36).slice(2, 10);
+    const optimistic = {
+      id: tempId, with: targetId, name: u.name,
+      online: false, unread: 0, preview: '', messages: [], _pending: true,
+    };
+    setExtraConvs(arr => [optimistic, ...arr]);
+    setActive(tempId);
+    (async () => {
+      try {
+        const conv = await window.RosyMutate?.conversations?.create({
+          subject: `Direct message - ${u.name}`,
+          startedBy: meId,
+          participants: [meId, targetId].filter(Boolean),
+        });
+        if (conv && conv.id !== tempId) {
+          const alreadyIn = baseConvs.some(c => c.id === conv.id);
+          setExtraConvs(arr => {
+            const filtered = arr.filter(c => c.id !== tempId && c.id !== conv.id);
+            return alreadyIn ? filtered : [{ ...conv, with: targetId, name: u.name }, ...filtered];
+          });
+          setActive(conv.id);
+        }
+      } catch (e) {
+        // Roll back the optimistic temp if the create truly failed.
+        console.warn('compose-from-profile create failed:', e);
+        setExtraConvs(arr => arr.filter(c => c.id !== tempId));
+      }
+    })();
   }, []);
 
   const send = async () => {
@@ -191,7 +251,7 @@ function PageInbox({ currentUser }) {
                 </span>
               ) : null}
               <input className="input" placeholder="Message…" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
-              <button className="btn btn-teal btn-sm" onClick={send} disabled={!draft.trim()} style={{ width: 38, height: 38, padding: 0, borderRadius: 9999 }}><SX_I.Send size={15} /></button>
+              <button className="btn btn-teal btn-sm" onClick={send} disabled={!draft.trim() || conv?._pending} title={conv?._pending ? 'Saving conversation…' : undefined} style={{ width: 38, height: 38, padding: 0, borderRadius: 9999 }}><SX_I.Send size={15} /></button>
             </div>
           </>
         ) : (
@@ -216,6 +276,15 @@ function PageInbox({ currentUser }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 360, overflowY: 'auto' }}>
             {matches.map(u => (
               <button key={u.id} className="btn btn-ghost" style={{ justifyContent: 'flex-start', padding: 10, height: 'auto' }} onClick={async () => {
+                  // Dedupe: if a thread already exists between these two users,
+                  // jump to it instead of creating another row.
+                  const existing = findExistingConvWith(u.id);
+                  if (existing) {
+                    setActive(existing.id);
+                    setComposeOpen(false); setComposeSearch('');
+                    toast.push({ kind: 'info', title: `Reopened conversation with ${u.first || u.name}` });
+                    return;
+                  }
                   let conv;
                   try {
                     conv = await window.RosyMutate?.conversations?.create({
@@ -230,7 +299,12 @@ function PageInbox({ currentUser }) {
                   } else {
                     conv = { ...conv, with: u.id, name: u.name };
                   }
-                  setExtraConvs(arr => [conv, ...arr]);
+                  // Skip extraConvs push if this id already lives in hydrated
+                  // baseConvs (mutator dedupe returned an existing thread).
+                  const alreadyIn = baseConvs.some(c => c.id === conv.id);
+                  if (!alreadyIn) {
+                    setExtraConvs(arr => [conv, ...arr.filter(c => c.id !== conv.id)]);
+                  }
                   setActive(conv.id);
                   setComposeOpen(false); setComposeSearch('');
                   toast.push({ kind: 'success', title: `Conversation started with ${u.first || u.name}` });
@@ -520,11 +594,23 @@ function MarketingHome({ goToApp, goToAuth, setRoute }) {
         </div>
       </section>
 
-      {/* FAQ */}
+      {/* FAQ — strict marketing-audience filter. Without this, the marketing
+          home page rendered every FAQ in rr_faqs regardless of audience tags,
+          leaking vendor-only / worker-only entries to public visitors. */}
       <section className="mk-section" style={{ paddingTop: 0 }}>
         <h2 className="display-lg" style={{ marginBottom: 24, maxWidth: 700 }}>Common questions.</h2>
         <div className="col" style={{ gap: 12 }}>
-          {SX_D.FAQS.map((f, i) => <FAQItem key={i} q={f.q} a={f.a} />)}
+          {(SX_D.FAQS || [])
+            .filter(f => f.is_visible !== false)
+            .filter(f => Array.isArray(f.audiences) && f.audiences.includes('marketing'))
+            .sort((a, b) => {
+              const ao = (a.audience_orders || {}).marketing;
+              const bo = (b.audience_orders || {}).marketing;
+              const an = ao != null ? ao : (a.sort_order ?? 0);
+              const bn = bo != null ? bo : (b.sort_order ?? 0);
+              return an - bn;
+            })
+            .map((f, i) => <FAQItem key={f.id || i} q={f.q || f.question} a={f.a || f.answer} />)}
         </div>
       </section>
 
@@ -576,6 +662,53 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
     e.preventDefault();
     setSubmitting(true);
     try {
+      if (mode === 'reset') {
+        if (!allPass) { toast.push({ kind: 'warning', title: 'Password too weak', body: 'Meet all requirements above.' }); setSubmitting(false); return; }
+        // Two paths:
+        //   (a) our own reset_token=… query param → POST to /api/auth/password-reset-consume,
+        //       which validates server-side and writes the new password.
+        //   (b) Supabase native recovery hash → updateUser on the recovery session.
+        const resetToken = (() => { try { return new URL(window.location.href).searchParams.get('reset_token'); } catch (e) { return null; } })();
+        if (resetToken) {
+          let signedInEmail = null;
+          try {
+            const r = await fetch('/api/auth/password-reset-consume', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: resetToken, password: pw }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d?.error || 'Reset failed');
+            signedInEmail = d?.email || null;
+          } catch (err) {
+            toast.push({ kind: 'error', title: 'Reset failed', body: err.message || 'Try again.' });
+            setSubmitting(false);
+            return;
+          }
+          // Sign in with the new password automatically.
+          if (signedInEmail && window.sb) {
+            try { await window.sb.auth.signInWithPassword({ email: signedInEmail, password: pw }); }
+            catch (e) { /* fall through — user can sign in manually */ }
+          }
+          toast.push({ kind: 'success', title: 'Password updated', body: 'Signed in. Loading your dashboard…' });
+          try { window.history.replaceState(null, '', window.location.pathname + '#app/dashboard'); } catch (e) {}
+          goToApp();
+          return;
+        }
+        // Fallback: native Supabase recovery (PASSWORD_RECOVERY established session).
+        try {
+          const { error } = await window.sb.auth.updateUser({ password: pw });
+          if (error) throw error;
+        } catch (err) {
+          toast.push({ kind: 'error', title: 'Reset failed', body: err.message || 'The link may have expired. Request a new one.' });
+          setSubmitting(false);
+          return;
+        }
+        toast.push({ kind: 'success', title: 'Password updated', body: 'Signing you in…' });
+        try { window.history.replaceState(null, '', window.location.pathname + window.location.search + '#app/dashboard'); } catch (e) {}
+        goToApp();
+        return;
+      }
       if (mode === 'forgot') {
         // Use our Postmark-branded /api/auth/password-reset endpoint rather than
         // Supabase's default email (which is unbranded + comes from a Supabase domain).
@@ -605,7 +738,9 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
         }
       }
       toast.push({ kind: 'success', title: mode === 'signup' ? 'Welcome to Rosy' : 'Welcome back', body: 'Loading your dashboard…' });
-      goToApp();
+      // Fresh signup → onboarding directly. Skips the 2 DB lookups goToApp
+      // does for already-onboarded users (saves ~0.5-2s on slow connections).
+      goToApp({ justSignedUp: mode === 'signup' });
     } catch (err) {
       toast.push({ kind: 'error', title: mode === 'signup' ? 'Signup failed' : 'Login failed', body: err.message || 'Try again.' });
       setSubmitting(false);
@@ -620,19 +755,22 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
       <div className="auth-form-wrap">
         <form className="auth-form" onSubmit={submit}>
           <div className="mk-logo" style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, fontSize: 32, fontWeight: 500, fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}><RoseLogo size={44} />Rosy<span className="accent"> Recruits</span></div>
-          <h2 className="display-md" style={{ fontSize: 32, textAlign: 'center' }}>{mode === 'login' ? 'Welcome back.' : mode === 'forgot' ? 'Reset your password.' : 'Create your account.'}</h2>
+          <h2 className="display-md" style={{ fontSize: 32, textAlign: 'center' }}>{mode === 'login' ? 'Welcome back.' : mode === 'forgot' ? 'Reset your password.' : mode === 'reset' ? 'Set a new password.' : 'Create your account.'}</h2>
           {mode === 'login' ? <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>Log in to manage your events and gigs.</p> :
             mode === 'signup' ? <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>Workers join free. Vendors add a card during onboarding to fund payouts.</p> :
+            mode === 'reset' ? <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>Choose a strong password to finish your reset.</p> :
             <p style={{ margin: '-6px 0 0', color: 'var(--color-muted)' }}>We'll email a link if there's a matching account.</p>}
 
-          <div className="field">
-            <label className="field-label">Email</label>
-            <input className="input" type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@yourstudio.com" />
-          </div>
+          {mode !== 'reset' ? (
+            <div className="field">
+              <label className="field-label">Email</label>
+              <input className="input" type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@yourstudio.com" />
+            </div>
+          ) : null}
 
           {mode !== 'forgot' ? (
             <div className="field">
-              <label className="field-label">Password</label>
+              <label className="field-label">{mode === 'reset' ? 'New password' : 'Password'}</label>
               <div style={{ position: 'relative' }}>
                 <input className="input" type={show ? 'text' : 'password'} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={pw} onChange={e => setPw(e.target.value)} placeholder="••••••••" style={{ paddingRight: 44 }} />
                 <button type="button" aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} onClick={() => setShow(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, padding: 6, cursor: 'pointer', color: 'var(--color-muted)' }}>{show ? <SX_I.EyeOff size={16} /> : <SX_I.Eye size={16} />}</button>
@@ -641,7 +779,7 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
             </div>
           ) : null}
 
-          {mode === 'signup' ? (
+          {mode === 'signup' || mode === 'reset' ? (
             <>
               <div className="col" style={{ gap: 6, padding: '6px 0' }}>
                 <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Password requirements</p>
@@ -658,19 +796,21 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
                   </div>
                 ))}
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 14.5, fontWeight: 500, color: 'var(--color-body-strong)', padding: '14px 16px', background: agree ? 'var(--rosy-teal-soft)' : 'var(--color-surface-soft)', border: `1.5px solid ${agree ? 'var(--rosy-teal)' : 'var(--color-hairline-strong)'}`, borderRadius: 12, cursor: 'pointer', transition: 'background 120ms ease, border-color 120ms ease' }} onClick={() => setAgree(a => !a)}>
-                <span className={`checkbox ${agree ? 'checked' : ''}`} style={{ width: 22, height: 22, flex: 'none' }}>{agree ? <SX_I.CheckCircle size={18} /> : null}</span>
-                <span>I agree to the <a style={{ color: 'var(--rosy-teal-dark)', textDecoration: 'underline' }}>terms of service</a> and <a style={{ color: 'var(--rosy-teal-dark)', textDecoration: 'underline' }}>privacy policy</a>.</span>
-              </label>
+              {mode === 'signup' ? (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 14.5, fontWeight: 500, color: 'var(--color-body-strong)', padding: '14px 16px', background: agree ? 'var(--rosy-teal-soft)' : 'var(--color-surface-soft)', border: `1.5px solid ${agree ? 'var(--rosy-teal)' : 'var(--color-hairline-strong)'}`, borderRadius: 12, cursor: 'pointer', transition: 'background 120ms ease, border-color 120ms ease' }} onClick={() => setAgree(a => !a)}>
+                  <span className={`checkbox ${agree ? 'checked' : ''}`} style={{ width: 22, height: 22, flex: 'none' }}>{agree ? <SX_I.CheckCircle size={18} /> : null}</span>
+                  <span>I agree to the <a style={{ color: 'var(--rosy-teal-dark)', textDecoration: 'underline' }}>terms of service</a> and <a style={{ color: 'var(--rosy-teal-dark)', textDecoration: 'underline' }}>privacy policy</a>.</span>
+                </label>
+              ) : null}
             </>
           ) : null}
 
           <button className="btn btn-coral btn-lg btn-block" type="submit"
-            disabled={submitting || (mode === 'signup' && (!allPass || !agree))}>
-            {submitting ? 'Just a moment…' : mode === 'login' ? 'Log in' : mode === 'forgot' ? 'Send reset link' : 'Sign up'}
+            disabled={submitting || (mode === 'signup' && (!allPass || !agree)) || (mode === 'reset' && !allPass)}>
+            {submitting ? 'Just a moment…' : mode === 'login' ? 'Log in' : mode === 'forgot' ? 'Send reset link' : mode === 'reset' ? 'Set new password' : 'Sign up'}
           </button>
 
-          {mode !== 'forgot' ? (
+          {mode !== 'forgot' && mode !== 'reset' ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: 'var(--color-muted-soft)', fontSize: 12, fontWeight: 500 }}>
                 <span style={{ flex: 1, height: 1, background: 'var(--color-hairline)' }} />or<span style={{ flex: 1, height: 1, background: 'var(--color-hairline)' }} />
@@ -682,6 +822,7 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
           <p style={{ margin: 0, fontSize: 13.5, color: 'var(--color-muted)', textAlign: 'center' }}>
             {mode === 'login' ? <>Need an account? <button type="button" className="btn-link" style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0 }} onClick={() => setMode('signup')}>Sign up</button></> :
              mode === 'signup' ? <>Already have an account? <button type="button" className="btn-link" style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0 }} onClick={() => setMode('login')}>Log in</button></> :
+             mode === 'reset' ? null :
              <button type="button" className="btn-link" style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0 }} onClick={() => setMode('login')}>Back to log in</button>}
           </p>
         </form>
@@ -694,13 +835,42 @@ function AuthPage({ mode = 'login', goToApp, setMode }) {
 function OnboardingPage({ onComplete }) {
   // Step 1 picks role(s). When done we surface the picked role through onComplete so app.jsx
   // can pin the demo role (signed-in role is already pinned via the session).
-  const [step, setStep] = SX_us(1);
-  const [role, setRole] = SX_us({ vendor: false, worker: false });
+  // Form state persists in localStorage so an accidental remount (e.g. parent
+  // re-evaluating its gate condition mid-submit) doesn't blank the user's input.
+  const LS_KEY = 'rosy.onboarding.draft.v1';
+  const readDraft = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) { return null; } };
+  const writeDraft = (patch) => { try { const cur = readDraft() || {}; localStorage.setItem(LS_KEY, JSON.stringify({ ...cur, ...patch })); } catch (e) {} };
+  const clearDraft = () => { try { localStorage.removeItem(LS_KEY); } catch (e) {} };
+  const persisted = readDraft();
   const blankFormData = { photo: null, first: '', last: '', phone: '', title: '', company: '', bio: '', services: [], address: '', hours: false };
-  const [vendorData, setVendorData] = SX_us(blankFormData);
-  const [workerData, setWorkerData] = SX_us(blankFormData);
+  const [step, setStep] = SX_us(persisted?.step || 1);
+  const [role, setRole] = SX_us(persisted?.role || { vendor: false, worker: false });
+  const [vendorData, _setVendorData] = SX_us(persisted?.vendorData || blankFormData);
+  const [workerData, _setWorkerData] = SX_us(persisted?.workerData || blankFormData);
+  const setVendorData = (v) => { const next = typeof v === 'function' ? v(vendorData) : v; _setVendorData(next); writeDraft({ vendorData: next }); };
+  const setWorkerData = (v) => { const next = typeof v === 'function' ? v(workerData) : v; _setWorkerData(next); writeDraft({ workerData: next }); };
+  React.useEffect(() => { writeDraft({ step, role }); }, [step, role.vendor, role.worker]);
   const [tc, setTc] = SX_us(false);
   const [tcOpen, setTcOpen] = SX_us(false);
+  // Defensive rehydrate: when the T&C modal closes (or any tcOpen transition),
+  // re-read localStorage and restore form state if it looks blank but the
+  // localStorage draft has data. Catches any edge case where vendorData/workerData
+  // state was reset mid-session (e.g. an async event triggered a parent re-render
+  // that re-initialized something).
+  React.useEffect(() => {
+    if (tcOpen) return; // only run when modal is closed
+    const cur = readDraft();
+    const isBlank = (d) => !d?.first && !d?.last && !d?.phone && !d?.bio && !d?.company;
+    const hasData = (d) => !!(d?.first || d?.last || d?.phone || d?.bio || d?.company);
+    if (cur?.vendorData && hasData(cur.vendorData) && isBlank(vendorData)) {
+      console.warn('[onb] vendor form looked blank — restoring from localStorage');
+      _setVendorData(cur.vendorData);
+    }
+    if (cur?.workerData && hasData(cur.workerData) && isBlank(workerData)) {
+      console.warn('[onb] worker form looked blank — restoring from localStorage');
+      _setWorkerData(cur.workerData);
+    }
+  }, [tcOpen]);
   const [stripeOpen, setStripeOpen] = SX_us(false);
   // Captured from TCModal — signature data URL, timestamp, optional W-9.
   const [termsPayload, setTermsPayload] = SX_us(null);
@@ -732,14 +902,25 @@ function OnboardingPage({ onComplete }) {
   };
   const finishComplete = async () => {
     if (submitting) return;
+    console.log('[onb] finishComplete start. step=', step, 'role=', role, 'tc=', tc, 'hasTerms=', !!termsPayload);
     const err = validateOnboarding();
-    if (err) { toast.push({ kind: 'warning', title: err.title, body: err.body }); return; }
+    if (err) {
+      console.warn('[onb] validation failed:', err);
+      toast.push({ kind: 'warning', title: err.title, body: err.body });
+      return;
+    }
     setSubmitting(true);
     const primary = role.vendor ? 'vendor' : 'worker';
     const formData = { ...(role.vendor ? vendorData : workerData), terms: termsPayload };
+    console.log('[onb] calling onComplete', primary, { first: formData.first, last: formData.last, hasPhoto: !!formData.photo, services: formData.services?.length, hours: formData.hours, dayHours: formData.dayHours });
+    // Clear the localStorage draft up front — once we've validated + handed off to the
+    // parent, this OnboardingPage is supposed to unmount. If the parent re-mounts it
+    // (the bug we keep chasing), the user's already past this form — restore would
+    // re-show stale data.
+    clearDraft();
     // Hard escape — if app.jsx hangs, re-enable the button after 5s so the user isn't trapped.
     const escape = setTimeout(() => setSubmitting(false), 5000);
-    try { await onComplete(primary, formData); } catch (e) { console.warn('onComplete failed:', e); }
+    try { await onComplete(primary, formData); console.log('[onb] onComplete returned'); } catch (e) { console.warn('[onb] onComplete failed:', e); }
     clearTimeout(escape);
     // App.jsx flips mode immediately so this component unmounts; the line below only
     // matters if something prevented that, in which case the user gets the button back.
@@ -812,7 +993,15 @@ function OnboardingPage({ onComplete }) {
         </div>
       ) : null}
 
-      <TCModal open={tcOpen} onClose={() => setTcOpen(false)} onAgree={(payload) => { setTermsPayload(payload || null); setTc(true); setTcOpen(false); toast.push({ kind: 'success', title: 'Terms accepted' }); }} role={role.vendor ? 'vendor' : 'worker'} />
+      <TCModal open={tcOpen} onClose={() => setTcOpen(false)}
+        onAgree={(payload) => { setTermsPayload(payload || null); setTc(true); setTcOpen(false); toast.push({ kind: 'success', title: 'Terms accepted' }); }}
+        role={role.vendor ? 'vendor' : 'worker'}
+        defaults={{
+          name: (() => {
+            const src = role.worker ? workerData : vendorData;
+            return `${src.first || ''} ${src.last || ''}`.trim();
+          })(),
+        }} />
 
       <Modal open={stripeOpen} onClose={() => setStripeOpen(false)} title="" size="md"
         footer={<><button className="btn btn-ghost" disabled={submitting} onClick={() => { setStripeOpen(false); finishComplete(); }}>{submitting ? 'Saving…' : 'Skip for now'}</button><button className="btn btn-coral" disabled={submitting} onClick={() => { setStripeOpen(false); toast.push({ kind: 'success', title: 'Connected to Stripe' }); finishComplete(); }}>{submitting ? 'Saving…' : 'Continue to Stripe'}</button></>}>
@@ -842,12 +1031,13 @@ function OnboardingPage({ onComplete }) {
   );
 }
 
-function TCModal({ open, onClose, onAgree, role }) {
+function TCModal({ open, onClose, onAgree, role, defaults = {} }) {
   // signature is now a data URL (PNG) when signed, null when cleared.
   const [signature, setSignature] = SX_us(null);
   const [readAck, setReadAck] = SX_us(false);
-  // Worker W-9 / TIN form state
-  const [wName, setWName] = SX_us('');
+  // Worker W-9 / TIN form state — Name pre-populates from the step-2 profile
+  // form so the worker doesn't retype their first + last name.
+  const [wName, setWName] = SX_us(defaults.name || '');
   const [wBusiness, setWBusiness] = SX_us('');
   const [wClass, setWClass] = SX_us('');
   const [wClassOther, setWClassOther] = SX_us('');
@@ -858,9 +1048,14 @@ function TCModal({ open, onClose, onAgree, role }) {
   React.useEffect(() => {
     if (!open) {
       setSignature(null); setReadAck(false);
-      setWName(''); setWBusiness(''); setWClass(''); setWClassOther(''); setWExempt(''); setWFatca(''); setWSsn(''); setWEin('');
+      // Reset W-9 fields on close; Name re-seeds from defaults next open.
+      setWName(defaults.name || ''); setWBusiness(''); setWClass(''); setWClassOther(''); setWExempt(''); setWFatca(''); setWSsn(''); setWEin('');
+    } else {
+      // Modal opened — re-seed Name in case the worker edited it on the
+      // previous form between opens.
+      setWName(defaults.name || '');
     }
-  }, [open]);
+  }, [open, defaults.name]);
 
   const workerValid = wName.trim() && wClass && (wSsn.trim() || wEin.trim());
   const signed = !!signature;
@@ -1000,13 +1195,37 @@ function TCModal({ open, onClose, onAgree, role }) {
 function ProfileForm({ role, data, onChange }) {
   // Controlled mode when parent passes data + onChange; falls back to internal state otherwise.
   const controlled = !!(data && onChange);
-  const defaultDayHours = { mon: { open: '09:00', close: '18:00' }, tue: { open: '09:00', close: '18:00' }, wed: { open: '09:00', close: '18:00' }, thu: { open: '09:00', close: '18:00' }, fri: { open: '09:00', close: '18:00' }, sat: { open: '09:00', close: '18:00' }, sun: { open: '09:00', close: '18:00' } };
-  const [_int, _setInt] = SX_us({ photo: null, first: '', last: '', phone: '', title: '', company: '', bio: '', services: [], address: '', hours: false, dayHours: defaultDayHours });
+  const DAY_OPTIONS = [['mon','Monday'],['tue','Tuesday'],['wed','Wednesday'],['thu','Thursday'],['fri','Friday'],['sat','Saturday'],['sun','Sunday']];
+  const DAY_ORDER = Object.fromEntries(DAY_OPTIONS.map(([k], i) => [k, i]));
+  // Hours periods are an array of {day, open, close} so a single day can have
+  // multiple non-overlapping ranges (e.g. 09:00–11:00 + 14:00–17:00).
+  const [_int, _setInt] = SX_us({ photo: null, first: '', last: '', phone: '', title: '', company: '', bio: '', services: [], address: '', hours: false, dayHours: [] });
   const d = controlled ? data : _int;
   const set = (patch) => { if (controlled) onChange({ ...data, ...patch }); else _setInt(prev => ({ ...prev, ...patch })); };
   const photo = d.photo, first = d.first, last = d.last, phone = d.phone, title = d.title, company = d.company, bio = d.bio, services = d.services || [], hours = d.hours;
-  const dayHours = d.dayHours || defaultDayHours;
-  const setDayHours = (day, field, val) => set({ dayHours: { ...dayHours, [day]: { ...(dayHours[day] || { open: '09:00', close: '18:00' }), [field]: val } } });
+  // Normalise stored value to the array shape; tolerate the legacy object shape
+  // from older saves ({ mon:{open,close}, ... }) by flattening it.
+  const rawHours = d.dayHours;
+  const hoursList = Array.isArray(rawHours)
+    ? rawHours
+    : (rawHours && typeof rawHours === 'object'
+        ? Object.entries(rawHours).map(([day, v]) => ({ day, open: v?.open || '09:00', close: v?.close || '18:00' }))
+        : []);
+  const sortPeriods = (arr) => [...arr].sort((a, b) => (DAY_ORDER[a.day] - DAY_ORDER[b.day]) || a.open.localeCompare(b.open) || a.close.localeCompare(b.close));
+  const sorted = sortPeriods(hoursList);
+  // Overlap: two intervals on the same day overlap iff a.open < b.close && b.open < a.close.
+  const overlaps = (idx, candidate, list = sorted) => list.some((p, i) => i !== idx && p.day === candidate.day && candidate.open < p.close && p.open < candidate.close);
+  const updatePeriod = (idx, patch) => {
+    const next = sorted.map((p, i) => i === idx ? { ...p, ...patch } : p);
+    set({ dayHours: sortPeriods(next) });
+  };
+  const removePeriod = (idx) => set({ dayHours: sortPeriods(sorted.filter((_, i) => i !== idx)) });
+  const addPeriod = () => {
+    // New row starts blank — user picks the day + times. Previously this
+    // auto-picked the last row's day which surprised people who wanted a
+    // different day (e.g. adding a Tuesday after a Monday entry).
+    set({ dayHours: [...sorted, { day: '', open: '09:00', close: '17:00' }] });
+  };
   const setPhoto = (v) => set({ photo: v });
   const setFirst = (v) => set({ first: v });
   const setLast = (v) => set({ last: v });
@@ -1014,7 +1233,17 @@ function ProfileForm({ role, data, onChange }) {
   const setTitle = (v) => set({ title: v });
   const setCompany = (v) => set({ company: v });
   const setBio = (v) => set({ bio: v });
-  const setHours = (fn) => set({ hours: typeof fn === 'function' ? fn(hours) : fn });
+  const setHours = (fn) => {
+    const next = typeof fn === 'function' ? fn(hours) : fn;
+    // Auto-add one default period the first time the toggle is flipped on so
+    // the user has a starting row to edit instead of a stranded empty card.
+    if (next && (!Array.isArray(d.dayHours) || d.dayHours.length === 0)) {
+      // First row starts empty so the user actively picks the day.
+      set({ hours: next, dayHours: [{ day: '', open: '09:00', close: '17:00' }] });
+    } else {
+      set({ hours: next });
+    }
+  };
   const allServices = ['Install & Breakdown','Onsite Design','D.I.Y. Couples','Studio Clean-Up','Event Consultations'];
   const toggleService = (s) => set({ services: services.includes(s) ? services.filter(x => x !== s) : [...services, s] });
   return (
@@ -1025,9 +1254,36 @@ function ProfileForm({ role, data, onChange }) {
         <div className="field"><label className="field-label">Last name</label><input className="input" autoComplete="family-name" value={last} onChange={e => setLast(e.target.value)} placeholder="Doe" /></div>
       </div>
       <div className="field"><label className="field-label">Phone number</label>
-        <input className="input" type="tel" autoComplete="tel" value={phone}
-          onChange={e => setPhone(e.target.value)}
-          placeholder="+1 (555) 555-0100" />
+        <input className="input" type="tel" inputMode="tel" autoComplete="tel" value={phone}
+          maxLength={20}
+          onChange={e => {
+            // Strip everything except digits and a leading + so users can't paste
+            // garbage. Cap at 15 digits per E.164 + then format US-style for the
+            // 10-digit case so the input stays readable as they type.
+            let raw = e.target.value || '';
+            const hasPlus = raw.trim().startsWith('+');
+            const digits = raw.replace(/\D/g, '').slice(0, 15);
+            let formatted;
+            if (!digits) {
+              formatted = hasPlus ? '+' : '';
+            } else if (hasPlus) {
+              // International: keep digits grouped after the + (no specific format)
+              formatted = '+' + digits;
+            } else if (digits.length <= 3) {
+              formatted = `(${digits}`;
+            } else if (digits.length <= 6) {
+              formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+            } else if (digits.length <= 10) {
+              formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+            } else {
+              // 11-15 digits without + → assume country code prefix
+              const cc = digits.slice(0, digits.length - 10);
+              const rest = digits.slice(-10);
+              formatted = `+${cc} (${rest.slice(0, 3)}) ${rest.slice(3, 6)}-${rest.slice(6)}`;
+            }
+            setPhone(formatted);
+          }}
+          placeholder="(555) 555-0100" />
         {(() => {
           const digits = (phone || '').replace(/\D/g, '');
           if (!digits) return null;
@@ -1056,6 +1312,53 @@ function ProfileForm({ role, data, onChange }) {
       <div className="field"><label className="field-label">{role === 'vendor' ? 'Studio address' : 'Home base'}</label>
         <AddressInput value={d.address || ''} onChange={(v, meta) => set({ address: v, addressParts: meta?.parts || null, addressLatLng: meta ? { lat: meta.lat, lng: meta.lng } : null })} placeholder={role === 'vendor' ? 'Search your studio address' : 'City or neighborhood'} />
       </div>
+      {role === 'worker' ? (() => {
+        // Travel addresses — overrides the worker's "available location" between
+        // start_date and end_date. Worker can add as many as they like (one row
+        // per trip). Empty home base + filled travel = travelling-only worker.
+        const travel = Array.isArray(d.travelAddresses) ? d.travelAddresses : [];
+        const updateTravel = (idx, patch) => {
+          const next = travel.map((t, i) => i === idx ? { ...t, ...patch } : t);
+          set({ travelAddresses: next });
+        };
+        const removeTravel = (idx) => set({ travelAddresses: travel.filter((_, i) => i !== idx) });
+        const addTravel = () => set({ travelAddresses: [...travel, { id: 't_' + Math.random().toString(36).slice(2, 8), address: '', addressParts: null, addressLatLng: null, start_date: '', end_date: '' }] });
+        return (
+          <div className="field">
+            <label className="field-label">Temporary addresses <span className="t-muted" style={{ fontWeight: 400 }}>(optional, for travel)</span></label>
+            <p className="field-hint" style={{ margin: '-2px 0 8px', fontSize: 12, color: 'var(--color-muted)' }}>While these dates are active, vendors see this address as your available location instead of your home base.</p>
+            {travel.length > 0 ? (
+              <div className="card" style={{ background: 'var(--color-surface-soft)', padding: 12 }}>
+                {travel.map((t, idx) => (
+                  <div key={t.id || idx} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 140px 36px', gap: 10, alignItems: 'end', padding: '8px 0', borderBottom: idx < travel.length - 1 ? '1px solid var(--color-hairline)' : 'none' }}>
+                    <div>
+                      <label className="field-label" style={{ fontSize: 11, color: 'var(--color-muted-soft)' }}>Address</label>
+                      <AddressInput
+                        value={t.address || ''}
+                        onChange={(v, meta) => updateTravel(idx, { address: v, addressParts: meta?.parts || null, addressLatLng: meta ? { lat: meta.lat, lng: meta.lng } : null })}
+                        placeholder="City or neighborhood" />
+                    </div>
+                    <div>
+                      <label className="field-label" style={{ fontSize: 11, color: 'var(--color-muted-soft)' }}>Start</label>
+                      <input className="input" type="date" value={t.start_date || ''} onChange={(e) => updateTravel(idx, { start_date: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="field-label" style={{ fontSize: 11, color: 'var(--color-muted-soft)' }}>End</label>
+                      <input className="input" type="date" min={t.start_date || undefined} value={t.end_date || ''} onChange={(e) => updateTravel(idx, { end_date: e.target.value })} />
+                    </div>
+                    <button type="button" className="btn btn-ghost" onClick={() => removeTravel(idx)} aria-label="Remove travel address" style={{ height: 40, padding: 0, width: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <SX_I.Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={addTravel} style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <SX_I.Plus size={14} />Add temporary address
+            </button>
+          </div>
+        );
+      })() : null}
       {role === 'vendor' ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1063,14 +1366,45 @@ function ProfileForm({ role, data, onChange }) {
             <span className={`toggle ${hours ? 'on' : ''}`} onClick={() => setHours(h => !h)} />
           </div>
           {hours ? (
-            <div className="card" style={{ background: 'var(--color-surface-soft)' }}>
-              {[['Mon','mon'],['Tue','tue'],['Wed','wed'],['Thu','thu'],['Fri','fri'],['Sat','sat'],['Sun','sun']].map(([label, key]) => (
-                <div key={key} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: 12, alignItems: 'center', padding: '6px 0' }}>
-                  <span style={{ fontWeight: 500, fontSize: 13 }}>{label}</span>
-                  <input className="input" type="time" value={dayHours[key]?.open || '09:00'} onChange={(e) => setDayHours(key, 'open', e.target.value)} style={{ height: 36 }} />
-                  <input className="input" type="time" value={dayHours[key]?.close || '18:00'} onChange={(e) => setDayHours(key, 'close', e.target.value)} style={{ height: 36 }} />
-                </div>
-              ))}
+            <div className="card" style={{ background: 'var(--color-surface-soft)', padding: 12 }}>
+              {sorted.map((period, idx) => {
+                // Accept all edits — including transient invalid states like
+                // open > close while the user is still typing. Earlier the
+                // rule "ignore inverted ranges silently" prevented users from
+                // typing 11:00 when close was 10:00 (the in-progress 11:00
+                // value was >= 10:00 so the keystroke was rejected and the
+                // field snapped back). Validation now runs on submit only;
+                // bad ranges show inline warnings instead.
+                const tryUpdate = (patch) => updatePeriod(idx, patch);
+                const cand = period;
+                const invalid = cand.day && cand.open && cand.close && (cand.open >= cand.close);
+                const overlap = cand.day && overlaps(idx, cand);
+                return (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr 36px', gap: 10, alignItems: 'center', padding: '6px 0' }}>
+                    <select
+                      className="input"
+                      value={period.day || ''}
+                      onChange={(e) => tryUpdate({ day: e.target.value })}
+                      style={{ height: 38, padding: '0 12px', lineHeight: '38px' }}
+                    >
+                      <option value="" disabled>Pick day…</option>
+                      {DAY_OPTIONS.map(([k, label]) => (
+                        <option key={k} value={k}>{label}</option>
+                      ))}
+                    </select>
+                    <input className="input" type="time" value={period.open} onChange={(e) => tryUpdate({ open: e.target.value })} style={{ height: 38, borderColor: invalid ? 'var(--rosy-coral)' : undefined }} />
+                    <input className="input" type="time" value={period.close} onChange={(e) => tryUpdate({ close: e.target.value })} style={{ height: 38, borderColor: invalid ? 'var(--rosy-coral)' : undefined }} />
+                    <button type="button" className="btn btn-ghost" onClick={() => removePeriod(idx)} aria-label="Remove period" style={{ height: 38, padding: 0, width: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <SX_I.Trash2 size={16} />
+                    </button>
+                    {invalid ? <p style={{ gridColumn: '1 / -1', margin: '2px 0 0', fontSize: 11.5, color: 'var(--rosy-coral)' }}>Close time must be after open time.</p> : null}
+                    {!invalid && overlap ? <p style={{ gridColumn: '1 / -1', margin: '2px 0 0', fontSize: 11.5, color: 'var(--rosy-coral)' }}>Overlaps another period on the same day.</p> : null}
+                  </div>
+                );
+              })}
+              <button type="button" className="btn btn-ghost" onClick={addPeriod} style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <SX_I.Plus size={14} />Add another period
+              </button>
             </div>
           ) : null}
         </>

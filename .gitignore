@@ -1,15 +1,6 @@
-# OS / editor noise
-.DS_Store
-.vscode/
-.idea/
-
-# Vercel local cache
-.vercel
-
-# Claude Code workspace state
-.claude/
-project/.serena/
-
-# Local archives — original Bubble export sits in "app data/", not pushed
-*.zip
-chats/
+node_modules/
+test-results/
+playwright-report/
+playwright/.cache/
+.vercel/
+.auth/

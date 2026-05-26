@@ -61,7 +61,15 @@
     });
 
     // Register the service worker (offline shell + install support).
+    // Service worker disabled: it was an extra cache layer with no real PWA
+    // benefit, and admins kept seeing stale JSX on other tabs after changes.
+    // Aggressively unregister any leftover SW + clear its caches so existing
+    // users get a clean slate after this deploy.
     if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister().catch(()=>{})));
+      try { caches.keys().then(keys => keys.forEach(k => caches.delete(k).catch(()=>{}))); } catch (e) {}
+    }
+    if (false && 'serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('SW registration failed:', err));
       });
@@ -71,20 +79,28 @@
 <body>
   <div id="root"></div>
 
-  <script type="text/babel" src="project/src/icons.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/data.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/supabase_client.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/components.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/screen_dashboards.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/screen_events.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/screen_gigs.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/screen_admin.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/screen_misc.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/marketing_pages.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/extras.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/form_helpers.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/admin_extras.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/tweaks.jsx" data-presets="react"></script>
-  <script type="text/babel" src="project/src/app.jsx" data-presets="react"></script>
+  <!-- Cache-bust JSX on every deploy. We probe the current JSX file's
+       ETag/Last-Modified once, then load all JSX files with that stamp as a
+       query param. New deploy = different stamp = fresh fetch.
+       Falls back to a per-session timestamp if the probe fails. -->
+  <script>(function(){
+    var bust = String(Date.now());
+    try {
+      var x = new XMLHttpRequest();
+      x.open('HEAD', 'project/src/app.jsx', false);
+      x.send();
+      var lm = x.getResponseHeader('Last-Modified') || x.getResponseHeader('ETag');
+      if (lm) bust = lm.replace(/[^A-Za-z0-9]/g,'').slice(0,24);
+    } catch(e) {}
+    window.__ROSY_BUST = bust;
+    ['icons','data','supabase_client','components','screen_dashboards','screen_events','screen_gigs','screen_admin','screen_misc','marketing_pages','extras','form_helpers','admin_extras','tweaks','app'].forEach(function(name){
+      var s = document.createElement('script');
+      s.type = 'text/babel';
+      s.src = 'project/src/' + name + '.jsx?v=' + bust;
+      s.dataset.presets = 'react';
+      s.async = false;
+      document.head.appendChild(s);
+    });
+  })();</script>
 </body>
 </html>

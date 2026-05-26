@@ -148,7 +148,10 @@ function buildUsers(profiles, vendors, workers) {
       status:  p.status || 'active',
       verified: p.verified === false ? false : (p.verified === true ? true : null),
       onboarding_complete: !!p.onboarding_complete,
-      joined:  (p.created_at || '').slice(0, 10),
+      // Full ISO timestamp — fmtDate renders in the viewer's local timezone.
+      // Pre-slicing to YYYY-MM-DD here caused dates to drift back a day for
+      // users west of UTC because JS parses bare date strings as UTC midnight.
+      joined:  p.created_at || null,
       // Address fields — keep raw + formatted so the admin edit form has separate inputs
       // while the read view can still show "City, State".
       street:  p.street || null,
@@ -256,7 +259,16 @@ function buildGigs(rows, applications) {
 
 function buildTransactions(applications, usersById) {
   return applications
-    .filter(a => a.amount_due != null || a.payment_status)
+    // Show on Payments table when there's an actual money dimension —
+    // confirmed/completed app OR a payment_status that isn't the default 'not_due'.
+    // A freshly-applied row (status='applied', payment_status='not_due', no
+    // amount) is NOT a payment yet and shouldn't pollute the vendor's totals.
+    .filter(a => {
+      if (a.amount_due != null && Number(a.amount_due) > 0) return true;
+      if (a.payment_status && a.payment_status !== 'not_due') return true;
+      if (['confirmed', 'completed'].includes(a.status)) return true;
+      return false;
+    })
     .map(a => {
       const worker = usersById[a.worker_id];
       const vendor = usersById[a.vendor_id];
@@ -336,6 +348,10 @@ function buildFaqs(rows) {
     q: f.question, a: f.answer,
     id: f.id, question: f.question, answer: f.answer,
     sort_order: f.sort_order, is_visible: f.is_visible,
+    // Carry audiences through so consumer pages can filter (vendor/worker/marketing).
+    audiences: Array.isArray(f.audiences) ? f.audiences : [],
+    // Per-audience sort order (jsonb { vendor: 2, worker: 0, marketing: 4 }).
+    audience_orders: f.audience_orders && typeof f.audience_orders === 'object' ? f.audience_orders : {},
   }));
 }
 
@@ -356,7 +372,13 @@ window.bootRosyFromSupabase = async function bootRosyFromSupabase() {
       applications, notifications, conversations, messages,
       faqs, testimonials,
     ] = await Promise.all([
-      fetchAll('rr_profiles',         { orderBy: { col: 'created_at', asc: false } }),
+      // Bulk read via the safe view. The base rr_profiles table is now
+      // owner-or-admin-only at the RLS layer, so a SELECT * across all users
+      // would only return the caller's own row. The view exposes non-sensitive
+      // columns (name, role, status, avatar, city/state, bio, title) for
+      // every user, but omits stripe_*, w9_*, signatures, phone, email,
+      // street/zip, push tokens, etc.
+      fetchAll('rr_profiles_public',  { orderBy: { col: 'created_at', asc: false } }),
       fetchAll('rr_vendor_profiles'),
       fetchAll('rr_worker_profiles'),
       fetchAll('rr_venues',           { orderBy: { col: 'name' } }),
@@ -484,6 +506,10 @@ function eventDbToUi(row, fallbackImages = []) {
     desc:        row.description || '',
     status:      row.status,
     types:       row.gig_types || [],
+    // Preserve the DB row creation timestamp — Sidebar badges use it to count
+    // items added since the user's last login. Without this the count fell
+    // back to event_date (a future date), so badges always stuck at 1.
+    created_at:  row.created_at || null,
     gigCount:    0,
     filledCount: 0,
   };
@@ -522,6 +548,8 @@ function gigDbToUi(row) {
     status:      statusForUI(row.status),
     assignedTo:  [],
     description: row.description || '',
+    // Preserve creation timestamp — Sidebar badges use it for "new since login".
+    created_at:  row.created_at || null,
   };
 }
 
@@ -689,18 +717,14 @@ window.RosyMutate = {
       const worker = window.RosyData.USERS.find(u => u.id === workerId);
       const vendorId = window.RosyData.EVENTS.find(e => e.id === gig?.eventId)?.vendorId;
       const tempId = genId('r');
-      const optimistic = {
-        id: tempId,
-        invoice: tempId.slice(0, 8).toUpperCase(),
-        payer: window.RosyData.USERS.find(u => u.id === vendorId)?.company || 'Vendor',
-        payee: worker?.name || 'You',
-        amount: 0,
-        status: 'Applied',
-        date: new Date().toISOString().slice(0, 10),
-      };
-      window.RosyData.TRANSACTIONS.unshift(optimistic);
+      // Only push into APPLICATIONS — TRANSACTIONS is for payments-with-money,
+      // not "intent to apply". Previously a $0 Applied row was leaking into the
+      // vendor's Payments table for every fresh application.
+      const apps = window.RosyData.APPLICATIONS = window.RosyData.APPLICATIONS || [];
+      const appOptimistic = { id: tempId, gigId, workerId, vendorId, status: 'applied', appliedAt: new Date().toISOString() };
+      apps.unshift(appOptimistic);
       notifyChange();
-      if (!isLive()) return optimistic;
+      if (!isLive()) return appOptimistic;
       const { data, error } = await window.sb.from('rr_gig_applications').insert({
         gig_id:    gigId,
         worker_id: workerId,
@@ -709,11 +733,26 @@ window.RosyMutate = {
         applied_at: new Date().toISOString(),
         skill:     gig?.type || null,
       }).select().single();
-      if (error) { removeById(window.RosyData.TRANSACTIONS, tempId); notifyChange(); throw error; }
-      // Swap temp id with real id
-      const i = window.RosyData.TRANSACTIONS.findIndex(t => t.id === tempId);
-      if (i >= 0) window.RosyData.TRANSACTIONS[i] = { ...optimistic, id: data.id, invoice: data.request_code || data.id.slice(0, 8).toUpperCase() };
+      if (error) { removeById(apps, tempId); notifyChange(); throw error; }
+      const ai = apps.findIndex(a => a.id === tempId);
+      if (ai >= 0) apps[ai] = { ...appOptimistic, id: data.id, status: data.status || 'applied' };
       notifyChange();
+      // In-app notification for the vendor so the bell badge + Notifications
+      // page light up. (Previously only Postmark fired — vendor saw nothing in
+      // the UI until they happened to open their inbox.)
+      try {
+        const event = window.RosyData.EVENTS.find(e => e.id === gig?.eventId);
+        if (vendorId) {
+          await window.sb.from('rr_notifications').insert({
+            user_id: vendorId,
+            type: 'application_received',
+            title: 'New application',
+            body: `${worker?.name || 'A worker'} applied for the ${gig?.type || 'gig'} role on ${event?.name || 'your event'}.`,
+            link: `#app/events:${gig?.eventId}`,
+            read: false,
+          });
+        }
+      } catch (e) { console.warn('application notification insert failed:', e); }
       // Postmark — notify vendor of new application (demo redirects to ben@pronocoders.com)
       try {
         const vendor = window.RosyData.USERS.find(u => u.id === vendorId);
@@ -841,13 +880,80 @@ window.RosyMutate = {
       if (error) throw error;
       // Also bump conversation last_message_at
       window.sb.from('rr_conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId).then(() => {});
+      // Fire the throttled email notification in the background — the endpoint
+      // dedupes so a burst of 10 messages from the same sender = 1 email.
+      (async () => {
+        try {
+          const { data: s } = await window.sb.auth.getSession();
+          await fetch('/api/message-notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.session?.access_token || ''}` },
+            body: JSON.stringify({ conversationId, senderId, recipientId }),
+          });
+        } catch (e) { /* don't surface email errors to the chat UI */ }
+      })();
       return { id: data.id, text: data.content, who: 'me', time: 'Just now', day: 'Today' };
+    },
+    async markSeen({ conversationId, userId }) {
+      // Two responsibilities:
+      //   1) Stamp seen_by[userId] so the email-notify throttle can re-arm.
+      //   2) Flip read_at on every unread message addressed to this user in
+      //      this conversation. Without #2 the Inbox sidebar badge never
+      //      clears even after the user has visibly viewed the thread.
+      guardMutation('markSeen');
+      if (!isLive() || !conversationId || !userId) return;
+      try {
+        const nowIso = new Date().toISOString();
+        const { data } = await window.sb.from('rr_conversations').select('seen_by').eq('id', conversationId).maybeSingle();
+        const seen = { ...(data?.seen_by || {}), [userId]: nowIso };
+        await window.sb.from('rr_conversations').update({ seen_by: seen }).eq('id', conversationId);
+        await window.sb.from('rr_messages')
+          .update({ read_at: nowIso })
+          .eq('conversation_id', conversationId)
+          .eq('recipient_id', userId)
+          .is('read_at', null);
+        // Optimistically update local cache so the sidebar badge reflects the
+        // change immediately (realtime echo arrives a heartbeat later).
+        const conv = (window.RosyData?.MESSAGES || []).find(c => c.id === conversationId);
+        if (conv) {
+          (conv.messages || []).forEach(m => {
+            if (m.recipientId === userId && !m.read_at) m.read_at = nowIso;
+          });
+          conv.unread = 0;
+          notifyChange();
+        }
+      } catch (e) { console.warn('markSeen failed:', e); }
     },
   },
 
   conversations: {
     async create({ subject, startedBy, participants, eventId, gigAppId }) {
       guardMutation('create');
+      // Defensive dedupe: for 1:1 DMs with no event/gig context, look up an
+      // existing thread between the same two people and return it instead of
+      // inserting a duplicate row. Without this, two clients clicking
+      // "Message" near-simultaneously would each create a new thread.
+      if (isLive() && Array.isArray(participants) && participants.length === 2 && !eventId && !gigAppId) {
+        const sortedTwo = [...participants].sort();
+        const { data: hits } = await window.sb
+          .from('rr_conversations')
+          .select('id, subject, participants, started_by')
+          .contains('participants', sortedTwo)
+          .is('event_id', null)
+          .is('gig_app_id', null)
+          .limit(5);
+        const match = (hits || []).find(c => {
+          const parts = [...(c.participants || [])].sort();
+          return parts.length === 2 && parts[0] === sortedTwo[0] && parts[1] === sortedTwo[1];
+        });
+        if (match) {
+          const other = participants.find(p => p !== startedBy) || participants[0];
+          const live = { id: match.id, with: other, name: match.subject, online: false, unread: 0, preview: '', messages: [] };
+          if (!window.RosyData.MESSAGES.find(m => m.id === live.id)) window.RosyData.MESSAGES.unshift(live);
+          notifyChange();
+          return live;
+        }
+      }
       const tempId = genId('c');
       const optimistic = { id: tempId, with: participants[0], name: subject, online: false, unread: 0, preview: '', messages: [] };
       window.RosyData.MESSAGES.unshift(optimistic);
@@ -981,24 +1087,52 @@ function applyVenueChange(payload) {
 function applyApplicationChange(payload) {
   const { eventType, new: row, old } = payload;
   const arr = window.RosyData.TRANSACTIONS;
-  if (eventType === 'DELETE') { removeById(arr, old.id); return true; }
+  const apps = window.RosyData.APPLICATIONS = window.RosyData.APPLICATIONS || [];
+  if (eventType === 'DELETE') {
+    removeById(arr, old.id);
+    removeById(apps, old.id);
+    return true;
+  }
   if (__selfOriginIds.has(row.id)) return false;
+  // Mirror into APPLICATIONS so UI predicates (`hasApplied`, "Applied" badge,
+  // My Gigs filter) see the new row immediately. Previously only TRANSACTIONS
+  // got updated, so the worker's apply screen kept showing the Apply button
+  // even after a successful insert.
+  const appUi = {
+    id: row.id, gigId: row.gig_id, workerId: row.worker_id, vendorId: row.vendor_id,
+    status: row.status, paymentStatus: row.payment_status,
+    appliedAt: row.applied_at, confirmedAt: row.confirmed_at, completedAt: row.completed_at,
+    hoursWorked: row.hours_worked, workerNotes: row.worker_notes, vendorNotes: row.vendor_notes,
+  };
+  const appIdx = apps.findIndex(a => a.id === row.id);
+  if (appIdx >= 0) apps[appIdx] = appUi; else apps.unshift(appUi);
   const usersById = Object.fromEntries(window.RosyData.USERS.map(u => [u.id, u]));
   const worker = usersById[row.worker_id];
   const vendor = usersById[row.vendor_id];
-  const ui = {
-    id:      row.id,
-    invoice: row.request_code || row.id.slice(0, 8).toUpperCase(),
-    payer:   vendor?.company || vendor?.name || 'Vendor',
-    payee:   worker?.name || 'Worker',
-    amount:  Number(row.amount_due || row.estimated_amount || 0),
-    status:  paymentStatusForUI(row.payment_status),
-    date:    (row.paid_at || row.completed_at || row.confirmed_at || row.applied_at || '').slice(0, 10),
-    note:    row.cancellation_reason || null,
-  };
-  const existing = arr.find(t => t.id === row.id);
-  if (existing) Object.assign(existing, ui);
-  else arr.unshift(ui);
+  // TRANSACTIONS row only when the app has a real money dimension — matches
+  // buildTransactions' filter. Default-state 'applied'+'not_due' rows DO NOT
+  // belong in the vendor's Payments table.
+  const hasPaymentDim = (row.amount_due != null && Number(row.amount_due) > 0)
+    || (row.payment_status && row.payment_status !== 'not_due')
+    || ['confirmed', 'completed'].includes(row.status);
+  if (hasPaymentDim) {
+    const ui = {
+      id:      row.id,
+      invoice: row.request_code || row.id.slice(0, 8).toUpperCase(),
+      payer:   vendor?.company || vendor?.name || 'Vendor',
+      payee:   worker?.name || 'Worker',
+      amount:  Number(row.amount_due || row.estimated_amount || 0),
+      status:  paymentStatusForUI(row.payment_status),
+      date:    (row.paid_at || row.completed_at || row.confirmed_at || row.applied_at || '').slice(0, 10),
+      note:    row.cancellation_reason || null,
+    };
+    const existing = arr.find(t => t.id === row.id);
+    if (existing) Object.assign(existing, ui);
+    else arr.unshift(ui);
+  } else {
+    // App lost its payment dimension — drop the row.
+    removeById(arr, row.id);
+  }
   // Also bump the gig's spotsFilled if status moved to 'confirmed'
   if (eventType !== 'DELETE' && row.status === 'confirmed') {
     const gig = window.RosyData.GIGS.find(g => g.id === row.gig_id);
@@ -1024,6 +1158,76 @@ function applyMessageChange(payload) {
   conv.preview = row.content || conv.preview;
   return true;
 }
+// Rebuild a single USERS entry from its rr_profiles + rr_vendor_profiles + rr_worker_profiles
+// rows. Used by the rr_profiles / rr_vendor_profiles / rr_worker_profiles realtime
+// handlers so an admin's already-loaded session picks up new signups + edits
+// without a page reload. Async — fires a notifyChange after splicing in.
+async function refreshUserById(id) {
+  if (!id || !window.sb || !window.RosyData) return false;
+  try {
+    // Use the safe view so non-admin sessions can refresh USERS rows for OTHER
+    // users (e.g. when a vendor sees an updated worker name). Admins reading
+    // their own user-detail drawer go through their own dedicated path
+    // (screen_admin.jsx user fetch) which uses the base table for full data.
+    const myId = window.sb?.auth?.getSession ? null : null; // placeholder
+    const baseTable = (id === window.RosyData?.__currentUserId) ? 'rr_profiles' : 'rr_profiles_public';
+    const [{ data: p }, { data: v }, { data: w }] = await Promise.all([
+      window.sb.from(baseTable).select('*').eq('id', id).maybeSingle(),
+      window.sb.from('rr_vendor_profiles').select('*').eq('id', id).maybeSingle(),
+      window.sb.from('rr_worker_profiles').select('*').eq('id', id).maybeSingle(),
+    ]);
+    const users = window.RosyData.USERS = window.RosyData.USERS || [];
+    if (!p) {
+      // Profile deleted — drop from USERS.
+      const i = users.findIndex(u => u.id === id);
+      if (i >= 0) users.splice(i, 1);
+      notifyChange();
+      return true;
+    }
+    const [rebuilt] = buildUsers([p], v ? [v] : [], w ? [w] : []);
+    const i = users.findIndex(u => u.id === id);
+    if (i >= 0) users[i] = rebuilt;
+    else users.unshift(rebuilt);
+    notifyChange();
+    return true;
+  } catch (e) { console.warn('[realtime refreshUserById]', e); return false; }
+}
+
+function applyProfileChange(payload) {
+  const id = payload?.new?.id || payload?.old?.id;
+  if (!id) return false;
+  refreshUserById(id);
+  return false; // async refresh handles its own notifyChange
+}
+
+function applyVendorProfileChange(payload) {
+  const id = payload?.new?.id || payload?.old?.id;
+  if (!id) return false;
+  refreshUserById(id);
+  return false;
+}
+
+function applyWorkerProfileChange(payload) {
+  const id = payload?.new?.id || payload?.old?.id;
+  if (!id) return false;
+  refreshUserById(id);
+  return false;
+}
+
+function applyFaqChange(payload) {
+  const { eventType, new: row } = payload;
+  const arr = window.RosyData.FAQS = window.RosyData.FAQS || [];
+  if (eventType === 'DELETE') { removeById(arr, payload.old.id); return true; }
+  // Use the same mapper as initial hydration so the row shape stays consistent.
+  const [mapped] = buildFaqs([row]);
+  const existing = arr.find(f => f.id === mapped.id);
+  if (existing) Object.assign(existing, mapped);
+  else arr.push(mapped);
+  // Resort by sort_order so admin's manual ordering is reflected immediately.
+  arr.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  return true;
+}
+
 function applyNotificationChange(payload) {
   const { eventType, new: row } = payload;
   const arr = window.RosyData.NOTIFICATIONS;
@@ -1046,6 +1250,16 @@ window.subscribeRealtime = function subscribeRealtime() {
     ['rr_gig_applications', applyApplicationChange],
     ['rr_messages',         applyMessageChange],
     ['rr_notifications',    applyNotificationChange],
+    // User-data tables — needed so admins see new signups + profile edits
+    // immediately (was missing, caused new vendor signups to not appear in
+    // admin dashboard until a full page reload).
+    ['rr_profiles',         applyProfileChange],
+    ['rr_vendor_profiles',  applyVendorProfileChange],
+    ['rr_worker_profiles',  applyWorkerProfileChange],
+    // FAQs — without this, new/edited/deleted FAQs only appear on other
+    // tabs after a hard refresh, and audience-only FAQs leak through to the
+    // wrong consumer surfaces until the cache settles.
+    ['rr_faqs',             applyFaqChange],
   ];
   tables.forEach(([table, handler]) => {
     ch.on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
@@ -1056,7 +1270,7 @@ window.subscribeRealtime = function subscribeRealtime() {
     });
   });
   ch.subscribe((status) => {
-    if (status === 'SUBSCRIBED') console.info('[realtime] connected — listening on 6 tables');
+    if (status === 'SUBSCRIBED') console.info('[realtime] connected — listening on 9 tables');
     else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') console.warn('[realtime] status:', status);
   });
   __realtimeChannel = ch;

@@ -127,6 +127,10 @@ function PagePayments({ role, currentUser, setRoute, openId }) {
 
   return (
     <div className="content fade-up">
+      {/* Stripe Connect prompt mirrors the dashboard banner — the Payments
+          screen is where vendors/workers think about money, so the connect
+          CTA should be here too. Self-hides once payouts are enabled. */}
+      {window.StripeConnectBanner ? <window.StripeConnectBanner user={currentUser} /> : null}
       <div className="grid-4" style={{ marginBottom: 24 }}>
         <StatCard icon={SP_I.DollarSign}    label={role === 'worker' ? 'Total earned' : 'Total paid'} value={totalEarned}  prefix="$" />
         <StatCard icon={SP_I.Clock}         label="Pending"  value={totalPending} prefix="$" />
@@ -678,17 +682,35 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
                     <button className="row-action-btn" onClick={() => { setSelected(u); setEditing(true); }} title="Edit profile"><SP_I.Pencil size={14} /></button>
                     {u.role !== 'admin' && u.verified !== true ? (
                       <button className="row-action-btn" onClick={async () => {
-                        setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), verified: true } }));
+                        // Hit the admin endpoint FIRST and only flip the UI if
+                        // it actually wrote to the DB. Previously the in-memory
+                        // override + DOM update fired regardless, so a silent
+                        // 500/401 left admin thinking the user was approved
+                        // while the worker's wall stayed up.
+                        let ok = false;
                         try {
                           const { data: s } = await window.sb.auth.getSession();
-                          await fetch('/api/admin/profile-update', {
+                          const r = await fetch('/api/admin/profile-update', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (s?.session?.access_token || '') },
                             body: JSON.stringify({ userId: u.id, fields: { verified: true } }),
                           });
-                        } catch (e) { console.warn(e); }
+                          ok = r.ok;
+                          if (!ok) {
+                            const errText = await r.text().catch(() => '');
+                            console.warn('[approve] API failed:', r.status, errText.slice(0, 200));
+                            toast.push({ kind: 'error', title: 'Approval failed', body: `Server returned ${r.status}. Try again.` });
+                            return;
+                          }
+                        } catch (e) {
+                          console.warn('[approve] network error:', e);
+                          toast.push({ kind: 'error', title: 'Approval failed', body: 'Network error — check your connection and try again.' });
+                          return;
+                        }
+                        setOverrides(o => ({ ...o, [u.id]: { ...(o[u.id] || {}), verified: true } }));
                         const uu = (window.RosyData?.USERS || []).find(x => x.id === u.id);
                         if (uu) { uu.verified = true; window.dispatchEvent(new CustomEvent('rosy:data-changed')); }
+                        toast.push({ kind: 'success', title: `${u.first || u.name || 'User'} approved`, body: 'They can now access the app.' });
                         // Send verified email via Postmark (demo redirects to ben@pronocoders.com)
                         try {
                           if (window.RosySendEmail) {
@@ -745,25 +767,44 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
           setOverrides(o => ({ ...o, [selected.id]: { ...(o[selected.id] || {}), ...draft } }));
           const live = (window.RosyData?.USERS || []).find(u => u.id === selected.id);
           if (live) {
-            Object.assign(live, {
-              photo: draft.photo, first: draft.first, last: draft.last, name: `${draft.first} ${draft.last}`.trim() || live.name,
+            // Patch defensively: skip undefined keys so a partial `draft` (e.g.
+            // a single-field action button) can't wipe the rest of the record.
+            const patch = {
+              photo: draft.photo, first: draft.first, last: draft.last,
               email: draft.email, phone: draft.phone, title: draft.title, bio: draft.bio,
               street: draft.street, zip: draft.zip,
               company: draft.company, company_name: draft.company,
-            });
+              status: draft.status,
+            };
+            Object.keys(patch).forEach(k => { if (patch[k] === undefined) delete patch[k]; });
+            if (draft.first !== undefined || draft.last !== undefined) {
+              patch.name = `${draft.first ?? live.first ?? ''} ${draft.last ?? live.last ?? ''}`.trim() || live.name;
+            }
+            Object.assign(live, patch);
             window.dispatchEvent(new CustomEvent('rosy:data-changed'));
           }
           // Persist to Supabase. Admins bypass the elevation trigger so writes go through.
           try {
             if (window.sb) {
-              const { error: pErr } = await window.sb.from('rr_profiles').update({
-                first_name: draft.first || null, last_name: draft.last || null,
-                phone: draft.phone || null, title: draft.title || null,
-                bio: draft.bio || null, avatar_url: draft.photo || null,
-                street: draft.street || null, city: draft.city || null,
-                state: draft.state || null, zip: draft.zip || null,
-              }).eq('id', selected.id);
-              if (pErr) throw pErr;
+              // Build a partial update from defined draft fields only — a
+              // status-only action mustn't null out first_name/email/etc.
+              const profilePatch = {};
+              if (draft.first  !== undefined) profilePatch.first_name = draft.first || null;
+              if (draft.last   !== undefined) profilePatch.last_name  = draft.last  || null;
+              if (draft.phone  !== undefined) profilePatch.phone      = draft.phone || null;
+              if (draft.title  !== undefined) profilePatch.title      = draft.title || null;
+              if (draft.bio    !== undefined) profilePatch.bio        = draft.bio   || null;
+              if (draft.photo  !== undefined) profilePatch.avatar_url = draft.photo || null;
+              if (draft.street !== undefined) profilePatch.street     = draft.street|| null;
+              if (draft.city   !== undefined) profilePatch.city       = draft.city  || null;
+              if (draft.state  !== undefined) profilePatch.state      = draft.state || null;
+              if (draft.zip    !== undefined) profilePatch.zip        = draft.zip   || null;
+              if (draft.geoAddress !== undefined) profilePatch.geo_address = draft.geoAddress || null;
+              if (draft.status !== undefined) profilePatch.status     = draft.status;
+              if (Object.keys(profilePatch).length > 0) {
+                const { error: pErr } = await window.sb.from('rr_profiles').update(profilePatch).eq('id', selected.id);
+                if (pErr) throw pErr;
+              }
               if (selected.role === 'vendor' && draft.company) {
                 await window.sb.from('rr_vendor_profiles').upsert({
                   id: selected.id, company_name: draft.company,
@@ -848,7 +889,8 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
   );
 }
 
-function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave }) {
+function UserDetailModal({ user: userProp, onClose, setRoute, initialEdit = false, onSave }) {
+  let user = userProp;
   const toast = useToast();
   const [editing, setEditing] = SP_us(initialEdit);
   const blankDraft = { photo: '', name: '', first: '', last: '', email: '', phone: '', company: '', title: '', city: '', state: '', street: '', zip: '', hourlyRate: '', vendorRate: '', skills: '', bio: '', status: 'active' };
@@ -864,6 +906,7 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
     city:        u.city || '',
     state:       u.state || '',
     street:      u.street || '',
+    geoAddress:  u.geoAddress || u.street || '',
     zip:         u.zip || '',
     hourlyRate:  u.hourlyRate ?? u.rate ?? '',
     vendorRate:  u.vendorRate ?? '',
@@ -872,10 +915,49 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
     status:      u.status || 'active',
   }) : blankDraft;
   const [draft, setDraft] = SP_us(userToDraft(user));
+  // The user prop comes from RosyData.USERS which hydrates from the SAFE view
+  // (no email, phone, geo_address, stripe_*, etc). Admins have RLS access to
+  // the base table — fetch the full row + vendor/worker side rows on open so
+  // the modal can render sensitive fields the admin is allowed to see.
+  const [enriched, setEnriched] = SP_us(null);
+  React.useEffect(() => {
+    if (!user?.id || !window.sb) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [{ data: p }, { data: v }, { data: w }] = await Promise.all([
+          window.sb.from('rr_profiles').select('*').eq('id', user.id).maybeSingle(),
+          window.sb.from('rr_vendor_profiles').select('*').eq('id', user.id).maybeSingle(),
+          window.sb.from('rr_worker_profiles').select('*').eq('id', user.id).maybeSingle(),
+        ]);
+        if (cancelled || !p) return;
+        setEnriched({
+          email: p.email,
+          phone: p.phone,
+          street: p.street,
+          city: p.city,
+          state: p.state,
+          zip: p.zip,
+          geoAddress: p.geo_address,
+          terms_accepted_at: p.terms_accepted_at,
+          vendor_signature_url: p.vendor_signature_url,
+          worker_signature_url: p.worker_signature_url,
+          w9_signature_url: p.w9_signature_url,
+          businessHours: v?.business_hours || null,
+          showBusinessHours: v?.show_business_hours === true,
+          services: w?.services || null,
+        });
+      } catch (e) { /* leave user prop as-is */ }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+  // Merge prop + enriched fetch so the rest of the modal reads `user` keys
+  // and gets sensitive fields once they arrive.
+  user = enriched ? { ...user, ...enriched } : user;
   React.useEffect(() => {
     setDraft(userToDraft(user));
     setEditing(initialEdit);
-  }, [user?.id, initialEdit]);
+  }, [user?.id, initialEdit, enriched]);
   if (!user) return null;
   const handleSave = () => {
     onSave && onSave(draft);
@@ -888,7 +970,10 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
         ? <><button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button><button className="btn btn-coral" onClick={handleSave}>Save changes</button></>
         : <><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-ghost-teal" onClick={() => { onClose(); window.__rosyComposeTo = user.id; setRoute && setRoute('inbox'); }}><SP_I.MessageSquare size={14} />Message</button><button className="btn btn-coral" onClick={() => setEditing(true)}><SP_I.Pencil size={14} />Edit profile</button></>}>
       <div style={{ display: 'flex', gap: 24, marginBottom: 20, alignItems: 'flex-start' }}>
-        <Avatar name={user.name} size="xl" />
+        {/* Pass user so Avatar reads user.photo directly. Without this it
+            looked up RosyData.USERS by name — when the admin renamed a user,
+            the name lookup missed and the avatar reverted to a placeholder. */}
+        <Avatar user={user} name={user.name} size="xl" />
         <div style={{ flex: 1 }}>
           <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, letterSpacing: '-0.02em' }}>{editing ? draft.name : user.name}</h3>
           <p style={{ margin: '4px 0 12px', color: 'var(--color-muted)', fontSize: 14 }}>{(() => { const c = editing ? draft.company : user.company; const loc = editing ? draft.city : user.city; const parts = [c, loc].filter(Boolean); return parts.length ? parts.join(' · ') : (user.onboarding_complete ? '—' : 'Profile not yet completed'); })()}</p>
@@ -902,9 +987,31 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
               const liveUser = (window.RosyData?.USERS || []).find(x => x.id === user.id);
               if (liveUser) liveUser.status = next;
               window.dispatchEvent(new CustomEvent('rosy:data-changed'));
-              onSave && onSave({ status: next });
-              try { if (window.sb) await window.sb.from('rr_profiles').update({ status: next }).eq('id', user.id); } catch (e) { console.warn(e); }
-              toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${user.name} marked ${next}` });
+              // Marking active also approves the user (flips verified=true) for
+              // non-admins. Without this they stay trapped behind the
+              // "Application received!" gate even though the admin "approved"
+              // them in the UI — `status` and `verified` are separate columns,
+              // and the gate reads `verified`. Use the admin endpoint so the
+              // server can bypass the rr_profiles_block_elevation trigger.
+              try {
+                if (window.sb) {
+                  // Always write the active/inactive flag locally.
+                  await window.sb.from('rr_profiles').update({ status: next }).eq('id', user.id);
+                  // For non-admin users, flipping to active = approving them.
+                  if (user.role !== 'admin') {
+                    const wantVerified = next === 'active';
+                    const { data: s } = await window.sb.auth.getSession();
+                    await fetch('/api/admin/profile-update', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+                      body: JSON.stringify({ userId: user.id, fields: { verified: wantVerified } }),
+                    });
+                    if (liveUser) liveUser.verified = wantVerified;
+                    window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+                  }
+                }
+              } catch (e) { console.warn(e); }
+              toast.push({ kind: next === 'active' ? 'success' : 'warning', title: `${user.name} marked ${next}`, body: next === 'active' && user.role !== 'admin' ? 'They can now access the app.' : undefined });
             }}>{user.status === 'active' ? <><SP_I.UserX size={13} />Mark inactive</> : <><SP_I.CheckCircle2 size={13} />Mark active</>}</button>
             <button className="btn btn-ghost btn-sm" onClick={async () => {
               if (!user.email) { toast.push({ kind: 'warning', title: 'No email on file' }); return; }
@@ -942,19 +1049,35 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
           ) : (
             <div><label className="field-label">Title / specialty</label><input className="input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Lead designer, Strike crew…" /></div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-            <div><label className="field-label">Street</label><input className="input" autoComplete="street-address" value={draft.street} onChange={(e) => setDraft({ ...draft, street: e.target.value })} /></div>
-            <div><label className="field-label">City</label><input className="input" autoComplete="address-level2" value={draft.city} onChange={(e) => setDraft({ ...draft, city: e.target.value })} /></div>
-            <div><label className="field-label">State</label><input className="input" autoComplete="address-level1" value={draft.state} onChange={(e) => setDraft({ ...draft, state: e.target.value })} placeholder="IL" /></div>
+          <div className="field">
+            <label className="field-label">Address</label>
+            <window.AddressInput
+              value={draft.geoAddress || draft.street || ''}
+              onChange={(v, meta) => {
+                // Picking a Google suggestion populates city/state/zip from the
+                // structured parts. Free-typed values just update the string.
+                const parts = meta?.parts;
+                setDraft(s => ({
+                  ...s,
+                  geoAddress: v,
+                  street: v,
+                  ...(parts ? {
+                    city:  parts.city  || s.city,
+                    state: parts.state || s.state,
+                    zip:   parts.zip   || s.zip,
+                  } : {}),
+                }));
+              }}
+              placeholder="Search the address" />
+            <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-muted)' }}>Powered by Google. Pick a suggestion for accurate city/state/zip.</p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: user.role === 'worker' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
             <div><label className="field-label">ZIP</label><input className="input" inputMode="numeric" autoComplete="postal-code" value={draft.zip} onChange={(e) => setDraft({ ...draft, zip: e.target.value })} /></div>
             {user.role === 'worker' ? (<>
               <div><label className="field-label">Hourly rate ($)</label><input className="input" type="number" min={0} value={draft.hourlyRate} onChange={(e) => setDraft({ ...draft, hourlyRate: e.target.value })} /></div>
               <div><label className="field-label">Skills (comma-separated)</label><input className="input" value={draft.skills} onChange={(e) => setDraft({ ...draft, skills: e.target.value })} placeholder="Lead, Design, Strike" /></div>
-            </>) : (
-              <div><label className="field-label">Vendor day rate ($)</label><input className="input" type="number" min={0} value={draft.vendorRate} onChange={(e) => setDraft({ ...draft, vendorRate: e.target.value })} /></div>
-            )}
+            </>) : null}
+            {/* Vendor day rate removed — vendors don't have one. */}
           </div>
           <div><label className="field-label">Status</label>
             <select className="select" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
@@ -976,7 +1099,7 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
             {user.street ? <KV label="Street" value={user.street} /> : null}
             {user.zip ? <KV label="ZIP" value={user.zip} /> : null}
             {user.role === 'worker' && user.hourlyRate != null ? <KV label="Hourly rate" value={`$${user.hourlyRate}/hr`} /> : null}
-            {user.role !== 'worker' && user.vendorRate != null ? <KV label="Vendor day rate" value={`$${user.vendorRate}/day`} /> : null}
+            {/* Vendor day rate field intentionally hidden — not a vendor concept. */}
             {user.websiteUrl ? <KV label="Website" value={user.websiteUrl} /> : null}
             {user.role === 'worker' && user.skills ? <KV label="Skills" value={Array.isArray(user.skills) ? user.skills.join(', ') : user.skills} /> : null}
             {(() => {
@@ -994,19 +1117,33 @@ function UserDetailModal({ user, onClose, setRoute, initialEdit = false, onSave 
           <p style={{ margin: 0, color: user.bio ? 'var(--color-body)' : 'var(--color-muted)', fontSize: 14, lineHeight: 1.55, fontStyle: user.bio ? 'normal' : 'italic' }}>
             {user.bio || (user.onboarding_complete ? 'No bio yet.' : 'This user has not completed onboarding yet — no profile info available.')}
           </p>
-          {user.showBusinessHours && user.businessHours ? (
-            <>
-              <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Business hours</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '4px 12px', fontSize: 13, color: 'var(--color-body)' }}>
-                {[['Mon','mon'],['Tue','tue'],['Wed','wed'],['Thu','thu'],['Fri','fri'],['Sat','sat'],['Sun','sun']].map(([label, key]) => (
-                  <React.Fragment key={key}>
-                    <span style={{ fontWeight: 500 }}>{label}</span>
-                    <span style={{ color: 'var(--color-muted)' }}>{user.businessHours[key] ? `${user.businessHours[key].open} – ${user.businessHours[key].close}` : 'Closed'}</span>
-                  </React.Fragment>
-                ))}
-              </div>
-            </>
-          ) : null}
+          {user.showBusinessHours && user.businessHours ? (() => {
+            // Onboarding stores hours as an array of {day, open, close} periods
+            // (supports multi-period days). Tolerate the legacy object shape
+            // {mon: {open, close}, ...} for older records by flattening to the
+            // same array contract before grouping by day.
+            const periods = Array.isArray(user.businessHours)
+              ? user.businessHours
+              : Object.entries(user.businessHours).map(([day, v]) => ({ day, open: v?.open, close: v?.close }));
+            const byDay = {};
+            periods.forEach(p => {
+              if (!p?.day || !p?.open || !p?.close) return;
+              (byDay[p.day] = byDay[p.day] || []).push(`${fmtTime(p.open)} – ${fmtTime(p.close)}`);
+            });
+            return (
+              <>
+                <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Business hours</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '4px 12px', fontSize: 13, color: 'var(--color-body)' }}>
+                  {[['Mon','mon'],['Tue','tue'],['Wed','wed'],['Thu','thu'],['Fri','fri'],['Sat','sat'],['Sun','sun']].map(([label, key]) => (
+                    <React.Fragment key={key}>
+                      <span style={{ fontWeight: 500 }}>{label}</span>
+                      <span style={{ color: 'var(--color-muted)' }}>{byDay[key]?.length ? byDay[key].join(', ') : 'Closed'}</span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </>
+            );
+          })() : null}
           {user.vendorSignatureUrl || user.workerSignatureUrl ? (
             <>
               <h4 style={{ margin: '24px 0 8px', fontSize: 14, fontWeight: 600 }}>Signature on file</h4>
@@ -1314,9 +1451,11 @@ function PageSettings({ role, currentUser, initialTab, setRoute }) {
   // Tabs live in the URL as settings:<tab> so refresh preserves the user's
   // selection. setRoute(settings:account) updates the hash; reading initialTab
   // on mount + on prop change keeps internal state in sync.
+  // Danger zone removed across all roles — account deletion is admin-only and
+  // happens via the admin Users page, not self-service from Settings.
   const tabs = role === 'admin'
     ? ['profile','account','notifications','payouts']
-    : ['profile','account','notifications','payouts','privacy','danger'];
+    : ['profile','account','notifications','payouts','privacy'];
   const [tab, setTab] = SP_us(tabs.includes(initialTab) ? initialTab : 'profile');
   React.useEffect(() => { if (tabs.includes(initialTab) && initialTab !== tab) setTab(initialTab); }, [initialTab]);
   React.useEffect(() => { if (!tabs.includes(tab)) setTab('profile'); }, [role]);
@@ -1329,9 +1468,17 @@ function PageSettings({ role, currentUser, initialTab, setRoute }) {
       <div className="section-heading"><h2>Settings</h2></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 220px) minmax(0, 1fr)', gap: 32 }} className="rosy-settings-grid">
         <div className="col" style={{ gap: 4 }}>
-          {tabs.map(s => (
-            <button key={s} onClick={() => selectTab(s)} className={`nav-item ${tab===s ? 'active' : ''}`} style={{ textTransform: 'capitalize' }}>{s === 'danger' ? 'Danger zone' : s === 'privacy' ? 'Privacy & data' : s}</button>
-          ))}
+          {tabs.map(s => {
+            // Vendor sees "Payments" — they fund gigs (not receive payouts).
+            // Worker keeps "Payouts" — they actually receive money.
+            const label = s === 'danger' ? 'Danger zone'
+              : s === 'privacy' ? 'Privacy & data'
+              : s === 'payouts' ? (role === 'vendor' ? 'Payments' : 'Payouts')
+              : s;
+            return (
+              <button key={s} onClick={() => selectTab(s)} className={`nav-item ${tab===s ? 'active' : ''}`} style={{ textTransform: 'capitalize' }}>{label}</button>
+            );
+          })}
         </div>
         <div className="col" style={{ gap: 16 }}>
           {tab === 'profile' ? <SettingsProfile user={currentUser} /> : null}
@@ -1340,7 +1487,7 @@ function PageSettings({ role, currentUser, initialTab, setRoute }) {
           {tab === 'payouts' ? <SettingsPayouts user={currentUser} /> : null}
           {tab === 'privacy' && role !== 'admin' ? <SettingsPrivacy role={role} user={currentUser} /> : null}
           {tab === 'team' && role !== 'admin' ? <SettingsTeam /> : null}
-          {tab === 'danger' && role !== 'admin' ? <SettingsDanger user={currentUser} /> : null}
+          {/* Danger zone tab disabled — self-service account deletion not available. */}
         </div>
       </div>
     </div>
@@ -1404,17 +1551,9 @@ function SettingsPrivacy({ role, user }) {
           </div>
         ))}
       </div>
-      <div className="divider" style={{ margin: '20px 0' }} />
-      <h4 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600 }}>Your data</h4>
-      <div className="col" style={{ gap: 8 }}>
-        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={exportMyData}><SP_I.UploadCloud size={14} />Export all my data</button>
-        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setHideOldRatings(v => !v); toast.push({ kind: 'info', title: hideOldRatings ? 'Older ratings visible' : 'Older ratings hidden', body: hideOldRatings ? 'Ratings older than 12 months now show.' : 'Ratings older than 12 months are now hidden from your profile.' }); }}>
-          <SP_I.Eye size={14} />{hideOldRatings ? '✓ ' : ''}Hide ratings older than 12 months
-        </button>
-        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => { setNoindex(v => !v); toast.push({ kind: 'info', title: noindex ? 'Search engines allowed' : 'Search engines blocked', body: noindex ? 'Your public profile is indexable again.' : 'Your public profile is now noindex.' }); }}>
-          <SP_I.ShieldCheck size={14} />{noindex ? '✓ ' : ''}Hide profile from search engines
-        </button>
-      </div>
+      {/* "Your data" section removed — not surfacing export / hide-ratings /
+          noindex toggles in the demo. The state above (hideOldRatings, noindex,
+          exportMyData) is still wired in case we re-enable it later. */}
     </div>
   );
 }
@@ -1443,16 +1582,36 @@ function isValidUSPhone(raw) {
 function SettingsProfile({ user }) {
   const toast = useToast();
   const role = user?.role || 'vendor';
+  // Email isn't in the safe view used to hydrate RosyData.USERS, so user.email
+  // is blank here. Pull from the live Supabase session (it's the user's OWN
+  // email — they're allowed to see it). Fallback to user.email for older
+  // sessions where it might still be populated.
+  const [sessionEmail, setSessionEmail] = SP_us(user?.email || '');
+  SP_ue(() => {
+    if (!window.sb) return;
+    let cancelled = false;
+    window.sb.auth.getUser().then(({ data }) => {
+      if (cancelled) return;
+      const e = data?.user?.email;
+      if (e) setSessionEmail(e);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [d, setD] = SP_us({
     photo: user?.photo || '',
     first: user?.first || '',
     last:  user?.last  || '',
-    email: user?.email || '',
+    email: sessionEmail || user?.email || '',
     phone: user?.phone || '',
     title: user?.title || '',
     bio:   user?.bio || '',
     city:  user?.city || '',
     state: user?.state || '',
+    // Display value for the Location AddressInput — formatted address from Google
+    // Places. Falls back to "City, State" composed from existing parts so the
+    // field isn't blank on first open for users who onboarded before this change.
+    location: user?.geo_address || [user?.city, user?.state].filter(Boolean).join(', '),
+    zip: user?.zip || '',
     // Vendor-only
     company_name:         user?.company_name || user?.company || '',
     website:              user?.website || '',
@@ -1467,9 +1626,11 @@ function SettingsProfile({ user }) {
     setD({
       photo: user?.photo || '',
       first: user?.first || '', last: user?.last || '',
-      email: user?.email || '', phone: user?.phone || '',
+      email: sessionEmail || user?.email || '', phone: user?.phone || '',
       title: user?.title || '', bio: user?.bio || '',
       city: user?.city || '', state: user?.state || '',
+      location: user?.geo_address || [user?.city, user?.state].filter(Boolean).join(', '),
+      zip: user?.zip || '',
       company_name: user?.company_name || user?.company || '',
       website: user?.website || '',
       business_description: user?.business_description || user?.bio || '',
@@ -1477,7 +1638,7 @@ function SettingsProfile({ user }) {
       rate_max: user?.rate_max ?? '',
       services: Array.isArray(user?.services) ? user.services.join(', ') : (user?.services || (Array.isArray(user?.skills) ? user.skills.join(', ') : (user?.skills || ''))),
     });
-  }, [user?.id]);
+  }, [user?.id, sessionEmail]);
 
   const phoneInvalid = d.phone && !isValidUSPhone(d.phone);
 
@@ -1504,6 +1665,7 @@ function SettingsProfile({ user }) {
           first_name: d.first || null, last_name: d.last || null,
           phone: d.phone || null, bio: d.bio || null, avatar_url: d.photo || null,
           title: d.title || null, city: d.city || null, state: d.state || null,
+          zip: d.zip || null, geo_address: d.location || null,
         }).eq('id', user.id);
         if (pErr) console.warn('rr_profiles update failed:', pErr.message);
         if (role === 'vendor') {
@@ -1547,8 +1709,25 @@ function SettingsProfile({ user }) {
           {phoneInvalid ? <p id="settings-phone-err" style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--rosy-coral)' }}>Enter a valid phone number (7–15 digits).</p> : null}
         </div>
         <div className="field"><label className="field-label">Title</label><input className="input" value={d.title} onChange={e => set('title', e.target.value)} placeholder={role === 'worker' ? 'Lead designer, Strike crew…' : 'Owner, Lead, Designer…'} /></div>
-        <div className="field"><label className="field-label">City</label><input className="input" autoComplete="address-level2" value={d.city} onChange={e => set('city', e.target.value)} placeholder="Chicago" /></div>
-        <div className="field"><label className="field-label">State</label><input className="input" autoComplete="address-level1" value={d.state} onChange={e => set('state', e.target.value)} placeholder="IL" /></div>
+        <div className="field"><label className="field-label">Location</label>
+          <window.AddressInput value={d.location || ''} onChange={(v, meta) => {
+            // Mirror the Google parts into the underlying city/state/zip
+            // fields so downstream filters + RLS-relevant columns stay in sync
+            // with whatever the user picks. Free-typed values just update the
+            // display string — city stays whatever was last selected.
+            const parts = meta?.parts;
+            setD(s => ({
+              ...s,
+              location: v,
+              ...(parts ? {
+                city: parts.city || s.city,
+                state: parts.state || s.state,
+                zip: parts.zip || s.zip,
+              } : {}),
+            }));
+          }} placeholder="City, state, or full address" />
+          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-muted)' }}>Powered by Google. Pick a suggestion for accurate city/state matching.</p>
+        </div>
         <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Bio</label><textarea className="textarea" value={d.bio} onChange={e => set('bio', e.target.value.slice(0, 1000))} maxLength={1000} placeholder="A short summary visible on your public profile." /><p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--color-muted)' }}>{(d.bio || '').length} / 1000</p></div>
 
         {role === 'vendor' ? (
@@ -1559,12 +1738,40 @@ function SettingsProfile({ user }) {
           </>
         ) : null}
 
-        {role === 'worker' ? (
-          <>
-            <div className="field"><label className="field-label">Hourly rate ($/hr)</label><input className="input" type="number" min={0} value={d.rate_min} onChange={e => set('rate_min', e.target.value)} placeholder="35" /></div>
-            <div className="field" style={{ gridColumn: '1 / -1' }}><label className="field-label">Services (comma-separated)</label><input className="input" value={d.services} onChange={e => set('services', e.target.value)} placeholder="Lead, Design, Assist, Strike" /></div>
-          </>
-        ) : null}
+        {role === 'worker' ? (() => {
+          // Services on the same row as hourly rate, rendered as a chip
+          // multi-select instead of a free-typed comma list. Source of truth
+          // matches the onboarding form (screen_misc.jsx allServices).
+          const allServices = ['Install & Breakdown','Onsite Design','D.I.Y. Couples','Studio Clean-Up','Event Consultations'];
+          const selected = (d.services || '').split(',').map(s => s.trim()).filter(Boolean);
+          const toggle = (s) => {
+            const next = selected.includes(s) ? selected.filter(x => x !== s) : [...selected, s];
+            set('services', next.join(', '));
+          };
+          return (
+            <>
+              <div className="field"><label className="field-label">Hourly rate ($/hr)</label><input className="input" type="number" min={0} value={d.rate_min} onChange={e => set('rate_min', e.target.value)} placeholder="35" /></div>
+              <div className="field"><label className="field-label">Services</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {allServices.map(s => {
+                    const on = selected.includes(s);
+                    return (
+                      <button key={s} type="button" onClick={() => toggle(s)}
+                        style={{
+                          padding: '6px 12px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600,
+                          border: '1.5px solid', cursor: 'pointer',
+                          borderColor: on ? 'var(--color-ink)' : 'var(--color-hairline-strong)',
+                          background: on ? 'var(--color-ink)' : 'transparent',
+                          color: on ? '#fff' : 'inherit',
+                        }}>{s}</button>
+                    );
+                  })}
+                </div>
+                <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--color-muted)' }}>{selected.length} selected · tap to toggle</p>
+              </div>
+            </>
+          );
+        })() : null}
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
         <button className="btn btn-coral" onClick={save}>Save changes</button>
@@ -1755,15 +1962,28 @@ function SettingsAccount({ user }) {
 
 function SettingsNotifications({ user }) {
   const toast = useToast();
-  // Persisted in rr_profiles.email_notifications jsonb. Default each preference to true.
+  // Full 8-key set — matches the notification types emitted by the system so a
+  // muted key on this page actually hides those rows on the Notifications page
+  // (PageNotificationCenter reads from the same rr_profiles.email_notifications).
+  // Stored in rr_profiles.email_notifications jsonb. Defaults: everything on
+  // except the digests + ratings (low-signal opt-in).
+  const PREFS = [
+    ['gig_application',  'Gig applications'],
+    ['gig_confirmed',    'Gig confirmations'],
+    ['gig_rejected',     'Gig rejections'],
+    ['new_message',      'New messages'],
+    ['payment_sent',     'Payment status changes'],
+    ['payment_disputed', 'Disputes'],
+    ['rating_received',  'Ratings & reviews'],
+    ['weekly_digest',    'Weekly summary digest'],
+  ];
   const initial = () => {
     const stored = user?.emailNotifications || user?.email_notifications || {};
-    return {
-      apps:     stored.apps     !== false,
-      msgs:     stored.msgs     !== false,
-      payments: stored.payments !== false,
-      weekly:   stored.weekly === true,
-    };
+    return PREFS.reduce((acc, [k]) => {
+      const optInByDefault = k === 'rating_received' || k === 'weekly_digest';
+      acc[k] = stored[k] !== undefined ? stored[k] !== false : !optInByDefault;
+      return acc;
+    }, {});
   };
   const [s, setS] = SP_us(initial());
   SP_ue(() => { setS(initial()); }, [user?.id]);
@@ -1778,13 +1998,9 @@ function SettingsNotifications({ user }) {
   return (
     <div className="card">
       <h3 className="card-title" style={{ marginBottom: 16 }}>Notifications</h3>
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--color-muted)' }}>Toggle which notifications you receive. Muted types are hidden from the Notifications page.</p>
       <div className="col" style={{ gap: 14 }}>
-        {[
-          ['apps','New gig applications'],
-          ['msgs','New messages'],
-          ['payments','Payment status changes'],
-          ['weekly','Weekly summary digest'],
-        ].map(([k, label]) => (
+        {PREFS.map(([k, label]) => (
           <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--color-hairline)' }}>
             <span>{label}</span>
             <span className={`toggle ${s[k] ? 'on' : ''}`} onClick={() => save({ ...s, [k]: !s[k] })} />
@@ -1836,7 +2052,7 @@ function SettingsPayouts({ user }) {
   };
   return (
     <div className="card">
-      <h3 className="card-title" style={{ marginBottom: 16 }}>Payouts</h3>
+      <h3 className="card-title" style={{ marginBottom: 16 }}>{user?.role === 'vendor' ? 'Payments' : 'Payouts'}</h3>
       {status === null ? (
         <div style={{ padding: 16, color: 'var(--color-muted)', fontSize: 13.5 }}>Checking Stripe connection…</div>
       ) : status === false ? (
@@ -2371,7 +2587,28 @@ function PageFAQs() {
   const [loading, setLoading] = SP_us(true);
   const [saving, setSaving] = SP_us({});
   const [editing, setEditing] = SP_us(null); // id of row being edited
-  const [draft, setDraft] = SP_us({ question: '', answer: '', sort_order: 0, is_visible: true });
+  const AUDIENCES = [['vendor', 'Vendor'], ['worker', 'Worker'], ['marketing', 'Marketing']];
+  const blankDraft = { question: '', answer: '', sort_order: 0, is_visible: true, audiences: ['marketing'] };
+  const [draft, setDraft] = SP_us(blankDraft);
+  // Tabs: 'manage' (the FAQ list editor) and 'order' (drag-to-reorder, per
+  // audience). Audience for order view defaults to vendor.
+  const [tab, setTab] = SP_us('manage');
+  const [orderAudience, setOrderAudience] = SP_us('vendor');
+  const [dragId, setDragId] = SP_us(null);
+  // Where the dragged row will land. `{ overId, where: 'above'|'below' }` so
+  // we can render a 2px coral line above or below the hovered row.
+  const [dropTarget, setDropTarget] = SP_us(null);
+  const toggleDraftAudience = (a) => setDraft(d => {
+    const cur = d.audiences || [];
+    const next = cur.includes(a) ? cur.filter(x => x !== a) : [...cur, a];
+    return { ...d, audiences: next };
+  });
+  const toggleRowAudience = (rowId, a) => setItems(arr => arr.map(x => {
+    if (x.id !== rowId) return x;
+    const cur = x.audiences || [];
+    const next = cur.includes(a) ? cur.filter(y => y !== a) : [...cur, a];
+    return { ...x, audiences: next };
+  }));
   const [adding, setAdding] = SP_us(false);
   const load = async () => {
     setLoading(true);
@@ -2390,6 +2627,7 @@ function PageFAQs() {
       const { error } = await window.sb.from('rr_faqs').update({
         question: row.question, answer: row.answer,
         sort_order: row.sort_order ?? 0, is_visible: row.is_visible !== false,
+        audiences: Array.isArray(row.audiences) && row.audiences.length ? row.audiences : ['marketing'],
       }).eq('id', row.id);
       if (error) throw error;
       setEditing(null);
@@ -2422,14 +2660,16 @@ function PageFAQs() {
   };
   const addRow = async () => {
     if (!draft.question.trim() || !draft.answer.trim()) { toast.push({ kind: 'warning', title: 'Question + answer required' }); return; }
+    if (!draft.audiences || draft.audiences.length === 0) { toast.push({ kind: 'warning', title: 'Pick at least one audience' }); return; }
     setAdding(true);
     try {
       const { error } = await window.sb.from('rr_faqs').insert({
         question: draft.question.trim(), answer: draft.answer.trim(),
         sort_order: items.length, is_visible: true,
+        audiences: draft.audiences,
       });
       if (error) throw error;
-      setDraft({ question: '', answer: '', sort_order: 0, is_visible: true });
+      setDraft(blankDraft);
       toast.push({ kind: 'success', title: 'FAQ added' });
       load();
     } catch (e) { toast.push({ kind: 'error', title: "Couldn't add", body: e.message }); }
@@ -2437,13 +2677,145 @@ function PageFAQs() {
   };
   return (
     <div className="content fade-up">
-      <div className="section-heading"><h2>FAQs</h2><span style={{ fontSize: 13, color: 'var(--color-muted)' }}>Visible on the marketing /help page</span></div>
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="section-heading"><h2>FAQs</h2></div>
+      <div className="tabs" style={{ marginBottom: 16 }}>
+        <button className={tab === 'manage' ? 'on' : ''} onClick={() => setTab('manage')}>FAQs</button>
+        <button className={tab === 'order' ? 'on' : ''} onClick={() => setTab('order')}>FAQ Order</button>
+      </div>
+      {tab === 'order' ? (() => {
+        // Per-audience drag-to-reorder. We read audience_orders[audience] for
+        // each row, fall back to sort_order, then assign new indices on drop
+        // and persist back to audience_orders.
+        const audienceItems = [...items]
+          .filter(r => (r.audiences || []).includes(orderAudience))
+          .sort((a, b) => {
+            const ao = (a.audience_orders || {})[orderAudience];
+            const bo = (b.audience_orders || {})[orderAudience];
+            const an = ao != null ? ao : (a.sort_order ?? 0);
+            const bn = bo != null ? bo : (b.sort_order ?? 0);
+            return an - bn;
+          });
+        const onDragStart = (e, id) => { setDragId(id); try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {} };
+        const onDragOver = (e, targetId) => {
+          e.preventDefault();
+          try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+          if (!dragId || dragId === targetId) return;
+          // Decide above/below based on cursor position within the row.
+          const rect = e.currentTarget.getBoundingClientRect();
+          const where = (e.clientY - rect.top) < rect.height / 2 ? 'above' : 'below';
+          setDropTarget(prev => (prev && prev.overId === targetId && prev.where === where) ? prev : { overId: targetId, where });
+        };
+        const onDragLeaveItem = (e, targetId) => {
+          // Only clear when leaving the row to a non-row sibling (avoid flicker
+          // when hopping between adjacent rows).
+          if (!e.currentTarget.contains(e.relatedTarget)) {
+            setDropTarget(prev => (prev && prev.overId === targetId) ? null : prev);
+          }
+        };
+        const onDrop = async (targetId) => {
+          if (!dragId || dragId === targetId) { setDragId(null); setDropTarget(null); return; }
+          const from = audienceItems.findIndex(r => r.id === dragId);
+          let to   = audienceItems.findIndex(r => r.id === targetId);
+          if (from < 0 || to < 0) { setDragId(null); setDropTarget(null); return; }
+          // If dropping below the target, insert AFTER it (adjust index).
+          const where = dropTarget?.overId === targetId ? dropTarget.where : 'above';
+          if (where === 'below') to = to + 1;
+          // Removing the moved item shifts indices — compensate when moving down.
+          if (from < to) to = to - 1;
+          const reordered = [...audienceItems];
+          const [moved] = reordered.splice(from, 1);
+          reordered.splice(to, 0, moved);
+          // Stamp new indices into audience_orders for each row.
+          const updates = reordered.map((r, i) => ({
+            id: r.id,
+            audience_orders: { ...(r.audience_orders || {}), [orderAudience]: i },
+          }));
+          // Optimistic local update.
+          setItems(arr => arr.map(x => {
+            const u = updates.find(y => y.id === x.id);
+            return u ? { ...x, audience_orders: u.audience_orders } : x;
+          }));
+          setDragId(null);
+          setDropTarget(null);
+          // Persist. Cheaper to issue one PATCH per row than to upsert.
+          try {
+            await Promise.all(updates.map(u =>
+              window.sb.from('rr_faqs').update({ audience_orders: u.audience_orders }).eq('id', u.id)
+            ));
+            toast.push({ kind: 'success', title: 'Order saved' });
+          } catch (e) {
+            toast.push({ kind: 'error', title: "Couldn't save order", body: e.message });
+            load();
+          }
+        };
+        return (
+          <>
+            <div className="card" style={{ marginBottom: 16 }}>
+              <p className="t-eyebrow" style={{ marginBottom: 8 }}>Audience</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {AUDIENCES.map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => setOrderAudience(id)}
+                    style={{ padding: '6px 14px', borderRadius: 9999, border: '1.5px solid', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', borderColor: orderAudience === id ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: orderAudience === id ? 'var(--color-ink)' : 'transparent', color: orderAudience === id ? '#fff' : 'inherit' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p style={{ margin: '12px 0 0', fontSize: 12.5, color: 'var(--color-muted)' }}>Drag rows to reorder. Order is saved per audience, so vendor / worker / marketing can each have their own sequence.</p>
+            </div>
+            <div className="card card-flush">
+              {loading ? <div style={{ padding: 28, color: 'var(--color-muted)' }}>Loading…</div> :
+               audienceItems.length === 0 ? (
+                <Empty icon={SP_I.HelpCircle} title={`No ${orderAudience} FAQs yet`} body="Tag FAQs to this audience on the FAQs tab first." />
+              ) : audienceItems.map((row, idx) => {
+                const isOver = dropTarget?.overId === row.id && dragId !== row.id;
+                const showAbove = isOver && dropTarget.where === 'above';
+                const showBelow = isOver && dropTarget.where === 'below';
+                return (
+                  <div key={row.id}
+                    draggable
+                    onDragStart={(e) => onDragStart(e, row.id)}
+                    onDragOver={(e) => onDragOver(e, row.id)}
+                    onDragLeave={(e) => onDragLeaveItem(e, row.id)}
+                    onDrop={() => onDrop(row.id)}
+                    onDragEnd={() => { setDragId(null); setDropTarget(null); }}
+                    style={{ position: 'relative', padding: '14px 18px', borderBottom: '1px solid var(--color-hairline)', display: 'flex', gap: 12, alignItems: 'center', cursor: 'grab', background: dragId === row.id ? 'var(--color-surface-soft)' : 'transparent', opacity: dragId === row.id ? 0.4 : 1, userSelect: 'none' }}>
+                    {/* Drop indicator — a 2px coral line above or below the row. */}
+                    {showAbove ? <div style={{ position: 'absolute', top: -1, left: 12, right: 12, height: 3, background: 'var(--rosy-coral)', borderRadius: 9999, pointerEvents: 'none' }} /> : null}
+                    {showBelow ? <div style={{ position: 'absolute', bottom: -2, left: 12, right: 12, height: 3, background: 'var(--rosy-coral)', borderRadius: 9999, pointerEvents: 'none' }} /> : null}
+                    <span style={{ flex: 'none', width: 28, height: 28, borderRadius: 9999, background: 'var(--color-surface-soft)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--color-muted)' }}>{idx + 1}</span>
+                    <SP_I.Menu size={16} style={{ flex: 'none', color: 'var(--color-muted)' }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.question}</p>
+                      <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--color-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.answer}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        );
+      })() : null}
+      {tab !== 'manage' ? null : <><div className="card" style={{ marginBottom: 16 }}>
         <h3 className="card-title" style={{ marginBottom: 12 }}>Add an FAQ</h3>
         <div className="col" style={{ gap: 10 }}>
           <div className="field"><label className="field-label">Question</label><input className="input" value={draft.question} onChange={e => setDraft(d => ({ ...d, question: e.target.value }))} placeholder="How do payouts work?" /></div>
-          <div className="field"><label className="field-label">Answer</label><textarea className="textarea" rows={3} value={draft.answer} onChange={e => setDraft(d => ({ ...d, answer: e.target.value }))} placeholder="Plain-language answer the public will see." /></div>
-          <div><button className="btn btn-coral btn-sm" disabled={adding || !draft.question.trim() || !draft.answer.trim()} onClick={addRow}>{adding ? 'Adding…' : 'Add FAQ'}</button></div>
+          <div className="field"><label className="field-label">Answer</label><textarea className="textarea" rows={3} value={draft.answer} onChange={e => setDraft(d => ({ ...d, answer: e.target.value }))} placeholder="Plain-language answer the audience will see." /></div>
+          <div className="field">
+            <label className="field-label">Audience</label>
+            <p style={{ margin: '-2px 0 6px', fontSize: 12, color: 'var(--color-muted)' }}>Pick which help pages this FAQ shows up on. At least one.</p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {AUDIENCES.map(([id, label]) => {
+                const on = (draft.audiences || []).includes(id);
+                return (
+                  <button key={id} type="button" onClick={() => toggleDraftAudience(id)}
+                    style={{ padding: '6px 12px', borderRadius: 9999, border: '1.5px solid', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', borderColor: on ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: on ? 'var(--color-ink)' : 'transparent', color: on ? '#fff' : 'inherit' }}>
+                    {on ? '✓ ' : ''}{label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div><button className="btn btn-coral btn-sm" disabled={adding || !draft.question.trim() || !draft.answer.trim() || !(draft.audiences || []).length} onClick={addRow}>{adding ? 'Adding…' : 'Add FAQ'}</button></div>
         </div>
       </div>
       <div className="card card-flush">
@@ -2455,16 +2827,38 @@ function PageFAQs() {
               <div className="col" style={{ gap: 8 }}>
                 <input className="input" value={row.question} onChange={e => setItems(arr => arr.map(x => x.id === row.id ? { ...x, question: e.target.value } : x))} />
                 <textarea className="textarea" rows={3} value={row.answer} onChange={e => setItems(arr => arr.map(x => x.id === row.id ? { ...x, answer: e.target.value } : x))} />
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>Audience</span>
+                  {AUDIENCES.map(([id, label]) => {
+                    const on = (row.audiences || []).includes(id);
+                    return (
+                      <button key={id} type="button" onClick={() => toggleRowAudience(row.id, id)}
+                        style={{ padding: '5px 10px', borderRadius: 9999, border: '1.5px solid', fontSize: 12, fontWeight: 600, cursor: 'pointer', borderColor: on ? 'var(--color-ink)' : 'var(--color-hairline-strong)', background: on ? 'var(--color-ink)' : 'transparent', color: on ? '#fff' : 'inherit' }}>
+                        {on ? '✓ ' : ''}{label}
+                      </button>
+                    );
+                  })}
+                </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn btn-coral btn-sm" disabled={saving[row.id]} onClick={() => saveRow(row)}>{saving[row.id] ? 'Saving…' : 'Save'}</button>
+                  <button className="btn btn-coral btn-sm" disabled={saving[row.id] || !(row.audiences || []).length} onClick={() => saveRow(row)}>{saving[row.id] ? 'Saving…' : 'Save'}</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(null); load(); }}>Cancel</button>
                 </div>
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ margin: 0, fontWeight: 600, fontSize: 14.5 }}>{row.question}</p>
                   <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-muted)', lineHeight: 1.55 }}>{row.answer}</p>
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {(row.audiences || []).length === 0 ? (
+                      <span style={{ fontSize: 11.5, color: 'var(--rosy-coral)', fontWeight: 600 }}>No audience — hidden everywhere</span>
+                    ) : (row.audiences || []).map(a => {
+                      const meta = AUDIENCES.find(([id]) => id === a);
+                      return meta ? (
+                        <span key={a} style={{ padding: '2px 8px', borderRadius: 9999, background: 'var(--color-surface-soft)', fontSize: 11.5, fontWeight: 600, color: 'var(--color-muted)' }}>{meta[1]}</span>
+                      ) : null;
+                    })}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
                   <button className="btn btn-ghost btn-sm" disabled={saving[row.id]} onClick={() => toggleVisible(row)}>{row.is_visible === false ? 'Show' : 'Hide'}</button>
@@ -2475,7 +2869,7 @@ function PageFAQs() {
             )}
           </div>
         ))}
-      </div>
+      </div></>}
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete this FAQ?" size="sm"
         footer={<><button className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>Cancel</button><button className="btn btn-danger" onClick={confirmDelete}>Delete forever</button></>}>
         {deleteTarget ? <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>This will remove "<strong>{deleteTarget.question}</strong>" from your help page. Visitors won't see it anymore.</p> : null}

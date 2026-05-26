@@ -235,22 +235,49 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
     window.addEventListener('rosy:data-changed', sync);
     return () => window.removeEventListener('rosy:data-changed', sync);
   }, [meId]);
+  // Locally archived ids — hidden from the list. Persisted to localStorage per
+  // user so refreshes don't undo the archive. (Server-side `archived_at` could
+  // come later; for now this is a UI-only soft-hide.)
+  const archiveKey = meId ? `rosy.notif.archived.${meId}` : null;
+  const [archived, setArchived] = X_us(() => {
+    if (!archiveKey) return {};
+    try { return JSON.parse(localStorage.getItem(archiveKey) || '{}'); } catch (e) { return {}; }
+  });
+  X_ue(() => { if (archiveKey) try { localStorage.setItem(archiveKey, JSON.stringify(archived)); } catch (e) {} }, [archived, archiveKey]);
+  const archive = (id) => {
+    setArchived(a => ({ ...a, [id]: true }));
+    // Sidebar bell + count read the same localStorage key — nudge them.
+    window.dispatchEvent(new CustomEvent('rosy:data-changed'));
+  };
+  // Auto-mark all unread as read once the user lands here. Sidebar badge is
+  // driven by unread count, so without this the badge stays at N forever
+  // because viewing the page doesn't write read=true to the DB.
+  X_ue(() => {
+    if (!meId) return;
+    if (window.RosyMutate?.notifications?.markAllRead) {
+      window.RosyMutate.notifications.markAllRead(meId).catch(() => {});
+    }
+  }, [meId]);
   const [tab, setTab] = X_us('all');
   const [search, setSearch] = X_us('');
   const [typeFilter, setTypeFilter] = X_us('all');
-  // Persisted notification preferences. Mute-types are excluded from the list.
-  const prefDefaults = {
-    gig_application: true, gig_confirmed: true, gig_rejected: true,
-    payment_sent: true, payment_disputed: true,
-    new_message: true, rating_received: false,
-    welcome: true, dev_issue: true, weekly_digest: false,
-  };
-  const [prefs, setPrefs] = X_us(() => {
-    try { return { ...prefDefaults, ...(JSON.parse(localStorage.getItem('rosy.notif.prefs') || '{}')) }; }
-    catch (e) { return prefDefaults; }
-  });
-  X_ue(() => { try { localStorage.setItem('rosy.notif.prefs', JSON.stringify(prefs)); } catch (e) {} }, [prefs]);
-  const togglePref = (key) => setPrefs(p => ({ ...p, [key]: !p[key] }));
+  // Single source of truth: rr_profiles.email_notifications, edited in Settings → Notifications.
+  // We just read it here. Types stored false are hidden from this page too.
+  const prefs = (() => {
+    const stored = currentUser?.emailNotifications || currentUser?.email_notifications || {};
+    return {
+      gig_application:  stored.gig_application  !== false,
+      gig_confirmed:    stored.gig_confirmed    !== false,
+      gig_rejected:     stored.gig_rejected     !== false,
+      new_message:      stored.new_message      !== false,
+      payment_sent:     stored.payment_sent     !== false,
+      payment_disputed: stored.payment_disputed !== false,
+      rating_received:  stored.rating_received  === true,
+      weekly_digest:    stored.weekly_digest    === true,
+      welcome:          true,  // always shown — these are intro nudges
+      dev_issue:        true,
+    };
+  })();
 
   const typeOptions = [
     ['all',              'All types'],
@@ -266,6 +293,7 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
   ];
 
   const filtered = items.filter(n => {
+    if (archived[n.id]) return false;
     if (prefs[n.type] === false) return false;
     if (typeFilter !== 'all' && n.type !== typeFilter) return false;
     if (tab === 'unread' && !n.unread) return false;
@@ -275,7 +303,11 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
     }
     return true;
   });
-  const unreadCount = items.filter(n => n.unread && prefs[n.type] !== false).length;
+  // Visible set = everything not archived AND not muted by the user's prefs.
+  // Use this for both tab counts so "All (N)" matches what actually renders.
+  const visible = items.filter(n => !archived[n.id] && prefs[n.type] !== false);
+  const visibleCount = visible.length;
+  const unreadCount = visible.filter(n => n.unread).length;
 
   const open = (n) => {
     setItems(arr => arr.map(x => x.id === n.id ? { ...x, unread: false } : x));
@@ -317,7 +349,7 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
           {typeOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select>
         <div className="tabs" style={{ flex: '0 0 auto' }}>
-          <button className={tab === 'all' ? 'on' : ''} onClick={() => setTab('all')}>All ({items.length})</button>
+          <button className={tab === 'all' ? 'on' : ''} onClick={() => setTab('all')}>All ({visibleCount})</button>
           <button className={tab === 'unread' ? 'on' : ''} onClick={() => setTab('unread')}>Unread ({unreadCount})</button>
         </div>
         <button className="btn btn-ghost btn-sm" style={{ flex: '0 0 auto' }} disabled={!unreadCount} onClick={markAll}>Mark all read</button>
@@ -330,48 +362,27 @@ function PageNotificationCenter({ setRoute, role, currentUser }) {
           const bgMap = { gig_application: 'var(--rosy-teal-soft)', gig_confirmed: 'var(--color-success-bg)', gig_rejected: 'var(--rosy-coral-soft)', payment_sent: 'var(--color-success-bg)', payment_disputed: 'var(--color-warning-bg)', new_message: 'var(--rosy-teal-soft)', rating_received: '#FEF3C7' };
           const I = IconMap[n.type] || X_I.Bell;
           return (
-            <div key={n.id} onClick={() => open(n)}
-              style={{ display: 'flex', gap: 16, padding: '18px 24px', borderBottom: '1px solid var(--color-hairline)', cursor: 'pointer', background: n.unread ? 'var(--color-canvas)' : 'transparent', alignItems: 'flex-start' }}>
-              <div style={{ width: 44, height: 44, borderRadius: 9999, background: bgMap[n.type] || 'var(--color-surface-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colorMap[n.type] || 'var(--color-ink)', flex: 'none' }}>
+            <div key={n.id}
+              style={{ display: 'flex', gap: 16, padding: '18px 24px', borderBottom: '1px solid var(--color-hairline)', background: n.unread ? 'var(--color-canvas)' : 'transparent', alignItems: 'flex-start' }}>
+              <div onClick={() => open(n)} style={{ width: 44, height: 44, borderRadius: 9999, background: bgMap[n.type] || 'var(--color-surface-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colorMap[n.type] || 'var(--color-ink)', flex: 'none', cursor: 'pointer' }}>
                 <I size={20} />
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div onClick={() => open(n)} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
                 <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--color-ink)' }}>{n.title}</p>
                 <p style={{ margin: '4px 0 0', fontSize: 13.5, color: 'var(--color-muted)' }}>{n.body}</p>
                 <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-muted-soft)' }}>{n.time}</p>
               </div>
               {n.unread ? <span style={{ width: 10, height: 10, borderRadius: 9999, background: 'var(--rosy-teal)', marginTop: 8, flex: 'none' }} /> : null}
-              <X_I.ChevronRight size={16} style={{ color: 'var(--color-muted-soft)', marginTop: 12 }} />
+              <button type="button" className="row-action-btn" aria-label="Archive notification" title="Archive"
+                onClick={(e) => { e.stopPropagation(); archive(n.id); toast.push({ kind: 'success', title: 'Notification archived' }); }}
+                style={{ background: 'transparent', border: 0, padding: 4, cursor: 'pointer', color: 'var(--color-muted)', marginTop: 8 }}>
+                <X_I.Archive size={16} />
+              </button>
             </div>
           );
         })}
       </div>
-      <div style={{ marginTop: 24 }}>
-        <h3 className="display-sm" style={{ marginBottom: 16, fontSize: 22 }}>Notification preferences</h3>
-        <div className="card">
-          <div className="col" style={{ gap: 12 }}>
-            {[
-              ['gig_application',  'Gig applications'],
-              ['gig_confirmed',    'Gig confirmations'],
-              ['gig_rejected',     'Gig rejections'],
-              ['new_message',      'New messages'],
-              ['payment_sent',     'Payment status changes'],
-              ['payment_disputed', 'Disputes'],
-              ['rating_received',  'Ratings & reviews'],
-              ['weekly_digest',    'Weekly summary digest'],
-            ].map(([key, label]) => {
-              const on = prefs[key] !== false;
-              return (
-                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--color-hairline)' }}>
-                  <span>{label}</span>
-                  <button type="button" onClick={() => togglePref(key)} className={`toggle ${on ? 'on' : ''}`} aria-pressed={on} aria-label={`Toggle ${label}`} />
-                </div>
-              );
-            })}
-          </div>
-          <p style={{ margin: '14px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>Preferences save automatically to this device. Muted types are hidden from the list above.</p>
-        </div>
-      </div>
+      {/* Preferences section moved to Settings → Notifications (single source of truth). */}
     </div>
   );
 }
@@ -588,7 +599,6 @@ function PageBuildTeam({ currentUser }) {
             <p style={{ margin: '0 0 20px', fontSize: 16, maxWidth: 560 }}>Tell us about the event. We'll auto-pick a vetted team from your favorites and top-rated workers nearby — ready to invite with one click.</p>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-primary btn-lg" onClick={() => setOpen(true)}><X_I.Sparkles size={16} />Build my team</button>
-              <button className="btn btn-ghost btn-lg" onClick={() => setDemoOpen(true)}>Watch demo</button>
             </div>
           </div>
           <div style={{ width: 220, flex: 'none' }}>
@@ -697,7 +707,7 @@ const TOUR_SLIDES = {
     { tone: 'peach',    icon: 'Calendar',    h: 'All your events in one view.',  p: 'Status, fill rate, venue, and gig progress for every booking. Click any row to dive in.', art: 'vendor-2', nav: 'events' },
     { tone: 'lavender', icon: 'Sparkles',    h: 'Build my team — auto-pick a crew.', p: 'Tell us about the event. We\'ll pull top-rated workers nearby who match your roles and budget. Send the whole team in one click.', art: 'vendor-3', nav: 'build-team' },
     { tone: 'mint',     icon: 'Briefcase',   h: 'Post a gig in 60 seconds.',     p: 'Date, time, rate, spots. Workers see it within minutes. Most posts fill the same day.', art: 'vendor-4', nav: 'gigs' },
-    { tone: 'ochre',    icon: 'CreditCard',  h: 'Stripe handles the money.',     p: 'Fund the gig at booking. Approve hours. Stripe Connect releases worker pay within 48 hours. No 1099s, no chasing.', art: 'vendor-5', nav: 'payments' },
+    { tone: 'ochre',    icon: 'CreditCard',  h: 'Stripe handles the money.',     p: 'Approve hours. Stripe Connect releases worker pay within 48 hours. No 1099s, no chasing.', art: 'vendor-5', nav: 'payments' },
     { tone: 'mint',     icon: 'MessageSquare', h: 'Talk to your crew right here.', p: 'Inbox keeps every conversation tied to its gig and event. No more lost texts.', art: 'vendor-6', nav: 'inbox' },
   ],
   worker: [
@@ -753,3 +763,150 @@ function Walkthrough({ role, onClose, setRoute }) {
 }
 
 Object.assign(window, { Walkthrough, TOUR_SLIDES });
+
+/* ============ Help & Support page ============
+   In-app FAQ list + Contact us modal. Contact us sends a message to every
+   admin user (writes rr_messages rows) and creates a rr_notifications row
+   per admin so they see the alert. */
+function PageHelpSupport({ currentUser }) {
+  const [contactOpen, setContactOpen] = X_us(false);
+  const [message, setMessage] = X_us('');
+  const [sending, setSending] = X_us(false);
+  const toast = useToast();
+  // Show FAQs tagged with the current user's role audience. Admins see
+  // everything that's tagged for any audience (so they can preview).
+  const role = currentUser?.role || 'vendor';
+  const faqs = (window.RosyData?.FAQS || [])
+    .filter(f => f.active !== false && f.is_visible !== false)
+    .filter(f => {
+      if (role === 'admin') return true;
+      const aud = f.audiences || [];
+      // Untagged legacy rows are treated as marketing-only; non-admin users
+      // skip them unless they're explicitly tagged for their role.
+      if (aud.length === 0) return false;
+      return aud.includes(role);
+    })
+    .sort((a, b) => {
+      // Honour the per-audience drag order from the admin FAQ Order tab.
+      const ao = (a.audience_orders || {})[role];
+      const bo = (b.audience_orders || {})[role];
+      const an = ao != null ? ao : (a.sort_order ?? 0);
+      const bn = bo != null ? bo : (b.sort_order ?? 0);
+      return an - bn;
+    });
+  const [expandedId, setExpandedId] = X_us(null);
+
+  const sendContact = async () => {
+    if (sending) return;
+    const trimmed = (message || '').trim();
+    if (trimmed.length < 10) { toast.push({ kind: 'warning', title: 'Message is too short', body: 'Give the support team at least a sentence to go on.' }); return; }
+    if (!currentUser?.id) { toast.push({ kind: 'warning', title: 'Sign in to send a message' }); return; }
+    setSending(true);
+    try {
+      const admins = (window.RosyData?.USERS || []).filter(u => u.role === 'admin' && u.id !== currentUser.id);
+      if (admins.length === 0) {
+        toast.push({ kind: 'warning', title: 'No admins to message right now', body: 'Try again in a moment.' });
+        setSending(false);
+        return;
+      }
+      const fromName = currentUser.name || currentUser.first || currentUser.email || 'a user';
+      const subject = `Help & support request from ${fromName}`;
+      // Write a message + notification per admin so each gets their own row
+      // (existing pattern — RLS keeps each user's inbox scoped to themselves).
+      const sb = window.sb;
+      if (sb) {
+        await Promise.all(admins.map(async (a) => {
+          try {
+            await sb.from('rr_messages').insert({
+              from_user_id: currentUser.id,
+              to_user_id: a.id,
+              subject,
+              body: trimmed,
+              read: false,
+            });
+          } catch (e) { console.warn('contact message insert failed:', e); }
+          try {
+            await sb.from('rr_notifications').insert({
+              user_id: a.id,
+              type: 'support_request',
+              title: 'New support request',
+              body: `${fromName}: ${trimmed.slice(0, 120)}${trimmed.length > 120 ? '…' : ''}`,
+              link: '#app/inbox',
+              read: false,
+            });
+          } catch (e) { console.warn('contact notif insert failed:', e); }
+        }));
+      }
+      toast.push({ kind: 'success', title: 'Message sent', body: `We'll get back to you soon. (Routed to ${admins.length} admin${admins.length === 1 ? '' : 's'}.)` });
+      setMessage('');
+      setContactOpen(false);
+    } catch (e) {
+      console.warn('contact send failed:', e);
+      toast.push({ kind: 'error', title: "Couldn't send your message", body: e.message || 'Try again in a moment.' });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="content fade-up">
+      <div className="section-heading">
+        <h2>Help &amp; support</h2>
+        <button className="btn btn-coral" onClick={() => setContactOpen(true)}><X_I.MessageSquare size={14} />Contact us</button>
+      </div>
+      <p style={{ margin: '4px 0 24px', color: 'var(--color-muted)', fontSize: 14.5 }}>Browse the frequently asked questions below. Can't find what you need? Tap <strong>Contact us</strong> and a Rosy admin will get back to you.</p>
+
+      {faqs.length === 0 ? (
+        <div className="card" style={{ padding: 36, textAlign: 'center' }}>
+          <div style={{ display: 'inline-flex', width: 56, height: 56, alignItems: 'center', justifyContent: 'center', borderRadius: 9999, background: 'var(--color-surface-soft)', color: 'var(--color-muted)', marginBottom: 14 }}>
+            <X_I.HelpCircle size={26} />
+          </div>
+          <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22 }}>No FAQs yet</h3>
+          <p style={{ margin: '8px 0 18px', color: 'var(--color-muted)', fontSize: 14 }}>Reach out and we'll help directly.</p>
+          <button className="btn btn-coral" onClick={() => setContactOpen(true)}><X_I.MessageSquare size={14} />Contact us</button>
+        </div>
+      ) : (
+        <div className="card card-flush">
+          {faqs.map(f => {
+            const open = expandedId === f.id;
+            return (
+              <div key={f.id} style={{ borderBottom: '1px solid var(--color-hairline)' }}>
+                <button type="button"
+                  onClick={() => setExpandedId(open ? null : f.id)}
+                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, padding: '18px 20px', background: 'transparent', border: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit', color: 'inherit' }}>
+                  <span style={{ fontWeight: 600, fontSize: 15 }}>{f.question}</span>
+                  {open ? <X_I.ChevronDown size={16} /> : <X_I.ChevronRight size={16} />}
+                </button>
+                {open ? (
+                  <div style={{ padding: '0 20px 20px', color: 'var(--color-body)', fontSize: 14.5, lineHeight: 1.6 }}>{f.answer}</div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <Modal open={contactOpen} onClose={() => { if (!sending) setContactOpen(false); }} title="Contact support" size="md"
+        footer={
+          <>
+            <button className="btn btn-ghost" disabled={sending} onClick={() => setContactOpen(false)}>Cancel</button>
+            <button className="btn btn-coral" disabled={sending || !message.trim()} onClick={sendContact}>{sending ? 'Sending…' : 'Send message'}</button>
+          </>
+        }>
+        <div className="col" style={{ gap: 12 }}>
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--color-muted)' }}>Your message goes straight to Rosy admins. We respond inside the app — check your inbox.</p>
+          <div className="field">
+            <label className="field-label">Message</label>
+            <textarea className="textarea" rows={6}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="What's going on? More detail helps us answer faster." />
+            <p className="field-hint" style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{message.length} characters</p>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+Object.assign(window, { PageHelpSupport });

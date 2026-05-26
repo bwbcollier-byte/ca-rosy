@@ -11,7 +11,8 @@
 // DEMO_REDIRECT_TO address until Rosy goes live, with the intended recipient
 // surfaced in subject + body.
 
-const DEMO_REDIRECT_TO = 'ben@pronocoders.com';
+const DEMO_REDIRECT_TO = process.env.DEMO_REDIRECT_TO || 'ben@pronocoders.com';
+const DEMO_REDIRECT_ON = String(process.env.DEMO_EMAIL_REDIRECT || '').toLowerCase() === 'true';
 const FROM_DEFAULT = 'noreply@rosyrecruits.com';
 const FROM_NAME = 'Rosy Recruits';
 const APP_URL = 'https://rosy-demo.vercel.app';
@@ -64,7 +65,7 @@ function brandedHtml({ recoveryUrl, firstName, originalTo, isDemo }) {
           <tr><td style="padding:0 32px 24px;font-size:13px;line-height:1.55;color:#6E665D;">
             <p style="margin:0 0 8px;">If the button doesn't work, paste this link into your browser:</p>
             <p style="margin:0 0 14px;word-break:break-all;color:#3F3933;"><a href="${recoveryUrl}" style="color:#1D5F66;">${recoveryUrl}</a></p>
-            <p style="margin:0 0 6px;">Didn't request this? Ignore this email — your password stays the same.</p>
+            <p style="margin:0 0 6px;">Didn't request this? Ignore this email. Your password stays the same.</p>
           </td></tr>
           <tr><td style="padding:18px 32px 28px;border-top:1px solid #EEE7DC;font-size:12px;color:#9C948A;">
             Rosy Recruits · ${APP_URL.replace('https://', '')}
@@ -102,40 +103,48 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'Server not configured' });
   }
 
-  // 1) Look up the user's first name (for personalisation) — best-effort.
+  // 1) Look up the user (id + first name) — best-effort.
   let firstName = '';
+  let userId = null;
   try {
-    const pr = await fetch(`${SUPABASE_URL}/rest/v1/rr_profiles?email=eq.${encodeURIComponent(email)}&select=first_name`, {
+    const pr = await fetch(`${SUPABASE_URL}/rest/v1/rr_profiles?email=eq.${encodeURIComponent(email)}&select=id,first_name`, {
       headers: { apikey: svc, Authorization: `Bearer ${svc}` },
     });
     const rows = await pr.json();
+    userId    = rows?.[0]?.id || null;
     firstName = rows?.[0]?.first_name || '';
   } catch (e) {}
+  // Don't leak whether the email exists. If we found nobody, return 200 but
+  // still rate-limit (caller already passed our limiter).
+  if (!userId) return res.status(200).json({ ok: true });
 
-  // 2) Generate a recovery link via Supabase admin API.
-  let recoveryUrl = null;
+  // 2) Mint a one-time reset token. Stored server-side; emailed to user as a
+  // query param so it survives Supabase's redirect-allowlist stripping. We
+  // bypass Supabase's generate_link entirely because it silently drops any
+  // `redirect_to` not whitelisted in the dashboard, leaving the user stranded
+  // on the marketing page.
+  const tokenBytes = require('crypto').randomBytes(32);
+  const recoveryToken = tokenBytes.toString('base64url');
+  const expires_at = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
   try {
-    const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
+    const ins = await fetch(`${SUPABASE_URL}/rest/v1/rr_password_reset_tokens`, {
       method: 'POST',
-      headers: { apikey: svc, Authorization: `Bearer ${svc}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'recovery',
-        email,
-        options: { redirect_to: `${APP_URL}/#auth` },
-      }),
+      headers: { apikey: svc, Authorization: `Bearer ${svc}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ token: recoveryToken, user_id: userId, expires_at }),
     });
-    const data = await r.json();
-    recoveryUrl = data?.properties?.action_link || data?.action_link || null;
-    if (!recoveryUrl) {
-      // Don't leak whether the email exists — return success anyway.
+    if (!ins.ok) {
+      console.warn('[password-reset] token insert failed', ins.status);
       return res.status(200).json({ ok: true });
     }
   } catch (e) {
+    console.warn('[password-reset] token mint failed:', e);
     return res.status(200).json({ ok: true });
   }
+  const recoveryUrl = `${APP_URL}/?reset_token=${encodeURIComponent(recoveryToken)}`;
 
-  // 3) Send the branded email via Postmark (demo-redirected).
-  const isDemo = true;
+  // 3) Send the branded email via Postmark. Demo-redirect honors the
+  // DEMO_EMAIL_REDIRECT env flag — when off, the real user gets the email.
+  const isDemo = DEMO_REDIRECT_ON;
   const subject = isDemo ? `[DEMO → ${email}] Reset your Rosy Recruits password` : 'Reset your Rosy Recruits password';
   const html = brandedHtml({ recoveryUrl, firstName, originalTo: email, isDemo });
   try {

@@ -1,17 +1,16 @@
 // Vercel serverless function — sends a templated transactional email via Postmark.
-// DEMO SAFETY: every outbound message is force-routed to DEMO_REDIRECT_TO
-// regardless of the recipient on the payload. The original intended recipient
-// is prepended to the subject + body so you can see who would have received it.
+//
+// REDIRECT BEHAVIOR (env-controlled):
+//   - DEMO_EMAIL_REDIRECT=true → every outbound message goes to DEMO_REDIRECT_TO
+//     (default for safety during development). The original recipient is
+//     prepended to the subject + body so you can see who would have got it.
+//   - DEMO_EMAIL_REDIRECT unset / anything else → email the real recipient.
 //
 // Body shape (POST JSON):
 //   { templateSlug: 'welcome-vendor', to: 'someone@example.com', vars: { first_name: 'Theo', ... } }
-//
-// Templates are passed in from the client (they're maintained in admin/emails
-// page). For now we treat the templateSlug as informational; the HTML body
-// itself is built client-side or fetched from RosyStores. If `html` is passed
-// directly we use it; otherwise we'll send a minimal fallback.
 
-const DEMO_REDIRECT_TO = 'ben@pronocoders.com';
+const DEMO_REDIRECT_TO = process.env.DEMO_REDIRECT_TO || 'ben@pronocoders.com';
+const DEMO_REDIRECT_ON = String(process.env.DEMO_EMAIL_REDIRECT || '').toLowerCase() === 'true';
 const FROM_DEFAULT = 'noreply@rosyrecruits.com'; // change once domain is verified in Postmark
 const FROM_NAME = 'Rosy Recruits';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
@@ -114,7 +113,7 @@ module.exports = async (req, res) => {
   const needsAdmin = !templateSlug || !USER_TRIGGER_SLUGS.has(templateSlug);
   const session = await verifyAuth(req, { requireAdmin: needsAdmin });
   if (!session) {
-    return res.status(401).json({ error: 'Unauthorised — sign in required' + (needsAdmin ? ' (admin only)' : '') });
+    return res.status(401).json({ error: 'Unauthorised. Sign in required' + (needsAdmin ? ' (admin only)' : '') });
   }
 
   // Hard caps on inputs to prevent abuse
@@ -139,23 +138,32 @@ module.exports = async (req, res) => {
   const filledHtml = fill(html);
   const filledText = fill(text);
 
-  // Demo safety banner
-  const demoBanner = `<div style="background:#FFF4D6;border:1px solid #E0C97A;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-family:sans-serif;font-size:12.5px;color:#7A5800;">
-    <strong>DEMO MODE</strong> · originally addressed to <strong>${originalTo || '(no recipient)'}</strong> · template <code>${templateSlug || '(adhoc)'}</code>
-  </div>`;
-  const demoSubjectPrefix = `[DEMO → ${originalTo || 'unknown'}] `;
+  // In demo-redirect mode we hijack the recipient + prepend a banner so it's
+  // obvious who *would* have got the email. In normal mode we send straight to
+  // the real recipient — the whole point of turning the flag off.
+  const demoBanner = DEMO_REDIRECT_ON
+    ? `<div style="background:#FFF4D6;border:1px solid #E0C97A;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-family:sans-serif;font-size:12.5px;color:#7A5800;"><strong>DEMO MODE</strong> · originally addressed to <strong>${originalTo || '(no recipient)'}</strong> · template <code>${templateSlug || '(adhoc)'}</code></div>`
+    : '';
+  const subjectPrefix = DEMO_REDIRECT_ON ? `[DEMO → ${originalTo || 'unknown'}] ` : '';
+  const textPrefix    = DEMO_REDIRECT_ON ? `[DEMO → ${originalTo}]\n\n` : '';
+  const recipientTo   = DEMO_REDIRECT_ON ? DEMO_REDIRECT_TO : originalTo;
+
+  if (!recipientTo) {
+    return res.status(400).json({ error: 'No recipient' });
+  }
 
   const payload = {
     From: from || `${FROM_NAME} <${FROM_DEFAULT}>`,
-    To: DEMO_REDIRECT_TO,
-    Subject: demoSubjectPrefix + filledSubject,
+    To: recipientTo,
+    Subject: subjectPrefix + filledSubject,
     HtmlBody: filledHtml ? demoBanner + filledHtml : undefined,
-    TextBody: filledText ? `[DEMO → ${originalTo}]\n\n` + filledText : undefined,
+    TextBody: filledText ? textPrefix + filledText : undefined,
     MessageStream: 'outbound',
     Tag: templateSlug || 'adhoc',
     Metadata: {
       template: templateSlug || 'adhoc',
       original_recipient: originalTo || '',
+      demo_redirected: DEMO_REDIRECT_ON ? 'true' : 'false',
     },
   };
 
@@ -174,7 +182,7 @@ module.exports = async (req, res) => {
       console.warn('Postmark error', r.status, data);
       return res.status(r.status).json({ error: 'Postmark rejected the message', details: data });
     }
-    return res.status(200).json({ ok: true, postmark: data, demoRoutedTo: DEMO_REDIRECT_TO });
+    return res.status(200).json({ ok: true, postmark: data, sentTo: recipientTo, demoRedirected: DEMO_REDIRECT_ON, originalRecipient: originalTo });
   } catch (e) {
     console.error('send-email handler crashed', e);
     return res.status(500).json({ error: String(e) });
