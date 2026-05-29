@@ -13,7 +13,7 @@
 
 const crypto = require('crypto');
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
 
 async function readRawBody(req) {
   return new Promise((resolve, reject) => {

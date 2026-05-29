@@ -9,7 +9,7 @@
 //  - 'delete'  -> re-INSERT the row from before_data
 // Then stamps the change_log row with reverted_at + reverted_by.
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
 
 // Tables we're willing to revert against — must match the audited table set.
 const ALLOWED_TABLES = new Set([

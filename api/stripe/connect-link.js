@@ -9,7 +9,7 @@
 // Uses STRIPE_SECRET_KEY (sk_test_…) from Vercel env.
 
 const STRIPE_KEY = () => process.env.STRIPE_SECRET_KEY;
-const SUPABASE_URL = () => process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
+const SUPABASE_URL = () => process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
 const SUPABASE_SERVICE_KEY = () => process.env.SUPABASE_SERVICE_KEY; // service role for server-side writes
 
 // Tiny urlencoded helper for Stripe form-encoded bodies

@@ -2,7 +2,7 @@
 // GET ?userId=xxx → { accountId, chargesEnabled, payoutsEnabled, detailsSubmitted }
 
 const STRIPE_KEY = () => process.env.STRIPE_SECRET_KEY;
-const SUPABASE_URL = () => process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
+const SUPABASE_URL = () => process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
 const SUPABASE_SERVICE_KEY = () => process.env.SUPABASE_SERVICE_KEY;
 
 module.exports = async (req, res) => {

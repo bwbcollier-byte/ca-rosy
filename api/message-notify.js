@@ -14,7 +14,7 @@
 // POST body: { conversationId, senderId, recipientId }
 // Auth: requires a signed-in Supabase JWT (sender's session token).
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
 const APP_URL = process.env.APP_URL || 'https://rosy-demo.vercel.app';
 const FROM_DEFAULT = 'noreply@rosyrecruits.com';
 const FROM_NAME = 'Rosy Recruits';

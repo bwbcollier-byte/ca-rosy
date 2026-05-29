@@ -13,7 +13,7 @@ const DEMO_REDIRECT_TO = process.env.DEMO_REDIRECT_TO || 'ben@pronocoders.com';
 const DEMO_REDIRECT_ON = String(process.env.DEMO_EMAIL_REDIRECT || '').toLowerCase() === 'true';
 const FROM_DEFAULT = 'noreply@rosyrecruits.com'; // change once domain is verified in Postmark
 const FROM_NAME = 'Rosy Recruits';
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
 
 // In-memory rate limit (per cold start instance — good enough to throttle abuse)
 const RATE_BUCKET = new Map();

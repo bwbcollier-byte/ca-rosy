@@ -4,7 +4,7 @@
 // POST body: { token, password }
 // Returns 200 { ok: true, email } on success — caller can sign in normally.
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
 
 const ALLOWED_ORIGINS = new Set([
   'https://rosy-demo.vercel.app',

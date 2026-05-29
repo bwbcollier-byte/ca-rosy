@@ -3,8 +3,8 @@
    data on error so the app always renders. Configure via window.SUPABASE_CONFIG. */
 
 window.SUPABASE_CONFIG = {
-  url: 'https://oerfmtjpwrefxuitsphl.supabase.co',
-  anonKey: 'sb_publishable_MnjwRR18cHX8t4VXxMY6sA_ADZ5SCd8',
+  url: 'https://vwweyepknzgruobadlwf.supabase.co',
+  anonKey: 'sb_publishable_ilFDBPmFOsPy9xswDmIIhQ_9R5IFPzm',
 };
 
 (function initClient() {

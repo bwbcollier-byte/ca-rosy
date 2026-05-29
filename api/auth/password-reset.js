@@ -16,7 +16,7 @@ const DEMO_REDIRECT_ON = String(process.env.DEMO_EMAIL_REDIRECT || '').toLowerCa
 const FROM_DEFAULT = 'noreply@rosyrecruits.com';
 const FROM_NAME = 'Rosy Recruits';
 const APP_URL = 'https://rosy-demo.vercel.app';
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
 
 const ALLOWED_ORIGINS = new Set([
   'https://rosy-demo.vercel.app',

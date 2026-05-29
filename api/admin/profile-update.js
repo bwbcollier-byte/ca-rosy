@@ -4,7 +4,7 @@
 // POST body: { userId, fields: { verified?, role?, status? } }
 // Auth: must be a signed-in admin (JWT in Authorization header).
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://oerfmtjpwrefxuitsphl.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
 const ALLOWED_FIELDS = new Set(['verified', 'role', 'status', 'onboarding_complete']);
 
 async function verifyAdmin(req) {
