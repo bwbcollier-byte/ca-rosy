@@ -3,8 +3,8 @@
 // Covers SMOKE_TEST.md items #125-126.
 const { test, expect, request } = require('@playwright/test');
 
-const SUPABASE_URL = 'https://oerfmtjpwrefxuitsphl.supabase.co';
-const ANON_KEY = 'sb_publishable_MnjwRR18cHX8t4VXxMY6sA_ADZ5SCd8';
+const SUPABASE_URL = 'https://vwweyepknzgruobadlwf.supabase.co';
+const ANON_KEY = 'sb_publishable_ilFDBPmFOsPy9xswDmIIhQ_9R5IFPzm';
 
 test.describe('Em-dash / copy hygiene', () => {
   const ctxOpts = { timeout: 25_000 };
