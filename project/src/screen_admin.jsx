@@ -787,6 +787,28 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
             Object.assign(live, patch);
             window.dispatchEvent(new CustomEvent('rosy:data-changed'));
           }
+          // EMAIL CHANGE — lives in auth.users, not rr_profiles. Has to go
+          // through the admin server endpoint (service-role key required).
+          // Fire-and-forget; if it fails we toast and roll back the optimistic
+          // local patch so the modal doesn't lie about the saved state.
+          if (draft.email !== undefined && draft.email && draft.email !== selected.email) {
+            try {
+              const { data: sess } = await window.sb.auth.getSession();
+              const token = sess?.session?.access_token;
+              const r = await fetch('/api/admin/profile-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ userId: selected.id, fields: { email: draft.email } }),
+              });
+              if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                console.warn('email change failed:', err);
+                toast.push({ kind: 'warning', title: 'Email change failed', body: err?.details?.msg || err?.error || 'See console.' });
+                // Roll back the optimistic local change so the UI matches DB.
+                if (live) { live.email = selected.email; window.dispatchEvent(new CustomEvent('rosy:data-changed')); }
+              }
+            } catch (e) { console.warn('email change request crashed:', e.message); }
+          }
           // Persist to Supabase. Admins bypass the elevation trigger so writes go through.
           try {
             if (window.sb) {

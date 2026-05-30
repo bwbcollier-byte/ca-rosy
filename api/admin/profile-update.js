@@ -5,7 +5,9 @@
 // Auth: must be a signed-in admin (JWT in Authorization header).
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vwweyepknzgruobadlwf.supabase.co';
-const ALLOWED_FIELDS = new Set(['verified', 'role', 'status', 'onboarding_complete']);
+// Email handled separately because it lives in auth.users (login credential),
+// not rr_profiles — needs the auth admin API + service-role key.
+const ALLOWED_FIELDS = new Set(['verified', 'role', 'status', 'onboarding_complete', 'email']);
 
 async function verifyAdmin(req) {
   const auth = req.headers?.authorization || '';
@@ -52,6 +54,26 @@ module.exports = async (req, res) => {
   if (!svc) return res.status(500).json({ error: 'SUPABASE_SERVICE_KEY not set' });
 
   try {
+    // EMAIL CHANGE — lives in auth.users (login credential). Update it via the
+    // auth admin API FIRST so we don't end up with a divergent state where
+    // rr_profiles.email is the new value but the user can't log in with it.
+    // email_confirm: true skips the re-confirmation flow (admin-trusted change).
+    if (typeof safe.email === 'string' && safe.email.trim()) {
+      const authR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          apikey: svc, Authorization: `Bearer ${svc}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: safe.email.trim(), email_confirm: true }),
+      });
+      if (!authR.ok) {
+        const detail = await authR.json().catch(() => ({}));
+        return res.status(authR.status).json({ error: 'auth email update failed', details: detail });
+      }
+    }
+
+    // PATCH the rr_profiles mirror (plus any other allowed fields).
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rr_profiles?id=eq.${userId}`, {
       method: 'PATCH',
       headers: {
