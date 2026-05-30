@@ -776,7 +776,12 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
             const patch = {
               photo: draft.photo, first: draft.first, last: draft.last,
               email: draft.email, phone: draft.phone, title: draft.title, bio: draft.bio,
-              street: draft.street, zip: draft.zip,
+              // Address fields — city/state/geoAddress were previously missing
+              // from the local patch, so the modal's "Location" line displayed
+              // the OLD city until a hard refresh (Bug 6). Now optimistically
+              // mirrored so the view-mode reflects what the admin just typed.
+              street: draft.street, zip: draft.zip, city: draft.city, state: draft.state,
+              geoAddress: draft.geoAddress,
               company: draft.company, company_name: draft.company,
               status: draft.status,
             };
