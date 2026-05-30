@@ -1001,7 +1001,6 @@ function App() {
             onBurger={() => setSidebarOpen(true)} />
           <ScreenRouter role={role} route={route} baseRoute={baseRoute} setRoute={setRoute}
             currentUser={currentUser} tweaks={tweaks} />
-          {role === 'admin' ? <DevNoteButton route={route} currentUser={currentUser} /> : null}
         </div>
       </div>
       {/* Verification wall — rendered OUTSIDE the app-shell so its inert
@@ -1175,52 +1174,6 @@ function ScreenRouter({ role, route, baseRoute, setRoute, currentUser, tweaks })
   if (baseRoute === 'changelog') return <PageChangeLog currentUser={currentUser} />;
 
   return <div className="content"><Empty title={`No ${baseRoute} screen yet`} body="Try a different sidebar item." /></div>;
-}
-
-/* ---------- Admin dev-note floating button (every page) ---------- */
-function DevNoteButton({ route, currentUser }) {
-  const [open, setOpen] = React.useState(false);
-  const [text, setText] = React.useState('');
-  const [savedFlash, setSavedFlash] = React.useState(false);
-  const storeKey = 'rosy.devNotes';
-  const readNotes = () => { try { return JSON.parse(localStorage.getItem(storeKey) || '[]'); } catch (e) { return []; } };
-  const save = () => {
-    const entry = { id: 'dn_' + Date.now(), route, author: currentUser?.name || 'admin', body: text.trim(), createdAt: new Date().toISOString() };
-    if (!entry.body) { setOpen(false); return; }
-    const all = readNotes();
-    all.unshift(entry);
-    try { localStorage.setItem(storeKey, JSON.stringify(all.slice(0, 500))); } catch (e) {}
-    setText(''); setOpen(false); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1500);
-  };
-  return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        title="Leave a dev note for this page"
-        style={{ position: 'fixed', bottom: 20, right: 20, width: 44, height: 44, borderRadius: 9999, border: 0, background: 'var(--color-ink)', color: '#fff', boxShadow: 'var(--shadow-modal)', cursor: 'pointer', zIndex: 350, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <window.Icons.StickyNote size={18} />
-      </button>
-      {savedFlash ? (
-        <div style={{ position: 'fixed', bottom: 74, right: 20, background: 'var(--color-ink)', color: '#fff', padding: '8px 12px', borderRadius: 9999, fontSize: 12, zIndex: 350 }}>Saved</div>
-      ) : null}
-      {open ? (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,10,0.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setOpen(false)}>
-          <div style={{ width: '100%', maxWidth: 520, background: 'var(--color-canvas)', borderRadius: 16, padding: 20, boxShadow: 'var(--shadow-modal)' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <h3 style={{ margin: 0, fontSize: 16 }}>Dev note for /{route}</h3>
-              <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Close</button>
-            </div>
-            <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--color-muted)' }}>Captured for future upgrades. Stored locally and visible only to admins.</p>
-            <textarea className="textarea" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="What needs improving here? Bugs, copy, layout, ideas…" />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-              <button className="btn-link" onClick={() => { const all = readNotes(); const json = JSON.stringify(all, null, 2); const blob = new Blob([json], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'rosy-dev-notes.json'; a.click(); URL.revokeObjectURL(url); }}>Export all ({readNotes().length})</button>
-              <button className="btn btn-coral" onClick={save} disabled={!text.trim()}>Save note</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </>
-  );
 }
 
 // Hydrate from Supabase, mount React, then open the realtime channel so other

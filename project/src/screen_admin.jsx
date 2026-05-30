@@ -759,7 +759,11 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
           { label: 'Clear',      icon: SP_I.X,            onClick: () => setPicked({}) },
         ]} />
 
-      <UserDetailModal user={selected} onClose={closeDetail} setRoute={setRoute}
+      {/* Conditionally mount AND key by user id — guarantees a fresh component
+          instance per open. Without this, enriched/draft state from the
+          previous open lingers and the next user's modal flashes with stale
+          data before the new fetch completes ("phantom modal" bug). */}
+      {selected ? <UserDetailModal key={selected.id} user={selected} onClose={closeDetail} setRoute={setRoute}
         initialEdit={editing}
         onSave={async (draft) => {
           // Optimistic: apply override locally + push into live RosyData so the
@@ -821,7 +825,7 @@ function PageDirectory({ filter, title, role, setRoute, openId, openAction, curr
               }
             }
           } catch (e) { console.warn('admin profile save failed:', e.message); }
-        }} />
+        }} /> : null}
 
       <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter" size="md"
         footer={<><button className="btn btn-ghost" onClick={() => { setStatusFilter('all'); setRoleFilter('all'); setRatingFilter('any'); setCityFilter('all'); }}>Reset all</button><button className="btn btn-coral" onClick={() => setFilterOpen(false)}>Apply</button></>}>
@@ -961,6 +965,20 @@ function UserDetailModal({ user: userProp, onClose, setRoute, initialEdit = fals
   if (!user) return null;
   const handleSave = () => {
     onSave && onSave(draft);
+    // Optimistically merge the just-saved draft into `enriched` so the modal
+    // view-mode reflects the new phone/email/address WITHOUT needing a hard
+    // refresh. The initial enriched fetch ran on open and is now stale; this
+    // keeps the modal in sync with what the admin just typed.
+    setEnriched(prev => ({
+      ...(prev || {}),
+      email:      draft.email      ?? prev?.email,
+      phone:      draft.phone      ?? prev?.phone,
+      street:     draft.street     ?? prev?.street,
+      city:       draft.city       ?? prev?.city,
+      state:      draft.state      ?? prev?.state,
+      zip:        draft.zip        ?? prev?.zip,
+      geoAddress: draft.geoAddress ?? prev?.geoAddress,
+    }));
     setEditing(false);
     toast.push({ kind: 'success', title: 'Profile updated' });
   };

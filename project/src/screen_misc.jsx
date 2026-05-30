@@ -1211,7 +1211,14 @@ function ProfileForm({ role, data, onChange }) {
     : (rawHours && typeof rawHours === 'object'
         ? Object.entries(rawHours).map(([day, v]) => ({ day, open: v?.open || '09:00', close: v?.close || '18:00' }))
         : []);
-  const sortPeriods = (arr) => [...arr].sort((a, b) => (DAY_ORDER[a.day] - DAY_ORDER[b.day]) || a.open.localeCompare(b.open) || a.close.localeCompare(b.close));
+  // Empty-day rows (newly-added, waiting for the user to pick a day) sort to
+  // the BOTTOM. Otherwise DAY_ORDER[''] is undefined → NaN compare → V8 puts
+  // the blank row at index 0 which is visually surprising.
+  const sortPeriods = (arr) => [...arr].sort((a, b) => {
+    const ai = a.day ? DAY_ORDER[a.day] : Infinity;
+    const bi = b.day ? DAY_ORDER[b.day] : Infinity;
+    return (ai - bi) || a.open.localeCompare(b.open) || a.close.localeCompare(b.close);
+  });
   const sorted = sortPeriods(hoursList);
   // Overlap: two intervals on the same day overlap iff a.open < b.close && b.open < a.close.
   const overlaps = (idx, candidate, list = sorted) => list.some((p, i) => i !== idx && p.day === candidate.day && candidate.open < p.close && p.open < candidate.close);
